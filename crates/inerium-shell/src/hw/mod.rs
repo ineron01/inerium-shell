@@ -12,7 +12,7 @@ pub mod sysfs;
 pub mod system;
 
 // Re-export common structs
-pub use audio::AudioSink;
+pub use audio::{AudioSink, AudioSource};
 pub use sysfs::home_dir;
 pub use system::{MonitorTarget, SystemUpdates, WallpaperItem};
 
@@ -181,12 +181,28 @@ pub fn toggle_mic_mute() {
     audio::toggle_mic_mute();
 }
 
+pub fn get_mic_volume() -> u32 {
+    audio::get_mic_volume()
+}
+
+pub fn set_mic_volume(pct: u32) {
+    audio::set_mic_volume(pct);
+}
+
 pub fn list_audio_sinks() -> Vec<AudioSink> {
     audio::list_audio_sinks()
 }
 
 pub fn set_default_sink(id: u32) {
     audio::set_default_sink(id);
+}
+
+pub fn list_audio_sources() -> Vec<AudioSource> {
+    audio::list_audio_sources()
+}
+
+pub fn set_default_source(id: u32) {
+    audio::set_default_source(id);
 }
 
 // ============================================================================
