@@ -38,7 +38,7 @@ ddcutil
 brightnessctl
 upower
 
-# Shell, Terminal, File Manager, Browser & Converter Backends
+# Shell, Terminal, File Manager, Browser & Python
 fish
 kitty
 google-chrome
@@ -47,16 +47,9 @@ fastfetch
 gnome-text-editor
 gnome-calculator
 dolphin
-ffmpeg
-imagemagick
-poppler
-pandoc-cli
-typst
-libreoffice-fresh
-onnxruntime-cpu
 python
 
-# Theming, Fonts & Build Dependencies
+# Theming, Fonts & Runtime Libraries
 adw-gtk-theme
 qt5ct
 qt6ct
@@ -73,15 +66,9 @@ ttf-jetbrains-mono-nerd
 ttf-opensans
 noto-fonts
 noto-fonts-emoji
-rust
-base-devel
-pkgconf
-clang
-mold
 git
 curl
 ripgrep
 pacman-contrib
 xdg-user-dirs
 xorg-xhost
-rclone

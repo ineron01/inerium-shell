@@ -4,17 +4,12 @@
 # ============================================================================
 
 deploy_user_scripts_and_menus() {
-    log "Deploying user scripts & KIO service menus..."
-    run "mkdir -p '$HOME/.local/bin' '$HOME/.local/share/kio/servicemenus'"
+    log "Deploying user scripts & desktop entries..."
+    run "mkdir -p '$HOME/.local/bin' '$HOME/.local/share/applications'"
     for script in "$REPO_DIR"/local/bin/*; do
         [[ -e "$script" ]] || continue
         name="$(basename "$script")"
         link_item "$script" "$HOME/.local/bin/$name"
-    done
-    for desktop in "$REPO_DIR"/local/share/kio/servicemenus/*.desktop; do
-        [[ -e "$desktop" ]] || continue
-        name="$(basename "$desktop")"
-        link_item "$desktop" "$HOME/.local/share/kio/servicemenus/$name"
     done
     for desktop in "$REPO_DIR"/local/share/applications/*.desktop; do
         [[ -e "$desktop" ]] || continue
@@ -25,7 +20,10 @@ deploy_user_scripts_and_menus() {
     if [[ -d "$REPO_DIR/first-login.d" ]]; then
         for step in "$REPO_DIR"/first-login.d/*; do
             [[ -e "$step" ]] || continue
-            link_item "$step" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/$(basename "$step")"
+            local step_name
+            step_name="$(basename "$step")"
+            [[ "$step_name" == "20-gdrive" ]] && continue  # Managed by --with-gdrive
+            link_item "$step" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/$step_name"
         done
     fi
 
@@ -38,13 +36,10 @@ deploy_user_scripts_and_menus() {
 
 deploy_desktop_configs() {
     log "Linking desktop configurations into ~/.config..."
-    for dir in alacritty environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar; do
+    for dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar; do
         link_item "$REPO_DIR/config/$dir" "$HOME/.config/$dir"
     done
     link_item "$REPO_DIR/config/btop/btop.conf" "$HOME/.config/btop/btop.conf"
-
-    run "mkdir -p '$HOME/.config/rclone'"
-    link_item "$REPO_DIR/config/rclone/filter.txt" "$HOME/.config/rclone/filter.txt"
 
     # Fish shell (preserve runtime fish_variables)
     run "mkdir -p '$HOME/.config/fish/functions'"
@@ -356,7 +351,11 @@ enable_user_services_and_defaults() {
     run "mkdir -p '$HOME/.config/systemd/user/hypridle.service.d' '$HOME/.config/systemd/user/mako.service.d' '$HOME/.config/systemd/user/waybar.service.d'"
     for unit in "$REPO_DIR"/config/systemd/user/*.service "$REPO_DIR"/config/systemd/user/*.timer "$REPO_DIR"/config/systemd/user/*.path; do
         [[ -f "$unit" ]] || continue
-        link_item "$unit" "$HOME/.config/systemd/user/$(basename "$unit")"
+        local uname
+        uname="$(basename "$unit")"
+        [[ "$uname" == "gdrive.service" ]] && continue
+        [[ "$uname" == "inerium-camera-bridge.service" ]] && continue
+        link_item "$unit" "$HOME/.config/systemd/user/$uname"
     done
     link_item "$REPO_DIR/config/systemd/user/hypridle.service.d/slice.conf" "$HOME/.config/systemd/user/hypridle.service.d/slice.conf"
     link_item "$REPO_DIR/config/systemd/user/mako.service.d/slice.conf" "$HOME/.config/systemd/user/mako.service.d/slice.conf"

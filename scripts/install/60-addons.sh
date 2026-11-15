@@ -138,7 +138,54 @@ install_novpn_addon() {
     fi
 }
 
+install_gdrive_addon() {
+    log "Setting up Google Drive Dolphin integration (rclone)..."
+    if [[ "$SKIP_PKGS" -eq 0 ]]; then
+        install_pkgs rclone
+    fi
+
+    mkdir -p "$HOME/.config/rclone"
+    link_item "$REPO_DIR/config/rclone/filter.txt" "$HOME/.config/rclone/filter.txt"
+
+    local gdrive_unit="$REPO_DIR/config/systemd/user/gdrive.service"
+    if [[ -f "$gdrive_unit" ]]; then
+        mkdir -p "$HOME/.config/systemd/user"
+        link_item "$gdrive_unit" "$HOME/.config/systemd/user/gdrive.service"
+    fi
+
+    local gdrive_first_login="$REPO_DIR/first-login.d/20-gdrive"
+    if [[ -f "$gdrive_first_login" ]]; then
+        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        link_item "$gdrive_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive"
+    fi
+}
+
+install_converter_addon() {
+    log "Setting up Dolphin Converter addon (media/doc conversion & ONNX background removal)..."
+    if [[ "$SKIP_PKGS" -eq 0 ]]; then
+        install_pkgs ffmpeg imagemagick poppler pandoc-cli typst libreoffice-fresh onnxruntime-cpu
+    fi
+
+    log "Linking Dolphin KIO servicemenus into ~/.local/share/kio/servicemenus..."
+    mkdir -p "$HOME/.local/share/kio/servicemenus"
+    for desktop in "$REPO_DIR"/local/share/kio/servicemenus/*.desktop; do
+        [[ -f "$desktop" ]] || continue
+        local name="$(basename "$desktop")"
+        link_item "$desktop" "$HOME/.local/share/kio/servicemenus/$name"
+    done
+
+    fetch_silueta_model
+}
+
 deploy_selected_addons() {
+    if [[ "$WITH_GDRIVE" -eq 1 ]]; then
+        run_step "Configuring Google Drive addon..." install_gdrive_addon
+    fi
+    if [[ "$WITH_CONVERTER" -eq 1 ]]; then
+        run_step "Configuring Dolphin Converter addon..." install_converter_addon
+    elif [[ "$FETCH_MODEL" -eq 1 ]]; then
+        fetch_silueta_model
+    fi
     if [[ "$WITH_MSI_EC" -eq 1 ]]; then
         run_step "Configuring MSI Cooling addon..." install_msi_ec_addon
     fi

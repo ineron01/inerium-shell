@@ -9,7 +9,6 @@ members = [
     "crates/inerium-setup",
     "crates/dolphin-converter",
     "crates/inerium-camera",
-    "crates/inerium-guard",
 ]
 exclude = [
     "standalone/inerium-polkit",

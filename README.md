@@ -8,13 +8,13 @@ Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua 
 
 - `Cargo.toml` — Rust workspace (`inerium-i18n`, `inerium-tools`, `inerium-shell`, `inerium-greeter`, `inerium-setup`, `dolphin-converter`)
 - `standalone/inerium-polkit/` — Standalone Polkit agent (fork of [soteria](https://github.com/ImVaskel/soteria), Apache-2.0; `gtk4 0.9` / `relm4 0.9`, kept separate to avoid `links = "gtk-4"` conflict with `gtk4 0.11`)
-- `config/` — Symlinkable user configurations (`hypr`, `waybar`, `rofi`, `mako`, `swayosd`, `fish`, `kitty`, `alacritty`, `uwsm`, `systemd/user`, `qt5ct`, `qt6ct`, `gtk-3.0`, `gtk-4.0`)
+- `config/` — Symlinkable user configurations (`hypr`, `waybar`, `rofi`, `mako`, `swayosd`, `fish`, `kitty`, `uwsm`, `systemd/user`, `qt5ct`, `qt6ct`, `gtk-3.0`, `gtk-4.0`)
 - `local/` — User scripts (`~/.local/bin/`) and Dolphin KIO service menus
 - `system/` — System-wide `inerium-desktop-indexer`, `greetd` templates (`--with-greeter`), and `sudoers.d` rule
 - `assets/` — Default wallpapers (`assets/wallpapers/`) and greeter background (`assets/backgrounds/`)
-- `pkglist-base.txt` — Base Arch/CachyOS packages
-- `bootstrap.sh` — One-command TTY bootstrapper (installs `git`, clones repo, runs `install.sh --with-greeter --fetch-model`)
-- `install.sh` — Universal idempotent installer (`--dry-run`, `--skip-pkgs`, `--skip-build`, `--fetch-model`, `--with-greeter`)
+- `pkglist-base.txt` — Base Arch/CachyOS packages (minimal clean core)
+- `bootstrap.sh` — One-command TTY bootstrapper (installs `git`, clones repo, runs `install.sh --with-greeter`)
+- `install.sh` — Universal idempotent installer (`--bin`, `--from-source`, `--with-greeter`, `--with-gdrive`, `--with-converter`, `--all-addons`)
 
 ## Installation Methods & Quick Start
 
@@ -53,7 +53,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 
 ```bash
 ./install.sh --dry-run
-./install.sh --bin --with-greeter --fetch-model
+./install.sh --bin --with-greeter --with-gdrive
 ```
 
 ## Documentation & User Guide

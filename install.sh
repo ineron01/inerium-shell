@@ -22,6 +22,8 @@ LOG_FILE="/tmp/inerium-install.log"
 WITH_CAMERA=0
 WITH_MSI_EC=0
 WITH_NOVPN=0
+WITH_CONVERTER=0
+WITH_GDRIVE=0
 INSTALL_LANG=""
 MSI_EC_REBUILT=0
 
@@ -44,10 +46,12 @@ Options:
   --skip-build       Skip binary download and Cargo compilation
   --fetch-model      Download silueta.onnx (~43 MB) if missing
   --with-greeter     Install and configure greetd + inerium-greeter (/etc/greetd/)
+  --with-gdrive      Install Google Drive integration for Dolphin via rclone
+  --with-converter   Install Dolphin Converter (LibreOffice, Pandoc, ONNX background removal)
   --with-camera      Install Inerium Camera (Android phone webcam via USB/Wi-Fi)
   --with-msi-ec      Install patched msi-ec DKMS & msi-fan-regulator (for MSI laptops)
   --with-novpn       Install noVPN split-tunneling service and helper scripts
-  --all-addons       Install all optional add-ons (--with-camera, --with-msi-ec, --with-novpn)
+  --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-msi-ec, --with-novpn)
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
   --non-interactive  Run without interactive TUI prompts (also -y)
@@ -72,10 +76,12 @@ while [[ $# -gt 0 ]]; do
         --skip-build)      SKIP_BUILD=1; shift ;;
         --fetch-model)     FETCH_MODEL=1; shift ;;
         --with-greeter)    WITH_GREETER=1; shift ;;
+        --with-gdrive)     WITH_GDRIVE=1; shift ;;
+        --with-converter)  WITH_CONVERTER=1; shift ;;
         --with-camera)     WITH_CAMERA=1; shift ;;
         --with-msi-ec)     WITH_MSI_EC=1; shift ;;
         --with-novpn)      WITH_NOVPN=1; shift ;;
-        --all-addons)      WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
+        --all-addons)      WITH_CONVERTER=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
         --lang)            INSTALL_LANG="${2:-}"; shift 2 ;;
         --workspaces)      WORKSPACES_PER_MON="${2:-}"; shift 2 ;;
         --non-interactive|-y) NON_INTERACTIVE=1; shift ;;
@@ -130,16 +136,13 @@ deploy_desktop_configs
 detect_and_generate_local_overlays
 deploy_wallpapers
 
-# 5. Background removal AI model
-fetch_silueta_model
-
-# 6. Wayland sessions and login screen (greetd)
+# 5. Wayland sessions and login screen (greetd)
 configure_greeter
 
-# 7. Systemd user services and browser defaults
+# 6. Systemd user services and browser defaults
 enable_user_services_and_defaults
 
-# 8. Optional add-ons (MSI Cooling, Camera, noVPN)
+# 7. Optional add-ons (Google Drive, Dolphin Converter, MSI Cooling, Camera, noVPN)
 deploy_selected_addons
 
 # 9. Summary & completion

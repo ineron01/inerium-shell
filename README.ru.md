@@ -8,13 +8,13 @@
 
 - `Cargo.toml` — Rust workspace (`inerium-i18n`, `inerium-tools`, `inerium-shell`, `inerium-greeter`, `inerium-setup`, `dolphin-converter`)
 - `standalone/inerium-polkit/` — Автономный Polkit-агент (форк [soteria](https://github.com/ImVaskel/soteria), Apache-2.0; `gtk4 0.9` / `relm4 0.9`, выделен отдельно во избежание конфликта `links = "gtk-4"` с `gtk4 0.11`)
-- `config/` — Пользовательские конфигурации для создания симлинков (`hypr`, `waybar`, `rofi`, `mako`, `swayosd`, `fish`, `kitty`, `alacritty`, `uwsm`, `systemd/user`, `qt5ct`, `qt6ct`, `gtk-3.0`, `gtk-4.0`)
+- `config/` — Пользовательские конфигурации для создания симлинков (`hypr`, `waybar`, `rofi`, `mako`, `swayosd`, `fish`, `kitty`, `uwsm`, `systemd/user`, `qt5ct`, `qt6ct`, `gtk-3.0`, `gtk-4.0`)
 - `local/` — Пользовательские скрипты (`~/.local/bin/`) и сервисные меню Dolphin KIO
 - `system/` — Общесистемный `inerium-desktop-indexer`, шаблоны `greetd` (`--with-greeter`) и правило `sudoers.d`
 - `assets/` — Обои по умолчанию (`assets/wallpapers/`) и фоны экрана входа (`assets/backgrounds/`)
-- `pkglist-base.txt` — Базовый список пакетов Arch/CachyOS
-- `bootstrap.sh` — Однострочный TTY-бутстраппер (устанавливает `git`, клонирует репозиторий, запускает `install.sh --with-greeter --fetch-model`)
-- `install.sh` — Универсальный идемпотентный установщик (`--dry-run`, `--skip-pkgs`, `--skip-build`, `--fetch-model`, `--with-greeter`)
+- `pkglist-base.txt` — Базовый список пакетов Arch/CachyOS (минимальное чистое ядро)
+- `bootstrap.sh` — Однострочный TTY-бутстраппер (устанавливает `git`, клонирует репозиторий, запускает `install.sh --with-greeter`)
+- `install.sh` — Универсальный идемпотентный установщик (`--bin`, `--from-source`, `--with-greeter`, `--with-gdrive`, `--with-converter`, `--all-addons`)
 
 ## Способы установки и быстрый старт
 
@@ -53,7 +53,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 
 ```bash
 ./install.sh --dry-run
-./install.sh --bin --with-greeter --fetch-model
+./install.sh --bin --with-greeter --with-gdrive
 ```
 
 ## Документация и руководство пользователя

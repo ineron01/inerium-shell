@@ -111,7 +111,7 @@ else
 fi
 
 if [[ ! -t 0 && -t 1 && -r /dev/tty ]]; then
-    exec "$TARGET_DIR/install.sh" --with-greeter --fetch-model "$@" < /dev/tty
+    exec "$TARGET_DIR/install.sh" --with-greeter "$@" < /dev/tty
 else
-    exec "$TARGET_DIR/install.sh" --with-greeter --fetch-model "$@"
+    exec "$TARGET_DIR/install.sh" --with-greeter "$@"
 fi

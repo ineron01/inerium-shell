@@ -35,20 +35,9 @@ install_pkgs() {
 }
 
 install_pkglist() {
-    local -a wanted filtered
+    local -a wanted
     mapfile -t wanted < <(grep -vE '^\s*(#|$)' "$1" | awk '{print $1}')
-    if [[ "$INSTALL_MODE" == "bin" && "$SKIP_BUILD" -eq 0 ]]; then
-        local pkg
-        for pkg in "${wanted[@]}"; do
-            case "$pkg" in
-                rust|clang|mold) continue ;;
-                *) filtered+=("$pkg") ;;
-            esac
-        done
-        install_pkgs "${filtered[@]}"
-    else
-        install_pkgs "${wanted[@]}"
-    fi
+    install_pkgs "${wanted[@]}"
 }
 
 install_base_packages() {
@@ -67,6 +56,10 @@ install_base_packages() {
     fi
 
     run_step "Installing base packages from pkglist-base.txt..." install_pkglist "$REPO_DIR/pkglist-base.txt"
+
+    if [[ "$INSTALL_MODE" == "source" && "$SKIP_BUILD" -eq 0 ]]; then
+        run_step "Installing Rust build toolchain (--from-source)..." install_pkgs rust base-devel pkgconf clang mold
+    fi
 
     if [[ ! -d /usr/share/icons/Bibata-Modern-Ice && ! -d "$HOME/.local/share/icons/Bibata-Modern-Ice" ]]; then
         run_step "Installing Bibata cursor theme..." bash -c 'paru -S --needed --noconfirm bibata-cursor-theme-bin || true'

@@ -86,22 +86,28 @@ run_tui_prompts() {
             WITH_GREETER=0
         fi
 
-        if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" \
-            --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
-            FETCH_MODEL=1
-        else
-            FETCH_MODEL=0
-        fi
-
+        local opt_gdrive="Google Drive — интеграция облака в Dolphin (rclone)"
+        local opt_converter="Dolphin Converter — конвертация файлов (LibreOffice, Pandoc, ONNX)"
         local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
-        local opt_msi="Охлаждение MSI — msi-ec DKMS + авторегулятор кулеров (Bravo 15 C7VE / MSI)"
+        local opt_msi="Охлаждение MSI — msi-ec DKMS + авторегулятор кулеров (MSI)"
         local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
         local header_addons="Дополнительные модули (Пробел — выбор/снятие, Enter — подтвердить):"
         local chosen_addons
-        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_novpn" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
+        [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
         [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+
+        if [[ "$WITH_CONVERTER" -eq 1 ]]; then
+            if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" \
+                --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
+                FETCH_MODEL=1
+            else
+                FETCH_MODEL=0
+            fi
+        fi
 
     else
         gum style \
@@ -150,21 +156,27 @@ run_tui_prompts() {
             WITH_GREETER=0
         fi
 
-        if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" \
-            --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
-            FETCH_MODEL=1
-        else
-            FETCH_MODEL=0
-        fi
-
+        local opt_gdrive="Google Drive — cloud integration in Dolphin (rclone)"
+        local opt_converter="Dolphin Converter — media/doc conversion & ONNX background removal"
         local opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
-        local opt_msi="MSI Cooling — msi-ec DKMS + fan regulator (Bravo 15 C7VE / MSI)"
+        local opt_msi="MSI Cooling — msi-ec DKMS + fan regulator (MSI)"
         local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
         local header_addons="Optional Add-on Modules (Space to toggle, Enter to confirm):"
         local chosen_addons
-        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_novpn" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
+        [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
         [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+
+        if [[ "$WITH_CONVERTER" -eq 1 ]]; then
+            if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" \
+                --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
+                FETCH_MODEL=1
+            else
+                FETCH_MODEL=0
+            fi
+        fi
     fi
 }
