@@ -334,9 +334,10 @@ pub fn build_power_menu<FClose>(close_cb: FClose) -> (gtk4::Box, i32, i32)
 where
     FClose: Fn() + 'static + Clone,
 {
-    let controller = PowerMenuModel::builder()
+    let mut controller = PowerMenuModel::builder()
         .launch(Box::new(close_cb))
         .detach();
+    controller.detach_runtime();
     let root = controller.widget().clone();
     (root, 840, 320)
 }

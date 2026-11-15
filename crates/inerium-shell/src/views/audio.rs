@@ -370,7 +370,8 @@ where
         close_cb: std::boxed::Box::new(close_cb),
     };
 
-    let controller = AudioViewModel::builder().launch(init).detach();
+    let mut controller = AudioViewModel::builder().launch(init).detach();
+    controller.detach_runtime();
     let root = controller.widget().clone();
     (root, 380, 420)
 }

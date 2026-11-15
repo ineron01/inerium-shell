@@ -370,7 +370,8 @@ where
         nav_cb: std::boxed::Box::new(nav_cb),
     };
 
-    let controller = BluetoothModel::builder().launch(init).detach();
+    let mut controller = BluetoothModel::builder().launch(init).detach();
+    controller.detach_runtime();
     let root = controller.widget().clone();
     (root, 380, 340)
 }
