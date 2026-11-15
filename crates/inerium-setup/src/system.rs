@@ -38,6 +38,89 @@ pub fn hyprctl_reload() -> Result<(), String> {
     Ok(())
 }
 
+pub fn query_live_inputs() -> InputOverrides {
+    let mut cfg = InputOverrides::default();
+    let batch_cmd = "getoption input:kb_layout; \
+                     getoption input:kb_options; \
+                     getoption input:sensitivity; \
+                     getoption input:accel_profile; \
+                     getoption input:scroll_factor; \
+                     getoption input:touchpad:natural_scroll; \
+                     getoption input:touchpad:tap_to_click; \
+                     getoption input:touchpad:disable_while_typing";
+    let Ok(output) = Command::new("hyprctl")
+        .args(["-j", "--batch", batch_cmd])
+        .output()
+    else {
+        return cfg;
+    };
+    if !output.status.success() {
+        return cfg;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            let Some(opt) = val.get("option").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            match opt {
+                "input:kb_layout" => {
+                    if let Some(s) = val.get("str").and_then(|v| v.as_str())
+                        && !s.trim().is_empty()
+                    {
+                        cfg.kb_layout = s.trim().to_string();
+                    }
+                }
+                "input:kb_options" => {
+                    if let Some(s) = val.get("str").and_then(|v| v.as_str())
+                        && !s.trim().is_empty()
+                    {
+                        cfg.kb_options = s.trim().to_string();
+                    }
+                }
+                "input:sensitivity" => {
+                    if let Some(f) = val.get("float").and_then(|v| v.as_f64()) {
+                        cfg.sensitivity = f.clamp(-1.0, 1.0);
+                    }
+                }
+                "input:accel_profile" => {
+                    if let Some(s) = val.get("str").and_then(|v| v.as_str())
+                        && !s.trim().is_empty()
+                    {
+                        cfg.accel_profile = s.trim().to_string();
+                    }
+                }
+                "input:scroll_factor" => {
+                    if let Some(f) = val.get("float").and_then(|v| v.as_f64()) {
+                        cfg.scroll_factor = f.clamp(0.1, 5.0);
+                    }
+                }
+                "input:touchpad:natural_scroll" => {
+                    if let Some(b) = val.get("bool").and_then(|v| v.as_bool()) {
+                        cfg.natural_scroll = b;
+                    }
+                }
+                "input:touchpad:tap_to_click" | "input:touchpad:tap-to-click" => {
+                    if let Some(b) = val.get("bool").and_then(|v| v.as_bool()) {
+                        cfg.tap_to_click = b;
+                    }
+                }
+                "input:touchpad:disable_while_typing" => {
+                    if let Some(b) = val.get("bool").and_then(|v| v.as_bool()) {
+                        cfg.disable_while_typing = b;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    cfg
+}
+
 pub fn validate_lua_syntax(content: &str) -> Result<(), String> {
     let tmp = std::env::temp_dir().join(format!("inerium_setup_check_{}.lua", std::process::id()));
     fs::write(&tmp, content).map_err(|e| format!("Failed writing temp Lua file: {e}"))?;

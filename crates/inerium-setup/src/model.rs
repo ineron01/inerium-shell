@@ -733,8 +733,8 @@ hl.config({{\n    input = {{\n        kb_layout     = \"{layout}\",\n        kb_
     )
 }
 
-pub fn parse_inputs_lua(content: &str) -> InputOverrides {
-    let mut cfg = InputOverrides::default();
+pub fn parse_inputs_lua_with_fallback(content: &str, fallback: InputOverrides) -> InputOverrides {
+    let mut cfg = fallback;
     if let Some(v) = extract_lua_field(content, "kb_layout")
         && !v.is_empty()
     {
@@ -770,6 +770,11 @@ pub fn parse_inputs_lua(content: &str) -> InputOverrides {
         cfg.scroll_factor = f;
     }
     cfg
+}
+
+#[allow(dead_code)]
+pub fn parse_inputs_lua(content: &str) -> InputOverrides {
+    parse_inputs_lua_with_fallback(content, InputOverrides::default())
 }
 
 pub fn generate_binds_lua(launcher_key: Option<&str>) -> String {
@@ -1199,6 +1204,19 @@ mod tests {
         assert!((parsed.sensitivity - inputs.sensitivity).abs() < 0.01);
         assert_eq!(parsed.accel_profile, inputs.accel_profile);
         assert!((parsed.scroll_factor - inputs.scroll_factor).abs() < 0.01);
+
+        let fallback_base = InputOverrides {
+            kb_layout: "de".to_string(),
+            kb_options: "grp:caps_toggle".to_string(),
+            sensitivity: -0.5,
+            ..InputOverrides::default()
+        };
+        // Partial Lua without sensitivity or kb_options
+        let partial_lua = "hl.config({\n    input = {\n        kb_layout = \"fr\",\n    },\n})\n";
+        let fallback_parsed = parse_inputs_lua_with_fallback(partial_lua, fallback_base);
+        assert_eq!(fallback_parsed.kb_layout, "fr");
+        assert_eq!(fallback_parsed.kb_options, "grp:caps_toggle");
+        assert_eq!(fallback_parsed.sensitivity, -0.5);
 
         let binds_lua = generate_binds_lua(Some("SUPER_L"));
         assert!(binds_lua.contains("SUPER_L"));

@@ -12,10 +12,12 @@ use crate::i18n::{Lang, tr};
 use crate::model::{
     HyprProfile, IdleConfig, InputOverrides, SetupPaths, detect_battery_charge_threshold,
     ensure_default_wallpapers, parse_active_wallpaper, parse_binds_lua, parse_hypridle_conf,
-    parse_inputs_lua, read_profile, scan_wallpapers, set_battery_charge_threshold, write_profile,
+    parse_inputs_lua_with_fallback, read_profile, scan_wallpapers, set_battery_charge_threshold,
+    write_profile,
 };
 use crate::system::{
-    apply_hypridle, apply_wallpaper, reset_interface_overrides, save_inputs_and_reload,
+    apply_hypridle, apply_wallpaper, query_live_inputs, reset_interface_overrides,
+    save_inputs_and_reload,
 };
 use crate::ui::StatusCallback;
 
@@ -275,9 +277,10 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     ovr_sub.set_xalign(0.0);
     ovr_card.append(&ovr_sub);
 
+    let live_inputs = query_live_inputs();
     let saved_inputs = std::fs::read_to_string(paths.inputs_local_path())
-        .map(|s| parse_inputs_lua(&s))
-        .unwrap_or_default();
+        .map(|s| parse_inputs_lua_with_fallback(&s, live_inputs.clone()))
+        .unwrap_or(live_inputs);
     let saved_binds_launcher = std::fs::read_to_string(paths.binds_local_path())
         .map(|s| parse_binds_lua(&s))
         .unwrap_or_default();
@@ -712,9 +715,13 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
         ovr_reset_btn.connect_clicked(move |_| match reset_interface_overrides(&paths) {
             Ok(()) => {
-                let def_in = InputOverrides::default();
+                let def_in = query_live_inputs();
                 kb_entry.set_text(&def_in.kb_layout);
-                opt_dd.set_selected(0);
+                let opt_idx = KB_TOGGLE_OPTIONS
+                    .iter()
+                    .position(|(val, _, _)| *val == def_in.kb_options)
+                    .unwrap_or(0);
+                opt_dd.set_selected(opt_idx as u32);
                 sens_scale.set_value(def_in.sensitivity);
                 sw_flat.set_active(def_in.accel_profile == "flat");
                 scroll_scale.set_value(def_in.scroll_factor);
