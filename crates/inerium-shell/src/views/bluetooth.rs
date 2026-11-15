@@ -1,30 +1,18 @@
-use std::cell::RefCell;
 use std::process::Command;
-use std::rc::Rc;
 use std::thread;
 
 use gtk4::prelude::*;
-use gtk4::{Box, Button, Label, Orientation, ScrolledWindow, Switch};
+use gtk4::{Button, Label, Orientation};
+use inerium_i18n::tr;
+use relm4::prelude::*;
 
 use crate::hw;
-use inerium_i18n::tr;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BtDevice {
     pub mac: String,
     pub name: String,
     pub connected: bool,
-}
-
-pub enum BtEvent {
-    ScanDone(Vec<BtDevice>),
-    ConnectDone(Vec<BtDevice>),
-}
-
-type BtCallback = Rc<dyn Fn(BtEvent)>;
-
-thread_local! {
-    static BT_CALLBACK: RefCell<Option<BtCallback>> = RefCell::new(None);
 }
 
 pub fn query_devices() -> Vec<BtDevice> {
@@ -67,7 +55,11 @@ pub fn query_devices() -> Vec<BtDevice> {
                 seen.insert(mac.clone());
                 let name = parts[2..].join(" ");
                 let connected = connected_macs.contains(&mac);
-                devices.push(BtDevice { mac, name, connected });
+                devices.push(BtDevice {
+                    mac,
+                    name,
+                    connected,
+                });
             }
         }
     }
@@ -82,10 +74,212 @@ pub fn query_devices() -> Vec<BtDevice> {
     devices
 }
 
-fn populate_bt_list(list_box: &Box, devices: Vec<BtDevice>) {
+pub struct BluetoothModel {
+    enabled: bool,
+    scanning: bool,
+    devices: Vec<BtDevice>,
+    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+}
+
+#[derive(Debug)]
+pub enum BtMsg {
+    TogglePower(bool),
+    StartScan,
+    ScanFinished(Vec<BtDevice>),
+    ConnectDevice(String, bool),
+    ConnectFinished(Vec<BtDevice>),
+    Back,
+}
+
+pub struct BluetoothInit {
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+}
+
+#[relm4::component(pub)]
+impl SimpleComponent for BluetoothModel {
+    type Input = BtMsg;
+    type Output = ();
+    type Init = BluetoothInit;
+
+    view! {
+        #[root]
+        gtk4::Box {
+            add_css_class: "popup-container",
+            set_orientation: Orientation::Vertical,
+            set_spacing: 10,
+            set_size_request: (380, -1),
+
+            // Header
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                gtk4::Button {
+                    add_css_class: "back-btn",
+                    set_label: &tr("‹ Back", "‹ Назад"),
+                    connect_clicked => BtMsg::Back,
+                },
+
+                gtk4::Label {
+                    add_css_class: "cc-host",
+                    set_label: "Bluetooth",
+                    set_hexpand: true,
+                    set_xalign: 0.0,
+                },
+
+                #[name = "pwr_switch"]
+                gtk4::Switch {
+                    set_active: model.enabled,
+                    connect_state_set[sender] => move |_, state| {
+                        sender.input(BtMsg::TogglePower(state));
+                        glib::Propagation::Proceed
+                    },
+                },
+            },
+
+            // Subheader with Scan
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                gtk4::Label {
+                    add_css_class: "cc-label",
+                    set_label: &tr("DEVICES", "УСТРОЙСТВА"),
+                    set_xalign: 0.0,
+                    set_hexpand: true,
+                },
+
+                #[name = "scan_btn"]
+                gtk4::Button {
+                    add_css_class: "cc-chip",
+                    #[watch]
+                    set_sensitive: !model.scanning,
+                    #[watch]
+                    set_label: if model.scanning {
+                        tr("󰑐 Scanning...", "󰑐 Поиск...")
+                    } else {
+                        tr("󰑐 Scan", "󰑐 Поиск")
+                    },
+                    connect_clicked => BtMsg::StartScan,
+                },
+            },
+
+            // Devices List
+            gtk4::ScrolledWindow {
+                add_css_class: "list-scroll",
+                set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::Automatic),
+                set_propagate_natural_height: true,
+                set_min_content_height: 160,
+                set_max_content_height: 300,
+                set_vexpand: true,
+
+                #[name = "list_box"]
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 4,
+                },
+
+            },
+        }
+    }
+
+    fn init(
+        init: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let enabled = hw::is_bluetooth_enabled();
+        let devices = if enabled { query_devices() } else { Vec::new() };
+
+        let model = BluetoothModel {
+            enabled,
+            scanning: false,
+            devices: devices.clone(),
+            nav_cb: init.nav_cb,
+        };
+
+        let widgets = view_output!();
+
+        populate_list(&widgets.list_box, &devices, enabled, &sender);
+
+        ComponentParts { model, widgets }
+    }
+
+    fn post_view() {
+        populate_list(list_box, &self.devices, self.enabled, &sender);
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        match msg {
+            BtMsg::TogglePower(state) => {
+                self.enabled = state;
+                hw::toggle_bluetooth(state);
+
+                let s = sender.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    let devs = if state { query_devices() } else { Vec::new() };
+                    s.input(BtMsg::ScanFinished(devs));
+                });
+            }
+            BtMsg::StartScan => {
+                self.scanning = true;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("timeout")
+                        .args(["4", "bluetoothctl", "scan", "on"])
+                        .output();
+                    let fresh = query_devices();
+                    s.input(BtMsg::ScanFinished(fresh));
+                });
+            }
+            BtMsg::ScanFinished(fresh) => {
+                self.scanning = false;
+                self.devices = fresh;
+            }
+            BtMsg::ConnectDevice(mac, is_conn) => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    if is_conn {
+                        let _ = Command::new("bluetoothctl")
+                            .args(["disconnect", &mac])
+                            .output();
+                    } else {
+                        let _ = Command::new("bluetoothctl")
+                            .args(["connect", &mac])
+                            .output();
+                    }
+                    let fresh = query_devices();
+                    s.input(BtMsg::ConnectFinished(fresh));
+                });
+            }
+            BtMsg::ConnectFinished(fresh) => {
+                self.devices = fresh;
+            }
+            BtMsg::Back => {
+                (self.nav_cb)("control");
+            }
+        }
+    }
+
+
+}
+
+fn populate_list(
+    list_box: &gtk4::Box,
+    devices: &[BtDevice],
+    enabled: bool,
+    sender: &ComponentSender<BluetoothModel>,
+) {
+    while let Some(child) = list_box.first_child() {
+        list_box.remove(&child);
+    }
+
     if devices.is_empty() {
-        let empty_lbl = Label::new(Some(if hw::is_bluetooth_enabled() {
-            tr("No devices found. Click «Scan»", "Устройства не найдены. Нажмите «Поиск»")
+        let empty_lbl = Label::new(Some(if enabled {
+            tr(
+                "No devices found. Click «Scan»",
+                "Устройства не найдены. Нажмите «Поиск»",
+            )
         } else {
             tr("Bluetooth is disabled", "Bluetooth выключен")
         }));
@@ -102,8 +296,10 @@ fn populate_bt_list(list_box: &Box, devices: Vec<BtDevice>) {
             row.add_css_class("active");
         }
 
-        let inner = Box::new(Orientation::Horizontal, 8);
-        let ico_str = if dev.name.to_lowercase().contains("buds") || dev.name.to_lowercase().contains("head") {
+        let inner = gtk4::Box::new(Orientation::Horizontal, 8);
+        let ico_str = if dev.name.to_lowercase().contains("buds")
+            || dev.name.to_lowercase().contains("head")
+        {
             "󰋋"
         } else if dev.name.to_lowercase().contains("mouse") {
             "󰍽"
@@ -116,7 +312,7 @@ fn populate_bt_list(list_box: &Box, devices: Vec<BtDevice>) {
         ico.add_css_class("card-icon");
         inner.append(&ico);
 
-        let txt = Box::new(Orientation::Vertical, 1);
+        let txt = gtk4::Box::new(Orientation::Vertical, 1);
         txt.set_hexpand(true);
         let name_lbl = Label::new(Some(&dev.name));
         name_lbl.add_css_class("card-title");
@@ -130,40 +326,32 @@ fn populate_bt_list(list_box: &Box, devices: Vec<BtDevice>) {
         txt.append(&mac_lbl);
         inner.append(&txt);
 
-        let badge = Label::new(Some(if dev.connected { tr("󰄬 Connected", "󰄬 Подключено") } else { "" }));
+        let badge = Label::new(Some(if dev.connected {
+            tr("󰄬 Connected", "󰄬 Подключено")
+        } else {
+            ""
+        }));
         badge.add_css_class("card-badge");
         badge.set_visible(dev.connected);
         inner.append(&badge);
 
         row.set_child(Some(&inner));
 
-        let mac_target = dev.mac.clone();
+        let mac = dev.mac.clone();
         let is_conn = dev.connected;
+        let s = sender.clone();
         let r_ui = row.clone();
         let b_ui = badge.clone();
 
         row.connect_clicked(move |_| {
             r_ui.set_sensitive(false);
-            b_ui.set_label(if is_conn { "󰑐 Отключение..." } else { "󰑐 Подключение..." });
-            b_ui.set_visible(true);
-
-            let target_mac = mac_target.clone();
-
-            thread::spawn(move || {
-                if is_conn {
-                    let _ = Command::new("bluetoothctl").args(["disconnect", &target_mac]).output();
-                } else {
-                    let _ = Command::new("bluetoothctl").args(["connect", &target_mac]).output();
-                }
-                let fresh = query_devices();
-                glib::MainContext::default().invoke(move || {
-                    BT_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(BtEvent::ConnectDone(fresh));
-                        }
-                    });
-                });
+            b_ui.set_label(if is_conn {
+                tr("󰑐 Disconnecting...", "󰑐 Отключение...")
+            } else {
+                tr("󰑐 Connecting...", "󰑐 Подключение...")
             });
+            b_ui.set_visible(true);
+            s.input(BtMsg::ConnectDevice(mac.clone(), is_conn));
         });
 
         list_box.append(&row);
@@ -173,126 +361,16 @@ fn populate_bt_list(list_box: &Box, devices: Vec<BtDevice>) {
 pub fn build_bluetooth_view<FNav, FClose>(
     nav_cb: FNav,
     _close_cb: FClose,
-) -> (Box, i32, i32)
+) -> (gtk4::Box, i32, i32)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
 {
-    let root = Box::new(Orientation::Vertical, 10);
-    root.add_css_class("popup-container");
-    root.set_size_request(380, -1);
+    let init = BluetoothInit {
+        nav_cb: std::boxed::Box::new(nav_cb),
+    };
 
-    // Header
-    let head = Box::new(Orientation::Horizontal, 8);
-    let back_btn = Button::with_label(tr("‹ Back", "‹ Назад"));
-    back_btn.add_css_class("back-btn");
-    let n_cb = nav_cb.clone();
-    back_btn.connect_clicked(move |_| n_cb("control"));
-    head.append(&back_btn);
-
-    let title = Label::new(Some("Bluetooth"));
-    title.add_css_class("cc-host");
-    title.set_hexpand(true);
-    title.set_xalign(0.0);
-    head.append(&title);
-
-    let pwr_switch = Switch::new();
-    pwr_switch.set_active(hw::is_bluetooth_enabled());
-    head.append(&pwr_switch);
-    root.append(&head);
-
-    // Subheader with Scan
-    let subhead = Box::new(Orientation::Horizontal, 8);
-    let lbl = Label::new(Some(tr("DEVICES", "УСТРОЙСТВА")));
-    lbl.add_css_class("cc-label");
-    lbl.set_xalign(0.0);
-    lbl.set_hexpand(true);
-    subhead.append(&lbl);
-
-    let scan_btn = Button::with_label(tr("󰑐 Scan", "󰑐 Поиск"));
-    scan_btn.add_css_class("cc-chip");
-    subhead.append(&scan_btn);
-    root.append(&subhead);
-
-    // Device List
-    let scroll = ScrolledWindow::new();
-    scroll.add_css_class("list-scroll");
-    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
-    scroll.set_propagate_natural_height(true);
-    scroll.set_min_content_height(160);
-    scroll.set_max_content_height(300);
-    scroll.set_vexpand(true);
-
-    let list_box = Box::new(Orientation::Vertical, 4);
-
-    let initial_devices = query_devices();
-    populate_bt_list(&list_box, initial_devices);
-
-    // Register callback on main thread
-    let s_btn_ui = scan_btn.clone();
-    let l_b_ui = list_box.clone();
-
-    let cb = Rc::new(move |evt: BtEvent| {
-        match evt {
-            BtEvent::ScanDone(devices) => {
-                s_btn_ui.set_label("󰑐 Поиск");
-                s_btn_ui.set_sensitive(true);
-
-                while let Some(child) = l_b_ui.first_child() {
-                    l_b_ui.remove(&child);
-                }
-                populate_bt_list(&l_b_ui, devices);
-            }
-            BtEvent::ConnectDone(devices) => {
-                while let Some(child) = l_b_ui.first_child() {
-                    l_b_ui.remove(&child);
-                }
-                populate_bt_list(&l_b_ui, devices);
-            }
-        }
-    });
-
-    BT_CALLBACK.with(|c| {
-        *c.borrow_mut() = Some(cb);
-    });
-
-    // Scan button logic with clear visual progress
-    let s_btn_c = scan_btn.clone();
-    scan_btn.connect_clicked(move |_| {
-        s_btn_c.set_sensitive(false);
-        s_btn_c.set_label("󰑐 Поиск устройств...");
-
-        thread::spawn(move || {
-            let _ = Command::new("timeout").args(["4", "bluetoothctl", "scan", "on"]).output();
-            let fresh = query_devices();
-            glib::MainContext::default().invoke(move || {
-                BT_CALLBACK.with(|cb| {
-                    if let Some(ref f) = *cb.borrow() {
-                        f(BtEvent::ScanDone(fresh));
-                    }
-                });
-            });
-        });
-    });
-
-    // Power switch toggling
-    pwr_switch.connect_state_set(move |_, state| {
-        hw::toggle_bluetooth(state);
-
-        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-            let devs = if state { query_devices() } else { Vec::new() };
-            BT_CALLBACK.with(|cb| {
-                if let Some(ref f) = *cb.borrow() {
-                    f(BtEvent::ScanDone(devs));
-                }
-            });
-        });
-
-        glib::Propagation::Proceed
-    });
-
-    scroll.set_child(Some(&list_box));
-    root.append(&scroll);
-
+    let controller = BluetoothModel::builder().launch(init).detach();
+    let root = controller.widget().clone();
     (root, 380, 340)
 }

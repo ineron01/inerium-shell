@@ -4,12 +4,13 @@ use std::sync::OnceLock;
 
 pub mod audio;
 pub mod backlight;
-pub mod battery;
-pub mod cooling;
 pub mod network;
-pub mod power;
-pub mod sysfs;
 pub mod system;
+
+pub use inerium_hw::battery;
+pub use inerium_hw::cooling;
+pub use inerium_hw::power;
+pub use inerium_hw::sysfs;
 
 // Re-export common structs
 pub use audio::{AudioSink, AudioSource};

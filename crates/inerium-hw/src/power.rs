@@ -6,6 +6,7 @@ use std::thread;
 
 static HAS_POWER_PROFILES: OnceLock<bool> = OnceLock::new();
 
+#[derive(Default, Debug, Clone)]
 pub struct PowerBackend;
 
 impl PowerBackend {

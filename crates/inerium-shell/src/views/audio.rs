@@ -1,259 +1,376 @@
-use std::rc::Rc;
 use gtk4::prelude::*;
-use gtk4::{Box, Button, Label, Orientation, Scale, ScrolledWindow};
+use gtk4::{Button, Label, Orientation};
 use inerium_i18n::tr;
+use relm4::prelude::*;
 
 use crate::hw;
+
+pub struct AudioViewModel {
+    out_volume: u32,
+    out_muted: bool,
+    mic_volume: u32,
+    mic_muted: bool,
+    sink_rows: Vec<(u32, Button, Label)>,
+    source_rows: Vec<(u32, Button, Label)>,
+    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[derive(Debug)]
+pub enum AudioMsg {
+    SetOutputVolume(u32),
+    ToggleOutputMute,
+    SetMicVolume(u32),
+    ToggleMicMute,
+    SelectSink(u32),
+    SelectSource(u32),
+    OpenMixer,
+    Back,
+}
+
+pub struct AudioInit {
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[relm4::component(pub)]
+impl SimpleComponent for AudioViewModel {
+    type Input = AudioMsg;
+    type Output = ();
+    type Init = AudioInit;
+
+    view! {
+        #[root]
+        gtk4::Box {
+            add_css_class: "popup-container",
+            set_orientation: Orientation::Vertical,
+            set_spacing: 10,
+            set_size_request: (380, -1),
+
+            // Header
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                gtk4::Button {
+                    add_css_class: "back-btn",
+                    set_label: &tr("‹ Back", "‹ Назад"),
+                    connect_clicked => AudioMsg::Back,
+                },
+
+                gtk4::Label {
+                    add_css_class: "cc-host",
+                    set_label: &tr("Audio Devices", "Аудиоустройства"),
+                    set_hexpand: true,
+                    set_xalign: 0.0,
+                },
+
+                gtk4::Button {
+                    add_css_class: "cc-chip",
+                    set_label: &tr("󰕾 Mixer", "󰕾 Микшер"),
+                    connect_clicked => AudioMsg::OpenMixer,
+                },
+            },
+
+            // Volume Sliders Card
+            gtk4::Box {
+                add_css_class: "cc-card",
+                set_orientation: Orientation::Vertical,
+                set_spacing: 8,
+
+                // Output Row
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    #[name = "out_mute_btn"]
+                    gtk4::Button {
+                        add_css_class: "cc-slider-ico",
+                        #[watch]
+                        set_css_classes: if model.out_muted { &["cc-slider-ico", "muted"] } else { &["cc-slider-ico"] },
+                        #[watch]
+                        set_label: if model.out_muted { "󰝟" } else { "󰕾" },
+                        set_tooltip_text: Some(tr("Mute Output", "Заглушить вывод")),
+                        connect_clicked => AudioMsg::ToggleOutputMute,
+                    },
+
+                    #[name = "out_scale"]
+                    gtk4::Scale {
+                        add_css_class: "cc-scale",
+                        set_orientation: Orientation::Horizontal,
+                        set_range: (0.0, 150.0),
+                        set_hexpand: true,
+                        set_value: model.out_volume as f64,
+                        connect_value_changed[sender] => move |sc| {
+                            sender.input(AudioMsg::SetOutputVolume(sc.value() as u32));
+                        },
+                    },
+
+                    #[name = "out_pct_lbl"]
+                    gtk4::Label {
+                        add_css_class: "cc-pct",
+                        #[watch]
+                        set_label: &format!("{}%", model.out_volume),
+                    },
+                },
+
+                // Input Row
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    #[name = "mic_mute_btn"]
+                    gtk4::Button {
+                        add_css_class: "cc-slider-ico",
+                        #[watch]
+                        set_css_classes: if model.mic_muted { &["cc-slider-ico", "muted"] } else { &["cc-slider-ico"] },
+                        #[watch]
+                        set_label: if model.mic_muted { "󰍭" } else { "󰍬" },
+                        set_tooltip_text: Some(tr("Mute Microphone", "Заглушить микрофон")),
+                        connect_clicked => AudioMsg::ToggleMicMute,
+                    },
+
+                    #[name = "mic_scale"]
+                    gtk4::Scale {
+                        add_css_class: "cc-scale",
+                        set_orientation: Orientation::Horizontal,
+                        set_range: (0.0, 150.0),
+                        set_hexpand: true,
+                        set_value: model.mic_volume as f64,
+                        connect_value_changed[sender] => move |sc| {
+                            sender.input(AudioMsg::SetMicVolume(sc.value() as u32));
+                        },
+                    },
+
+                    #[name = "mic_pct_lbl"]
+                    gtk4::Label {
+                        add_css_class: "cc-pct",
+                        #[watch]
+                        set_label: &format!("{}%", model.mic_volume),
+                    },
+                },
+            },
+
+            // Devices List
+            gtk4::ScrolledWindow {
+                add_css_class: "list-scroll",
+                set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::Automatic),
+                set_propagate_natural_height: true,
+                set_min_content_height: 140,
+                set_max_content_height: 260,
+                set_vexpand: true,
+
+                #[name = "list_box"]
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 4,
+                },
+            },
+        }
+    }
+
+    fn init(
+        init: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let out_volume = hw::get_volume();
+        let out_muted = hw::is_volume_muted();
+        let mic_volume = hw::get_mic_volume();
+        let mic_muted = hw::is_mic_muted();
+
+        let mut sink_rows = Vec::new();
+        let mut source_rows = Vec::new();
+
+        let model = AudioViewModel {
+            out_volume,
+            out_muted,
+            mic_volume,
+            mic_muted,
+            sink_rows: Vec::new(),
+            source_rows: Vec::new(),
+            nav_cb: init.nav_cb,
+            close_cb: init.close_cb,
+        };
+
+        let widgets = view_output!();
+
+        // Section: Output Devices
+        let out_title = Label::new(Some(tr("OUTPUT DEVICES", "УСТРОЙСТВА ВЫВОДА")));
+        out_title.add_css_class("cc-label");
+        out_title.set_xalign(0.0);
+        widgets.list_box.append(&out_title);
+
+        let sinks = hw::list_audio_sinks();
+        for sink in sinks {
+            let row = Button::new();
+            row.add_css_class("card-item");
+            if sink.is_default {
+                row.add_css_class("active");
+            }
+
+            let inner = gtk4::Box::new(Orientation::Horizontal, 8);
+            let is_headphone = sink.name.to_lowercase().contains("headphone")
+                || sink.name.to_lowercase().contains("buds");
+            let ico = Label::new(Some(if is_headphone { "󰋋" } else { "󰕾" }));
+            ico.add_css_class("card-icon");
+            inner.append(&ico);
+
+            let txt = gtk4::Box::new(Orientation::Vertical, 1);
+            txt.set_hexpand(true);
+            let name_lbl = Label::new(Some(&sink.name));
+            name_lbl.add_css_class("card-title");
+            name_lbl.set_xalign(0.0);
+            name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+            txt.append(&name_lbl);
+            inner.append(&txt);
+
+            let badge = Label::new(Some(if sink.is_default {
+                tr("󰄬 Active", "󰄬 Активен")
+            } else {
+                ""
+            }));
+            badge.add_css_class("card-badge");
+            inner.append(&badge);
+
+            row.set_child(Some(&inner));
+
+            let s_id = sink.id;
+            let s_sender = sender.clone();
+            row.connect_clicked(move |_| {
+                s_sender.input(AudioMsg::SelectSink(s_id));
+            });
+
+            widgets.list_box.append(&row);
+            sink_rows.push((s_id, row, badge));
+        }
+
+        // Section: Input Devices
+        let in_title = Label::new(Some(tr("INPUT DEVICES", "УСТРОЙСТВА ВВОДА")));
+        in_title.add_css_class("cc-label");
+        in_title.set_xalign(0.0);
+        in_title.set_margin_top(8);
+        widgets.list_box.append(&in_title);
+
+        let sources = hw::list_audio_sources();
+        for source in sources {
+            let row = Button::new();
+            row.add_css_class("card-item");
+            if source.is_default {
+                row.add_css_class("active");
+            }
+
+            let inner = gtk4::Box::new(Orientation::Horizontal, 8);
+            let ico = Label::new(Some("󰍬"));
+            ico.add_css_class("card-icon");
+            inner.append(&ico);
+
+            let txt = gtk4::Box::new(Orientation::Vertical, 1);
+            txt.set_hexpand(true);
+            let name_lbl = Label::new(Some(&source.name));
+            name_lbl.add_css_class("card-title");
+            name_lbl.set_xalign(0.0);
+            name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+            txt.append(&name_lbl);
+            inner.append(&txt);
+
+            let badge = Label::new(Some(if source.is_default {
+                tr("󰄬 Active", "󰄬 Активен")
+            } else {
+                ""
+            }));
+            badge.add_css_class("card-badge");
+            inner.append(&badge);
+
+            row.set_child(Some(&inner));
+
+            let src_id = source.id;
+            let src_sender = sender.clone();
+            row.connect_clicked(move |_| {
+                src_sender.input(AudioMsg::SelectSource(src_id));
+            });
+
+            widgets.list_box.append(&row);
+            source_rows.push((src_id, row, badge));
+        }
+
+        let mut model = model;
+        model.sink_rows = sink_rows;
+        model.source_rows = source_rows;
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+        match msg {
+            AudioMsg::SetOutputVolume(val) => {
+                self.out_volume = val;
+                hw::set_volume(val);
+            }
+            AudioMsg::ToggleOutputMute => {
+                hw::toggle_volume_mute();
+                self.out_muted = hw::is_volume_muted();
+            }
+            AudioMsg::SetMicVolume(val) => {
+                self.mic_volume = val;
+                hw::set_mic_volume(val);
+            }
+            AudioMsg::ToggleMicMute => {
+                hw::toggle_mic_mute();
+                self.mic_muted = hw::is_mic_muted();
+            }
+            AudioMsg::SelectSink(id) => {
+                hw::set_default_sink(id);
+                for (s_id, row, badge) in &self.sink_rows {
+                    if *s_id == id {
+                        row.add_css_class("active");
+                        badge.set_label(tr("󰄬 Active", "󰄬 Активен"));
+                    } else {
+                        row.remove_css_class("active");
+                        badge.set_label("");
+                    }
+                }
+            }
+            AudioMsg::SelectSource(id) => {
+                hw::set_default_source(id);
+                for (s_id, row, badge) in &self.source_rows {
+                    if *s_id == id {
+                        row.add_css_class("active");
+                        badge.set_label(tr("󰄬 Active", "󰄬 Активен"));
+                    } else {
+                        row.remove_css_class("active");
+                        badge.set_label("");
+                    }
+                }
+            }
+            AudioMsg::OpenMixer => {
+                (self.close_cb)();
+                let _ = std::process::Command::new("uwsm")
+                    .args(["app", "--", "pavucontrol"])
+                    .spawn()
+                    .or_else(|_| std::process::Command::new("pavucontrol").spawn());
+            }
+            AudioMsg::Back => {
+                (self.nav_cb)("control");
+            }
+        }
+    }
+}
 
 pub fn build_audio_view<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (Box, i32, i32)
+) -> (gtk4::Box, i32, i32)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
 {
-    let root = Box::new(Orientation::Vertical, 10);
-    root.add_css_class("popup-container");
-    root.set_size_request(380, -1);
+    let init = AudioInit {
+        nav_cb: std::boxed::Box::new(nav_cb),
+        close_cb: std::boxed::Box::new(close_cb),
+    };
 
-    // Header
-    let head = Box::new(Orientation::Horizontal, 8);
-    let back_btn = Button::with_label(tr("‹ Back", "‹ Назад"));
-    back_btn.add_css_class("back-btn");
-    let n_cb = nav_cb.clone();
-    back_btn.connect_clicked(move |_| n_cb("control"));
-    head.append(&back_btn);
-
-    let title = Label::new(Some(tr("Audio Devices", "Аудиоустройства")));
-    title.add_css_class("cc-host");
-    title.set_hexpand(true);
-    title.set_xalign(0.0);
-    head.append(&title);
-
-    let pavu_btn = Button::with_label(tr("󰕾 Mixer", "󰕾 Микшер"));
-    pavu_btn.add_css_class("cc-chip");
-    let c_cb = close_cb.clone();
-    pavu_btn.connect_clicked(move |_| {
-        c_cb();
-        let _ = std::process::Command::new("uwsm")
-            .args(["app", "--", "pavucontrol"])
-            .spawn()
-            .or_else(|_| std::process::Command::new("pavucontrol").spawn());
-    });
-    head.append(&pavu_btn);
-    root.append(&head);
-
-    // Volume Sliders Card (Output & Input)
-    let sliders_card = Box::new(Orientation::Vertical, 8);
-    sliders_card.add_css_class("cc-card");
-
-    // Row 1: Output Volume
-    let out_row = Box::new(Orientation::Horizontal, 8);
-    let out_muted = hw::is_volume_muted();
-    let out_ico = Button::with_label(if out_muted { "󰝟" } else { "󰕾" });
-    out_ico.add_css_class("cc-slider-ico");
-    if out_muted {
-        out_ico.add_css_class("muted");
-    }
-    out_ico.set_tooltip_text(Some(tr("Mute Output", "Заглушить вывод")));
-    let o_ico_c = out_ico.clone();
-    out_ico.connect_clicked(move |_| {
-        hw::toggle_volume_mute();
-        let muted = hw::is_volume_muted();
-        o_ico_c.set_label(if muted { "󰝟" } else { "󰕾" });
-        if muted {
-            o_ico_c.add_css_class("muted");
-        } else {
-            o_ico_c.remove_css_class("muted");
-        }
-    });
-    out_row.append(&out_ico);
-
-    let cur_vol = hw::get_volume();
-    let vol_sc = Scale::with_range(Orientation::Horizontal, 0.0, 150.0, 1.0);
-    vol_sc.add_css_class("cc-scale");
-    vol_sc.set_hexpand(true);
-    vol_sc.set_value(cur_vol as f64);
-    out_row.append(&vol_sc);
-
-    let vol_pct = Label::new(Some(&format!("{}%", cur_vol)));
-    vol_pct.add_css_class("cc-pct");
-    out_row.append(&vol_pct);
-
-    let v_pct_c = vol_pct.clone();
-    vol_sc.connect_value_changed(move |sc| {
-        let val = sc.value() as u32;
-        v_pct_c.set_label(&format!("{}%", val));
-        hw::set_volume(val);
-    });
-    sliders_card.append(&out_row);
-
-    // Row 2: Input / Mic Volume
-    let in_row = Box::new(Orientation::Horizontal, 8);
-    let mic_muted = hw::is_mic_muted();
-    let mic_ico = Button::with_label(if mic_muted { "󰍭" } else { "󰍬" });
-    mic_ico.add_css_class("cc-slider-ico");
-    if mic_muted {
-        mic_ico.add_css_class("muted");
-    }
-    mic_ico.set_tooltip_text(Some(tr("Mute Microphone", "Заглушить микрофон")));
-    let m_ico_c = mic_ico.clone();
-    mic_ico.connect_clicked(move |_| {
-        hw::toggle_mic_mute();
-        let muted = hw::is_mic_muted();
-        m_ico_c.set_label(if muted { "󰍭" } else { "󰍬" });
-        if muted {
-            m_ico_c.add_css_class("muted");
-        } else {
-            m_ico_c.remove_css_class("muted");
-        }
-    });
-    in_row.append(&mic_ico);
-
-    let cur_mic_vol = hw::get_mic_volume();
-    let mic_sc = Scale::with_range(Orientation::Horizontal, 0.0, 150.0, 1.0);
-    mic_sc.add_css_class("cc-scale");
-    mic_sc.set_hexpand(true);
-    mic_sc.set_value(cur_mic_vol as f64);
-    in_row.append(&mic_sc);
-
-    let mic_pct = Label::new(Some(&format!("{}%", cur_mic_vol)));
-    mic_pct.add_css_class("cc-pct");
-    in_row.append(&mic_pct);
-
-    let m_pct_c = mic_pct.clone();
-    mic_sc.connect_value_changed(move |sc| {
-        let val = sc.value() as u32;
-        m_pct_c.set_label(&format!("{}%", val));
-        hw::set_mic_volume(val);
-    });
-    sliders_card.append(&in_row);
-
-    root.append(&sliders_card);
-
-    // Devices List
-    let scroll = ScrolledWindow::new();
-    scroll.add_css_class("list-scroll");
-    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
-    scroll.set_propagate_natural_height(true);
-    scroll.set_min_content_height(140);
-    scroll.set_max_content_height(260);
-    scroll.set_vexpand(true);
-
-    let list_box = Box::new(Orientation::Vertical, 4);
-
-    // Section: Output Devices
-    let out_title = Label::new(Some(tr("OUTPUT DEVICES", "УСТРОЙСТВА ВЫВОДА")));
-    out_title.add_css_class("cc-label");
-    out_title.set_xalign(0.0);
-    list_box.append(&out_title);
-
-    let sinks = hw::list_audio_sinks();
-    let sink_buttons = Rc::new(std::cell::RefCell::new(Vec::<(Button, Label)>::new()));
-
-    for sink in sinks {
-        let row = Button::new();
-        row.add_css_class("card-item");
-        if sink.is_default {
-            row.add_css_class("active");
-        }
-
-        let inner = Box::new(Orientation::Horizontal, 8);
-        let ico = Label::new(Some(if sink.name.to_lowercase().contains("headphone") || sink.name.to_lowercase().contains("buds") { "󰋋" } else { "󰕾" }));
-        ico.add_css_class("card-icon");
-        inner.append(&ico);
-
-        let txt = Box::new(Orientation::Vertical, 1);
-        txt.set_hexpand(true);
-        let name_lbl = Label::new(Some(&sink.name));
-        name_lbl.add_css_class("card-title");
-        name_lbl.set_xalign(0.0);
-        name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        txt.append(&name_lbl);
-        inner.append(&txt);
-
-        let badge = Label::new(Some(if sink.is_default { tr("󰄬 Active", "󰄬 Активен") } else { "" }));
-        badge.add_css_class("card-badge");
-        inner.append(&badge);
-
-        row.set_child(Some(&inner));
-
-        let s_id = sink.id;
-        let s_btns = sink_buttons.clone();
-        let r_clone = row.clone();
-        let b_clone = badge.clone();
-        row.connect_clicked(move |_| {
-            hw::set_default_sink(s_id);
-            for (btn, bg) in s_btns.borrow().iter() {
-                btn.remove_css_class("active");
-                bg.set_label("");
-            }
-            r_clone.add_css_class("active");
-            b_clone.set_label("󰄬 Активен");
-        });
-
-        sink_buttons.borrow_mut().push((row.clone(), badge));
-        list_box.append(&row);
-    }
-
-    // Section: Input Devices
-    let in_title = Label::new(Some(tr("INPUT DEVICES", "УСТРОЙСТВА ВВОДА")));
-    in_title.add_css_class("cc-label");
-    in_title.set_xalign(0.0);
-    in_title.set_margin_top(8);
-    list_box.append(&in_title);
-
-    let sources = hw::list_audio_sources();
-    let source_buttons = Rc::new(std::cell::RefCell::new(Vec::<(Button, Label)>::new()));
-
-    for source in sources {
-        let row = Button::new();
-        row.add_css_class("card-item");
-        if source.is_default {
-            row.add_css_class("active");
-        }
-
-        let inner = Box::new(Orientation::Horizontal, 8);
-        let ico = Label::new(Some("󰍬"));
-        ico.add_css_class("card-icon");
-        inner.append(&ico);
-
-        let txt = Box::new(Orientation::Vertical, 1);
-        txt.set_hexpand(true);
-        let name_lbl = Label::new(Some(&source.name));
-        name_lbl.add_css_class("card-title");
-        name_lbl.set_xalign(0.0);
-        name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        txt.append(&name_lbl);
-        inner.append(&txt);
-
-        let badge = Label::new(Some(if source.is_default { tr("󰄬 Active", "󰄬 Активен") } else { "" }));
-        badge.add_css_class("card-badge");
-        inner.append(&badge);
-
-        row.set_child(Some(&inner));
-
-        let src_id = source.id;
-        let src_btns = source_buttons.clone();
-        let r_clone = row.clone();
-        let b_clone = badge.clone();
-        row.connect_clicked(move |_| {
-            hw::set_default_source(src_id);
-            for (btn, bg) in src_btns.borrow().iter() {
-                btn.remove_css_class("active");
-                bg.set_label("");
-            }
-            r_clone.add_css_class("active");
-            b_clone.set_label("󰄬 Активен");
-        });
-
-        source_buttons.borrow_mut().push((row.clone(), badge));
-        list_box.append(&row);
-    }
-
-    scroll.set_child(Some(&list_box));
-    root.append(&scroll);
-
+    let controller = AudioViewModel::builder().launch(init).detach();
+    let root = controller.widget().clone();
     (root, 380, 420)
 }

@@ -6,10 +6,11 @@
 //! - Watch mode: Streams battery updates, instant reaction to SIGUSR1 on toggle
 
 use std::env;
-use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
+use inerium_hw::battery::{discover_power_supplies, BatteryBackend};
+use inerium_hw::sysfs::{read_sysfs_i64, read_sysfs_i64_opt, read_sysfs_str};
 use inerium_i18n::{Lang, tr, tr_fmt};
 use inerium_tools::format::escape_json;
 use inerium_tools::ipc::{PidRegistry, SelfPipe};
@@ -33,67 +34,16 @@ fn toggle_alt_mode() {
     reg.notify_all(SIGUSR1);
 }
 
-fn read_sysfs_str(path: &Path) -> String {
-    fs::read_to_string(path).unwrap_or_default().trim().to_string()
-}
-
-fn read_sysfs_i64(path: &Path) -> i64 {
-    read_sysfs_str(path).parse().unwrap_or(0)
-}
-
 fn read_battery_threshold(bat_dir: &Path) -> i64 {
-    for name in &["charge_control_end_threshold", "charge_stop_threshold"] {
-        let path = bat_dir.join(name);
-        if path.exists() {
-            let val = read_sysfs_i64(&path);
-            if (1..=100).contains(&val) {
-                return val;
-            }
-        }
-    }
-    100
-}
-
-fn discover_power_supplies() -> (Vec<PathBuf>, bool) {
-    discover_power_supplies_in(Path::new("/sys/class/power_supply"))
-}
-
-fn discover_power_supplies_in(base: &Path) -> (Vec<PathBuf>, bool) {
-    let mut bat_paths: Vec<PathBuf> = Vec::new();
-    let mut fallback_bats: Vec<PathBuf> = Vec::new();
-    let mut ac_online = false;
-
-    if let Ok(entries) = fs::read_dir(base) {
-        let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
-        dirs.sort();
-        for path in dirs {
-            let ptype = read_sysfs_str(&path.join("type"));
-            if ptype == "Mains" || ptype == "USB" || ptype == "USB_C" || ptype == "USB_PD" {
-                if read_sysfs_i64(&path.join("online")) == 1 {
-                    ac_online = true;
-                }
-            } else if ptype == "Battery" {
-                let scope = read_sysfs_str(&path.join("scope"));
-                if scope == "Device" {
-                    continue;
-                }
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with("BAT") {
-                    bat_paths.push(path);
-                } else {
-                    fallback_bats.push(path);
-                }
-            }
-        }
-    }
-
-    let final_bats = if !bat_paths.is_empty() {
-        bat_paths
+    let backend = BatteryBackend::probe();
+    if backend.has_threshold() {
+        backend.get_threshold() as i64
     } else {
-        fallback_bats
-    };
-
-    (final_bats, ac_online)
+        read_sysfs_i64_opt(&bat_dir.join("charge_control_end_threshold"))
+            .or_else(|| read_sysfs_i64_opt(&bat_dir.join("charge_stop_threshold")))
+            .filter(|&v| (1..=100).contains(&v))
+            .unwrap_or(100)
+    }
 }
 
 struct BatteryInfo {
@@ -445,6 +395,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use inerium_hw::battery::discover_power_supplies_in;
 
     #[test]
     fn test_desktop_without_battery_hides_waybar_module() {

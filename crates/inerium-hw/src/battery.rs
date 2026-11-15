@@ -1,8 +1,51 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::sysfs::{read_sysfs_string, read_sysfs_u32};
+use super::sysfs::{read_sysfs_i64, read_sysfs_str, read_sysfs_string, read_sysfs_u32};
 
+pub fn discover_power_supplies() -> (Vec<PathBuf>, bool) {
+    discover_power_supplies_in(Path::new("/sys/class/power_supply"))
+}
+
+pub fn discover_power_supplies_in(base: &Path) -> (Vec<PathBuf>, bool) {
+    let mut bat_paths: Vec<PathBuf> = Vec::new();
+    let mut fallback_bats: Vec<PathBuf> = Vec::new();
+    let mut ac_online = false;
+
+    if let Ok(entries) = fs::read_dir(base) {
+        let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        dirs.sort();
+        for path in dirs {
+            let ptype = read_sysfs_str(&path.join("type"));
+            if ptype == "Mains" || ptype == "USB" || ptype == "USB_C" || ptype == "USB_PD" {
+                if read_sysfs_i64(&path.join("online")) == 1 {
+                    ac_online = true;
+                }
+            } else if ptype == "Battery" {
+                let scope = read_sysfs_str(&path.join("scope"));
+                if scope == "Device" {
+                    continue;
+                }
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.starts_with("BAT") || name.starts_with("CMB") {
+                    bat_paths.push(path);
+                } else {
+                    fallback_bats.push(path);
+                }
+            }
+        }
+    }
+
+    let final_bats = if !bat_paths.is_empty() {
+        bat_paths
+    } else {
+        fallback_bats
+    };
+
+    (final_bats, ac_online)
+}
+
+#[derive(Debug, Clone)]
 pub enum BatteryBackend {
     PercentageThreshold {
         bat_dir: PathBuf,
@@ -61,31 +104,9 @@ impl BatteryBackend {
         Self::ReadOnly { bat_dir }
     }
 
-    fn find_battery_dir() -> Option<PathBuf> {
-        let base = Path::new("/sys/class/power_supply");
-        let entries = fs::read_dir(base).ok()?;
-        let mut fallback: Option<PathBuf> = None;
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let ptype = read_sysfs_string(&path.join("type")).unwrap_or_default();
-            if ptype != "Battery" {
-                continue;
-            }
-            let scope = read_sysfs_string(&path.join("scope")).unwrap_or_default();
-            if scope == "Device" {
-                continue;
-            }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if name.starts_with("BAT") || name.starts_with("CMB") {
-                return Some(path);
-            }
-            if fallback.is_none() {
-                fallback = Some(path);
-            }
-        }
-
-        fallback
+    pub fn find_battery_dir() -> Option<PathBuf> {
+        let (bats, _) = discover_power_supplies();
+        bats.into_iter().next()
     }
 
     pub fn has_threshold(&self) -> bool {

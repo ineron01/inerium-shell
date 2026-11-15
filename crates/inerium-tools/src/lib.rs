@@ -4,6 +4,7 @@ pub mod sys;
 pub mod ipc;
 pub mod format;
 
+pub use inerium_hw as hw;
 pub use sys::*;
 pub use ipc::*;
 pub use format::*;
