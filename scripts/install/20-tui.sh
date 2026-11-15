@@ -98,11 +98,7 @@ run_tui_prompts() {
         local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
         local header_addons="Дополнительные модули (Пробел — выбор/снятие, Enter — подтвердить):"
         local chosen_addons
-        if [[ "$is_msi" -eq 1 ]]; then
-            chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_msi" "$opt_cam" "$opt_msi" "$opt_novpn")"
-        else
-            chosen_addons="$(gum choose --no-limit --header "$header_addons" "$opt_cam" "$opt_msi" "$opt_novpn")"
-        fi
+        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_novpn" "$opt_novpn" "$opt_cam" "$opt_msi")"
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
         [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
@@ -166,11 +162,7 @@ run_tui_prompts() {
         local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
         local header_addons="Optional Add-on Modules (Space to toggle, Enter to confirm):"
         local chosen_addons
-        if [[ "$is_msi" -eq 1 ]]; then
-            chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_msi" "$opt_cam" "$opt_msi" "$opt_novpn")"
-        else
-            chosen_addons="$(gum choose --no-limit --header "$header_addons" "$opt_cam" "$opt_msi" "$opt_novpn")"
-        fi
+        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_novpn" "$opt_novpn" "$opt_cam" "$opt_msi")"
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
         [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
