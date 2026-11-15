@@ -1,894 +1,1301 @@
 use std::cell::RefCell;
 use std::process::Command;
-use std::rc::Rc;
 use std::thread;
+use std::time::Duration;
 
 use gtk4::prelude::*;
-use gtk4::{Align, Box, Button, Grid, Label, Orientation, PolicyType, Scale, ScrolledWindow};
+use gtk4::{Align, Orientation, PolicyType};
+use inerium_i18n::{tr, tr_fmt, tr_plural};
+use relm4::prelude::*;
 
 use crate::hw;
-use inerium_i18n::{tr, tr_fmt, tr_plural};
-
-fn make_label(text: &str, css_class: &str, xalign: f32) -> Label {
-    let lbl = Label::new(Some(text));
-    lbl.add_css_class(css_class);
-    lbl.set_xalign(xalign);
-    lbl
-}
-
-type GpuCallback = Rc<dyn Fn(bool, &'static str)>;
-type DdcCallback = Rc<dyn Fn(u32)>;
-type UpdatesCallback = Rc<dyn Fn(hw::SystemUpdates)>;
 
 thread_local! {
-    static GPU_CALLBACK: RefCell<Option<GpuCallback>> = RefCell::new(None);
-    static DDC_CALLBACK: RefCell<Option<DdcCallback>> = RefCell::new(None);
-    static UPDATES_CALLBACK: RefCell<Option<UpdatesCallback>> = RefCell::new(None);
+    static DDC_SENDER: RefCell<Option<ComponentSender<ControlCenterModel>>> = const { RefCell::new(None) };
 }
 
 pub fn on_ddc_updated(val: u32) {
-    DDC_CALLBACK.with(|cb| {
-        if let Some(ref f) = *cb.borrow() {
-            f(val);
+    DDC_SENDER.with(|s| {
+        if let Some(ref sender) = *s.borrow() {
+            sender.input(ControlCenterMsg::DdcUpdated(val));
         }
     });
+}
+
+fn get_wifi_sub(wifi_on: bool) -> String {
+    if wifi_on {
+        if hw::is_hotspot_active() {
+            tr("Hotspot", "Точка доступа").to_string()
+        } else if let Some(ref ssid) = hw::get_active_wifi_ssid() {
+            ssid.clone()
+        } else {
+            tr("Connected", "Включен").to_string()
+        }
+    } else {
+        tr("Disabled", "Выключен").to_string()
+    }
+}
+
+fn compute_fan_string(is_cb: bool) -> String {
+    let (cpu_rpm, gpu_rpm, cpu_pct, gpu_pct) = hw::get_fan_telemetry();
+    let c_pct = cpu_pct.unwrap_or(0);
+    let g_pct = gpu_pct.unwrap_or(0);
+
+    if is_cb {
+        match (cpu_rpm, gpu_rpm) {
+            (Some(cr), Some(gr)) if cr > 0 && gr > 0 => {
+                format!("󰈐 Cooler Boost: CPU {} RPM  ·  GPU {} RPM", cr, gr)
+            }
+            _ => tr(
+                "󰈐 Cooler Boost: maximum speed (100%)",
+                "󰈐 Cooler Boost: максимальные обороты (100%)",
+            )
+            .to_string(),
+        }
+    } else {
+        let mut parts = Vec::new();
+        if let Some(cr) = cpu_rpm {
+            if cr > 0 {
+                if cpu_pct.is_some() {
+                    parts.push(format!("CPU {}% ({} RPM)", c_pct, cr));
+                } else {
+                    parts.push(format!("Fan 1: {} RPM", cr));
+                }
+            } else if cpu_pct.is_some() {
+                parts.push(format!("CPU {}%", c_pct));
+            }
+        } else if cpu_pct.is_some() {
+            parts.push(format!("CPU {}%", c_pct));
+        }
+
+        if let Some(gr) = gpu_rpm {
+            if gr > 0 {
+                if gpu_pct.is_some() {
+                    parts.push(format!("GPU {}% ({} RPM)", g_pct, gr));
+                } else {
+                    parts.push(format!("Fan 2: {} RPM", gr));
+                }
+            } else if gpu_pct.is_some() {
+                parts.push(format!("GPU {}%", g_pct));
+            }
+        } else if gpu_pct.is_some() {
+            parts.push(format!("GPU {}%", g_pct));
+        }
+
+        if parts.is_empty() {
+            tr("󰈨 Fans: active", "󰈨 Кулеры: активный режим").to_string()
+        } else {
+            format!("󰈨 {}: {}", tr("Fans", "Кулеры"), parts.join(" · "))
+        }
+    }
+}
+
+pub struct ControlCenterModel {
+    pub hostname: String,
+    pub battery_line: String,
+    pub uptime_line: String,
+    pub updates: hw::SystemUpdates,
+    pub is_updating_check: bool,
+
+    // Toggles
+    pub is_wifi: bool,
+    pub wifi_sub: String,
+    pub is_bt: bool,
+    pub is_dnd: bool,
+    pub is_mic_muted: bool,
+    pub is_idle_active: bool,
+
+    // Sliders
+    pub volume: u32,
+    pub volume_muted: bool,
+    pub has_backlight: bool,
+    pub laptop_brightness: u32,
+    pub has_external_monitor: bool,
+    pub ddc_brightness: u32,
+
+    // Power & Cooling
+    pub has_ppd: bool,
+    pub current_profile: String,
+    pub has_fan_telem: bool,
+    pub fan_str: String,
+    pub has_ec: bool,
+    pub cooler_boost: bool,
+    pub has_bat_thresh: bool,
+    pub battery_threshold: u32,
+
+    // Graphics
+    pub has_envycontrol: bool,
+    pub gpu_mode: String,
+    pub gpu_switching: bool,
+    pub gpu_status_text: String,
+    pub gpu_status_ok: bool,
+    pub show_reboot: bool,
+
+    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[derive(Debug)]
+pub enum ControlCenterMsg {
+    // Header
+    CheckUpdates,
+    UpdatesChecked(hw::SystemUpdates),
+    LaunchUpdateTerminal,
+    ToggleHypridle,
+    LockScreen,
+    PowerMenu,
+    WallpaperGallery,
+
+    // Quick Tiles
+    ToggleWifi,
+    ToggleBt,
+    ToggleDnd,
+    ToggleMic,
+    NavNetwork,
+    NavBluetooth,
+    NavAudio,
+
+    // Sliders
+    ToggleVolumeMute,
+    SetVolume(u32),
+    SetLaptopBrightness(u32),
+    SetDdcBrightness(u32),
+    DdcUpdated(u32),
+
+    // Power & Cooling
+    SetProfile(String),
+    RefreshFanTelemetry,
+    ToggleCoolerBoost,
+    ToggleBatteryThreshold,
+
+    // GPU
+    SwitchGpuMode(&'static str),
+    GpuSwitchFinished(bool, &'static str),
+    Reboot,
+}
+
+pub struct ControlCenterInit {
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[relm4::component(pub)]
+impl SimpleComponent for ControlCenterModel {
+    type Input = ControlCenterMsg;
+    type Output = ();
+    type Init = ControlCenterInit;
+
+    view! {
+        #[root]
+        gtk4::Box {
+            add_css_class: "cc",
+            set_orientation: Orientation::Vertical,
+            set_spacing: 10,
+            set_size_request: (384, -1),
+
+            // 1. Header (Hostname, battery/uptime/updates, icon buttons)
+            gtk4::Box {
+                add_css_class: "cc-head",
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 2,
+                    set_hexpand: true,
+
+                    gtk4::Label {
+                        add_css_class: "cc-host",
+                        set_xalign: 0.0,
+                        set_label: &model.hostname,
+                    },
+
+                    gtk4::Box {
+                        set_orientation: Orientation::Horizontal,
+                        set_spacing: 8,
+
+                        gtk4::Label {
+                            add_css_class: "cc-meta-accent",
+                            set_xalign: 0.0,
+                            #[watch]
+                            set_label: &model.battery_line,
+                        },
+
+                        gtk4::Label {
+                            add_css_class: "cc-meta",
+                            set_xalign: 0.0,
+                            #[watch]
+                            set_label: &model.uptime_line,
+                        },
+
+                        #[name = "upd_btn"]
+                        gtk4::Button {
+                            add_css_class: "cc-meta-btn",
+                            set_valign: Align::Center,
+                            #[watch]
+                            set_css_classes: if model.updates.total > 0 {
+                                &["cc-meta-btn", "has-updates"]
+                            } else {
+                                &["cc-meta-btn"]
+                            },
+                            #[watch]
+                            set_tooltip_text: Some(&{
+                                if model.updates.total > 0 {
+                                    let pkg_word = tr_plural(
+                                        model.updates.total,
+                                        "package",
+                                        "packages",
+                                        "пакет",
+                                        "пакета",
+                                        "пакетов",
+                                    );
+                                    let mut tt = tr_fmt!(
+                                        "Ready to update: {total} {pkg_word}\n• Repositories: {repo}\n• AUR: {aur}",
+                                        "Готово к обновлению: {total} {pkg_word}\n• Репозитории: {repo}\n• AUR: {aur}",
+                                        total = model.updates.total,
+                                        pkg_word = pkg_word,
+                                        repo = model.updates.repo,
+                                        aur = model.updates.aur,
+                                    );
+                                    if !model.updates.sample_packages.is_empty() {
+                                        tt.push_str(tr("\n\nPackages:\n  ", "\n\nПакеты:\n  "));
+                                        tt.push_str(&model.updates.sample_packages.join(", "));
+                                    }
+                                    tt.push_str(tr(
+                                        "\n\nLMB: Update system (paru)\nRMB: Recheck",
+                                        "\n\nЛКМ: Обновить систему (paru)\nПКМ: Перепроверить",
+                                    ));
+                                    tt
+                                } else {
+                                    tr(
+                                        "All packages up to date\nLMB: Update (paru)\nRMB: Recheck",
+                                        "Все пакеты обновлены\nЛКМ: Обновить (paru)\nПКМ: Перепроверить",
+                                    ).to_string()
+                                }
+                            }),
+
+                            gtk4::Label {
+                                add_css_class: "cc-meta-btn-lbl",
+                                set_xalign: 0.0,
+                                #[watch]
+                                set_label: &if model.is_updating_check {
+                                    "󰑐 ...".to_string()
+                                } else {
+                                    format!("󰚰 {}", model.updates.total)
+                                },
+                            },
+                        },
+                    },
+                },
+
+                gtk4::Button {
+                    add_css_class: "cc-icon-btn",
+                    set_valign: Align::Center,
+                    set_label: "󰸉",
+                    set_tooltip_text: Some(tr("Desktop Wallpapers", "Обои рабочего стола")),
+                    connect_clicked => ControlCenterMsg::WallpaperGallery,
+                },
+
+                #[name = "idle_btn"]
+                gtk4::Button {
+                    add_css_class: "cc-icon-btn",
+                    set_valign: Align::Center,
+                    #[watch]
+                    set_css_classes: if model.is_idle_active {
+                        &["cc-icon-btn"]
+                    } else {
+                        &["cc-icon-btn", "amber", "on"]
+                    },
+                    #[watch]
+                    set_label: if model.is_idle_active { "󰒳" } else { "󰈈" },
+                    #[watch]
+                    set_tooltip_text: Some(if model.is_idle_active {
+                        tr("Autolock: On", "Автоблокировка: вкл")
+                    } else {
+                        tr("Autolock: Off", "Автоблокировка: выкл")
+                    }),
+                    connect_clicked => ControlCenterMsg::ToggleHypridle,
+                },
+
+                gtk4::Button {
+                    add_css_class: "cc-icon-btn",
+                    set_valign: Align::Center,
+                    set_label: "󰌾",
+                    set_tooltip_text: Some(tr("Lock", "Заблокировать")),
+                    connect_clicked => ControlCenterMsg::LockScreen,
+                },
+
+                gtk4::Button {
+                    add_css_class: "cc-icon-btn",
+                    add_css_class: "danger",
+                    set_valign: Align::Center,
+                    set_label: "⏻",
+                    set_tooltip_text: Some(tr("Power menu", "Меню питания")),
+                    connect_clicked => ControlCenterMsg::PowerMenu,
+                },
+            },
+
+            // Scrolled Body
+            gtk4::ScrolledWindow {
+                set_hscrollbar_policy: PolicyType::Never,
+                set_vscrollbar_policy: PolicyType::Automatic,
+                set_propagate_natural_width: true,
+                set_vexpand: true,
+                set_hexpand: true,
+                set_min_content_height: 480,
+
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 10,
+                    set_vexpand: true,
+                    set_hexpand: true,
+
+                    // 2. 2x2 Quick Tiles (Two homogeneous rows)
+                    gtk4::Box {
+                        set_orientation: Orientation::Vertical,
+                        set_spacing: 8,
+
+                        // Row 1: Wi-Fi & Bluetooth
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 8,
+                            set_homogeneous: true,
+
+                            // Tile 1: Wi-Fi
+                            #[name = "wifi_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                set_orientation: Orientation::Horizontal,
+                                #[watch]
+                                set_css_classes: if model.is_wifi {
+                                    &["cc-tile", "on"]
+                                } else {
+                                    &["cc-tile"]
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::ToggleWifi,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            set_label: "󰤨",
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: "Wi-Fi",
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                #[watch]
+                                                set_label: &model.wifi_sub,
+                                            },
+                                        },
+                                    },
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-more",
+                                    set_label: "›",
+                                    set_tooltip_text: Some(tr("Details", "Подробнее")),
+                                    connect_clicked => ControlCenterMsg::NavNetwork,
+                                },
+                            },
+
+                            // Tile 2: Bluetooth
+                            #[name = "bt_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                add_css_class: "blue",
+                                set_orientation: Orientation::Horizontal,
+                                #[watch]
+                                set_css_classes: if model.is_bt {
+                                    &["cc-tile", "blue", "on"]
+                                } else {
+                                    &["cc-tile", "blue"]
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::ToggleBt,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            set_label: "󰂯",
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: "Bluetooth",
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                #[watch]
+                                                set_label: if model.is_bt {
+                                                    tr("Active", "Активен")
+                                                } else {
+                                                    tr("Disabled", "Выключен")
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-more",
+                                    set_label: "›",
+                                    set_tooltip_text: Some(tr("Details", "Подробнее")),
+                                    connect_clicked => ControlCenterMsg::NavBluetooth,
+                                },
+                            },
+                        },
+
+                        // Row 2: DND & Mic
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 8,
+                            set_homogeneous: true,
+
+                            // Tile 3: DND
+                            #[name = "dnd_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                add_css_class: "amber",
+                                set_orientation: Orientation::Horizontal,
+                                #[watch]
+                                set_css_classes: if model.is_dnd {
+                                    &["cc-tile", "amber", "on"]
+                                } else {
+                                    &["cc-tile", "amber"]
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::ToggleDnd,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            set_label: "󰂛",
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: tr("Do Not Disturb", "Не беспокоить"),
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                #[watch]
+                                                set_label: if model.is_dnd {
+                                                    tr("Notifications hidden", "Уведомления скрыты")
+                                                } else {
+                                                    tr("Off", "Выключено")
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+
+                            // Tile 4: Mic
+                            #[name = "mic_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                add_css_class: "red",
+                                set_orientation: Orientation::Horizontal,
+                                #[watch]
+                                set_css_classes: if model.is_mic_muted {
+                                    &["cc-tile", "red", "on"]
+                                } else {
+                                    &["cc-tile", "red"]
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::ToggleMic,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            #[watch]
+                                            set_label: if model.is_mic_muted { "󰍭" } else { "󰍬" },
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: tr("Microphone", "Микрофон"),
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                #[watch]
+                                                set_label: if model.is_mic_muted {
+                                                    tr("Muted", "Выключен")
+                                                } else {
+                                                    tr("Active", "Включен")
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+
+                    // 3. Sliders Card
+                    gtk4::Box {
+                        add_css_class: "cc-card",
+                        set_orientation: Orientation::Vertical,
+                        set_spacing: 4,
+
+                        // Volume Slider
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 6,
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                set_tooltip_text: Some("Mute"),
+                                #[watch]
+                                set_label: if model.volume_muted { "󰝟" } else { "󰕾" },
+                                connect_clicked => ControlCenterMsg::ToggleVolumeMute,
+                            },
+
+                            #[name = "vol_sc"]
+                            gtk4::Scale {
+                                add_css_class: "cc-scale",
+                                set_orientation: Orientation::Horizontal,
+                                set_range: (0.0, 150.0),
+                                set_hexpand: true,
+                                set_value: model.volume as f64,
+                                connect_value_changed[sender] => move |sc| {
+                                    sender.input(ControlCenterMsg::SetVolume(sc.value() as u32));
+                                },
+                            },
+
+                            gtk4::Label {
+                                add_css_class: "cc-pct",
+                                set_xalign: 1.0,
+                                #[watch]
+                                set_label: &format!("{}%", model.volume),
+                            },
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                set_label: "›",
+                                set_tooltip_text: Some(tr("Audio Devices", "Аудиоустройства")),
+                                connect_clicked => ControlCenterMsg::NavAudio,
+                            },
+                        },
+
+                        // Laptop Brightness Slider
+                        #[name = "laptop_br_box"]
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 6,
+                            #[watch]
+                            set_visible: model.has_backlight,
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                set_label: "󰃠",
+                                set_tooltip_text: Some(tr(
+                                    "Laptop display brightness",
+                                    "Яркость экрана ноутбука",
+                                )),
+                            },
+
+                            #[name = "br_sc"]
+                            gtk4::Scale {
+                                add_css_class: "cc-scale",
+                                set_orientation: Orientation::Horizontal,
+                                set_range: (5.0, 100.0),
+                                set_hexpand: true,
+                                set_value: model.laptop_brightness as f64,
+                                connect_value_changed[sender] => move |sc| {
+                                    sender.input(ControlCenterMsg::SetLaptopBrightness(sc.value() as u32));
+                                },
+                            },
+
+                            gtk4::Label {
+                                add_css_class: "cc-pct",
+                                set_xalign: 1.0,
+                                #[watch]
+                                set_label: &format!("{}%", model.laptop_brightness),
+                            },
+                        },
+
+                        // External DDC Brightness Slider
+                        #[name = "ext_br_box"]
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 6,
+                            #[watch]
+                            set_visible: model.has_external_monitor,
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                set_label: "󰍹",
+                                set_tooltip_text: Some(tr(
+                                    "External monitor brightness (DDC)",
+                                    "Яркость внешнего монитора (DDC)",
+                                )),
+                            },
+
+                            #[name = "ext_sc"]
+                            gtk4::Scale {
+                                add_css_class: "cc-scale",
+                                add_css_class: "amber",
+                                set_orientation: Orientation::Horizontal,
+                                set_range: (0.0, 100.0),
+                                set_hexpand: true,
+                                set_value: model.ddc_brightness as f64,
+                                connect_value_changed[sender] => move |sc| {
+                                    sender.input(ControlCenterMsg::SetDdcBrightness(sc.value() as u32));
+                                },
+                            },
+
+                            #[name = "ext_pct_lbl"]
+                            gtk4::Label {
+                                add_css_class: "cc-pct",
+                                set_xalign: 1.0,
+                                #[watch]
+                                set_label: &format!("{}%", model.ddc_brightness),
+                            },
+                        },
+                    },
+
+                    // 4. Power & Cooling
+                    gtk4::Label {
+                        add_css_class: "cc-label",
+                        set_xalign: 0.0,
+                        #[watch]
+                        set_visible: model.has_ppd || model.has_fan_telem || model.has_bat_thresh,
+                        #[watch]
+                        set_label: if model.has_fan_telem {
+                            tr("POWER & COOLING", "ПИТАНИЕ И ОХЛАЖДЕНИЕ")
+                        } else {
+                            tr("POWER", "ПИТАНИЕ")
+                        },
+                    },
+
+                    // Power Profiles Segment Bar
+                    #[name = "ppd_seg"]
+                    gtk4::Box {
+                        add_css_class: "cc-seg",
+                        set_orientation: Orientation::Horizontal,
+                        set_spacing: 2,
+                        set_homogeneous: true,
+                        #[watch]
+                        set_visible: model.has_ppd,
+
+                        #[name = "eco_btn"]
+                        gtk4::Button {
+                            add_css_class: "eco",
+                            #[watch]
+                            set_css_classes: if model.current_profile == "power-saver" {
+                                &["eco", "active"]
+                            } else {
+                                &["eco"]
+                            },
+                            set_label: &format!("󰌪 {}", tr("Eco", "Эконом")),
+                            connect_clicked[sender] => move |_| {
+                                sender.input(ControlCenterMsg::SetProfile("power-saver".to_string()));
+                            },
+                        },
+
+                        #[name = "bal_btn"]
+                        gtk4::Button {
+                            #[watch]
+                            set_css_classes: if model.current_profile == "balanced" {
+                                &["active"]
+                            } else {
+                                &[]
+                            },
+                            set_label: &format!("󰾅 {}", tr("Balance", "Баланс")),
+                            connect_clicked[sender] => move |_| {
+                                sender.input(ControlCenterMsg::SetProfile("balanced".to_string()));
+                            },
+                        },
+
+                        #[name = "turbo_btn"]
+                        gtk4::Button {
+                            add_css_class: "turbo",
+                            #[watch]
+                            set_css_classes: if model.current_profile == "performance" {
+                                &["turbo", "active"]
+                            } else {
+                                &["turbo"]
+                            },
+                            set_label: &format!("󰓅 {}", tr("Turbo", "Турбо")),
+                            connect_clicked[sender] => move |_| {
+                                sender.input(ControlCenterMsg::SetProfile("performance".to_string()));
+                            },
+                        },
+                    },
+
+                    // Fan Telemetry Label
+                    #[name = "fan_lbl"]
+                    gtk4::Label {
+                        add_css_class: "cc-meta",
+                        set_xalign: 0.5,
+                        set_margin_top: 2,
+                        set_margin_bottom: 2,
+                        #[watch]
+                        set_visible: model.has_fan_telem,
+                        #[watch]
+                        set_label: &model.fan_str,
+                    },
+
+                    // Cooler Boost & Battery Threshold Chips
+                    gtk4::Box {
+                        set_orientation: Orientation::Horizontal,
+                        set_spacing: 8,
+                        set_homogeneous: true,
+                        #[watch]
+                        set_visible: model.has_ec || model.has_bat_thresh,
+
+                        #[name = "cb_chip"]
+                        gtk4::Button {
+                            add_css_class: "cc-chip",
+                            add_css_class: "red",
+                            #[watch]
+                            set_visible: model.has_ec,
+                            #[watch]
+                            set_css_classes: if model.cooler_boost {
+                                &["cc-chip", "red", "on"]
+                            } else {
+                                &["cc-chip", "red"]
+                            },
+                            #[watch]
+                            set_label: &format!(
+                                "󰈐 {}: {}",
+                                tr("Cooler Boost", "Cooler Boost"),
+                                if model.cooler_boost { tr("on", "вкл") } else { tr("off", "выкл") }
+                            ),
+                            connect_clicked => ControlCenterMsg::ToggleCoolerBoost,
+                        },
+
+                        #[name = "bat_chip"]
+                        gtk4::Button {
+                            add_css_class: "cc-chip",
+                            #[watch]
+                            set_visible: model.has_bat_thresh,
+                            #[watch]
+                            set_css_classes: if model.battery_threshold < 100 {
+                                &["cc-chip", "on"]
+                            } else {
+                                &["cc-chip"]
+                            },
+                            #[watch]
+                            set_label: &if model.battery_threshold < 100 {
+                                format!("󱈑 {}: {}%", tr("Battery Limit", "Лимит заряда"), model.battery_threshold)
+                            } else {
+                                format!("󱈑 {}", tr("Charge to 100%", "Заряд до 100%"))
+                            },
+                            connect_clicked => ControlCenterMsg::ToggleBatteryThreshold,
+                        },
+                    },
+
+                    // 5. Graphics (EnvyControl)
+                    #[name = "gpu_sec"]
+                    gtk4::Box {
+                        set_orientation: Orientation::Vertical,
+                        set_spacing: 6,
+                        #[watch]
+                        set_visible: model.has_envycontrol,
+
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 8,
+
+                            gtk4::Box {
+                                set_orientation: Orientation::Vertical,
+                                set_hexpand: true,
+                                set_valign: Align::Center,
+
+                                gtk4::Label {
+                                    add_css_class: "cc-label",
+                                    set_xalign: 0.0,
+                                    set_label: tr("GRAPHICS", "ГРАФИКА"),
+                                },
+
+                                gtk4::Label {
+                                    add_css_class: "cc-foot",
+                                    set_xalign: 0.0,
+                                    #[watch]
+                                    set_label: if model.gpu_mode == "integrated" {
+                                        tr("Integrated graphics only (iGPU)", "Только встроенная графика (iGPU)")
+                                    } else {
+                                        tr("Hybrid graphics (iGPU + dGPU)", "Гибридная графика (iGPU + dGPU)")
+                                    },
+                                },
+                            },
+
+                            gtk4::Box {
+                                add_css_class: "cc-seg",
+                                set_orientation: Orientation::Horizontal,
+                                set_spacing: 2,
+
+                                gtk4::Button {
+                                    #[watch]
+                                    set_sensitive: !model.gpu_switching,
+                                    #[watch]
+                                    set_css_classes: if model.gpu_mode == "integrated" {
+                                        &["active"]
+                                    } else {
+                                        &[]
+                                    },
+                                    set_label: "󰢮 iGPU",
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(ControlCenterMsg::SwitchGpuMode("integrated"));
+                                    },
+                                },
+
+                                gtk4::Button {
+                                    #[watch]
+                                    set_sensitive: !model.gpu_switching,
+                                    #[watch]
+                                    set_css_classes: if model.gpu_mode != "integrated" {
+                                        &["active"]
+                                    } else {
+                                        &[]
+                                    },
+                                    set_label: "󰾲 Hybrid",
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(ControlCenterMsg::SwitchGpuMode("hybrid"));
+                                    },
+                                },
+                            },
+                        },
+
+                        gtk4::Label {
+                            add_css_class: "cc-status",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            #[watch]
+                            set_visible: !model.gpu_status_text.is_empty(),
+                            #[watch]
+                            set_css_classes: if model.gpu_status_ok {
+                                &["cc-status", "ok"]
+                            } else {
+                                &["cc-status", "err"]
+                            },
+                            #[watch]
+                            set_label: &model.gpu_status_text,
+                        },
+
+                        gtk4::Button {
+                            add_css_class: "cc-chip",
+                            add_css_class: "on",
+                            set_label: tr("󰜉  Reboot now", "󰜉  Перезагрузить сейчас"),
+                            #[watch]
+                            set_visible: model.show_reboot,
+                            connect_clicked => ControlCenterMsg::Reboot,
+                        },
+                    },
+                },
+            },
+        }
+    }
+
+    fn init(
+        init: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let hostname = hw::get_hostname();
+        let battery_line = hw::get_battery_line();
+        let uptime_line = hw::get_uptime_line();
+        let updates = hw::get_updates_info();
+
+        let is_wifi = hw::is_wifi_enabled();
+        let wifi_sub = get_wifi_sub(is_wifi);
+        let is_bt = hw::is_bluetooth_enabled();
+        let is_dnd = hw::is_dnd_active();
+        let is_mic_muted = hw::is_mic_muted();
+        let is_idle_active = hw::is_hypridle_active();
+
+        let volume = hw::get_volume();
+        let volume_muted = hw::is_volume_muted();
+        let has_backlight = hw::has_backlight();
+        let laptop_brightness = if has_backlight {
+            hw::get_laptop_brightness()
+        } else {
+            100
+        };
+        let has_external_monitor = hw::has_external_monitor();
+        let ddc_brightness = if has_external_monitor {
+            hw::get_cached_ddc_brightness()
+        } else {
+            0
+        };
+
+        let has_ppd = hw::has_power_profiles();
+        let current_profile = if has_ppd {
+            hw::get_power_profile()
+        } else {
+            String::new()
+        };
+
+        let has_fan_telem = hw::has_fan_telemetry();
+        let has_ec = hw::has_msi_ec();
+        let cooler_boost = if has_ec {
+            hw::get_cooler_boost()
+        } else {
+            false
+        };
+        let fan_str = if has_fan_telem {
+            compute_fan_string(cooler_boost)
+        } else {
+            String::new()
+        };
+
+        let has_bat_thresh = hw::has_battery_threshold();
+        let battery_threshold = if has_bat_thresh {
+            hw::get_battery_threshold()
+        } else {
+            100
+        };
+
+        let has_envycontrol = hw::has_envycontrol();
+        let gpu_mode = if has_envycontrol {
+            hw::get_gpu_mode()
+        } else {
+            String::new()
+        };
+
+        let model = ControlCenterModel {
+            hostname,
+            battery_line,
+            uptime_line,
+            updates,
+            is_updating_check: false,
+
+            is_wifi,
+            wifi_sub,
+            is_bt,
+            is_dnd,
+            is_mic_muted,
+            is_idle_active,
+
+            volume,
+            volume_muted,
+            has_backlight,
+            laptop_brightness,
+            has_external_monitor,
+            ddc_brightness,
+
+            has_ppd,
+            current_profile,
+            has_fan_telem,
+            fan_str,
+            has_ec,
+            cooler_boost,
+            has_bat_thresh,
+            battery_threshold,
+
+            has_envycontrol,
+            gpu_mode,
+            gpu_switching: false,
+            gpu_status_text: String::new(),
+            gpu_status_ok: false,
+            show_reboot: false,
+
+            nav_cb: init.nav_cb,
+            close_cb: init.close_cb,
+        };
+
+        // Register DDC sender in thread-local for hw/backlight.rs:on_ddc_updated
+        DDC_SENDER.with(|s| {
+            *s.borrow_mut() = Some(sender.clone());
+        });
+
+        // Trigger asynchronous DDC hardware refresh if external monitor exists
+        if has_external_monitor {
+            hw::refresh_ddc_brightness_async();
+        }
+
+        let widgets = view_output!();
+
+        // Updates button LMB / RMB gesture
+        let s_upd = sender.clone();
+        let click_gesture = gtk4::GestureClick::new();
+        click_gesture.set_button(0);
+        click_gesture.connect_pressed(move |gesture, _, _, _| {
+            let btn = gesture.current_button();
+            if btn == 1 {
+                s_upd.input(ControlCenterMsg::LaunchUpdateTerminal);
+            } else if btn == 3 {
+                s_upd.input(ControlCenterMsg::CheckUpdates);
+            }
+        });
+        widgets.upd_btn.add_controller(click_gesture);
+
+        // Fan telemetry 1-second timer while root widget is mapped
+        if has_fan_telem {
+            let root_ref = root.clone();
+            let s_fan = sender.clone();
+            glib::timeout_add_local(Duration::from_millis(1000), move || {
+                if !root_ref.is_mapped() {
+                    return glib::ControlFlow::Break;
+                }
+                s_fan.input(ControlCenterMsg::RefreshFanTelemetry);
+                glib::ControlFlow::Continue
+            });
+        }
+
+        ComponentParts { model, widgets }
+    }
+
+    fn post_view() {
+        if self.has_external_monitor {
+            let cur = ext_sc.value() as u32;
+            if cur != self.ddc_brightness {
+                ext_sc.set_value(self.ddc_brightness as f64);
+            }
+        }
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        match msg {
+            ControlCenterMsg::CheckUpdates => {
+                self.is_updating_check = true;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("inerium-updates").arg("--check").output();
+                    let fresh = hw::get_updates_info();
+                    s.input(ControlCenterMsg::UpdatesChecked(fresh));
+                });
+            }
+            ControlCenterMsg::UpdatesChecked(fresh) => {
+                self.is_updating_check = false;
+                self.updates = fresh;
+            }
+            ControlCenterMsg::LaunchUpdateTerminal => {
+                (self.close_cb)();
+                thread::spawn(|| {
+                    let _ = Command::new("uwsm")
+                        .args([
+                            "app",
+                            "--",
+                            "kitty",
+                            "-e",
+                            "sh",
+                            "-c",
+                            "paru; rc=$?; inerium-updates --check >/dev/null 2>&1 || true; if [ \"$rc\" -ne 0 ]; then printf '\\n[paru завершился с кодом %s] Нажмите Enter для закрытия...' \"$rc\"; read -r _; fi",
+                        ])
+                        .spawn();
+                });
+            }
+            ControlCenterMsg::ToggleHypridle => {
+                self.is_idle_active = !self.is_idle_active;
+                hw::toggle_hypridle(self.is_idle_active);
+            }
+            ControlCenterMsg::LockScreen => {
+                (self.close_cb)();
+                thread::spawn(|| {
+                    let _ = Command::new("sh")
+                        .args(["-c", "hyprlock || loginctl lock-session"])
+                        .output();
+                });
+            }
+            ControlCenterMsg::PowerMenu => {
+                (self.nav_cb)("power");
+            }
+            ControlCenterMsg::WallpaperGallery => {
+                (self.nav_cb)("wallpaper");
+            }
+
+            // Quick Tiles
+            ControlCenterMsg::ToggleWifi => {
+                self.is_wifi = !self.is_wifi;
+                self.wifi_sub = get_wifi_sub(self.is_wifi);
+                hw::toggle_wifi(self.is_wifi);
+            }
+            ControlCenterMsg::ToggleBt => {
+                self.is_bt = !self.is_bt;
+                hw::toggle_bluetooth(self.is_bt);
+            }
+            ControlCenterMsg::ToggleDnd => {
+                self.is_dnd = !self.is_dnd;
+                hw::toggle_dnd();
+            }
+            ControlCenterMsg::ToggleMic => {
+                self.is_mic_muted = !self.is_mic_muted;
+                hw::toggle_mic_mute();
+            }
+            ControlCenterMsg::NavNetwork => {
+                (self.nav_cb)("network");
+            }
+            ControlCenterMsg::NavBluetooth => {
+                (self.nav_cb)("bluetooth");
+            }
+            ControlCenterMsg::NavAudio => {
+                (self.nav_cb)("audio");
+            }
+
+            // Sliders
+            ControlCenterMsg::ToggleVolumeMute => {
+                hw::toggle_volume_mute();
+                self.volume_muted = hw::is_volume_muted();
+            }
+            ControlCenterMsg::SetVolume(val) => {
+                self.volume = val;
+                hw::set_volume(val);
+            }
+            ControlCenterMsg::SetLaptopBrightness(val) => {
+                self.laptop_brightness = val;
+                hw::set_laptop_brightness(val);
+            }
+            ControlCenterMsg::SetDdcBrightness(val) => {
+                self.ddc_brightness = val;
+                hw::set_ddc_brightness_async(val);
+            }
+            ControlCenterMsg::DdcUpdated(val) => {
+                self.ddc_brightness = val;
+            }
+
+            // Power & Cooling
+            ControlCenterMsg::SetProfile(profile) => {
+                self.current_profile = profile.clone();
+                hw::set_power_profile(&profile);
+            }
+            ControlCenterMsg::RefreshFanTelemetry => {
+                if self.has_fan_telem {
+                    self.fan_str = compute_fan_string(self.cooler_boost);
+                }
+            }
+            ControlCenterMsg::ToggleCoolerBoost => {
+                self.cooler_boost = !self.cooler_boost;
+                hw::set_cooler_boost(self.cooler_boost);
+                if self.has_fan_telem {
+                    self.fan_str = compute_fan_string(self.cooler_boost);
+                }
+            }
+            ControlCenterMsg::ToggleBatteryThreshold => {
+                let next = if self.battery_threshold < 100 { 100 } else { 80 };
+                self.battery_threshold = next;
+                hw::set_battery_threshold(next);
+            }
+
+            // Graphics
+            ControlCenterMsg::SwitchGpuMode(target) => {
+                self.gpu_switching = true;
+                self.gpu_status_text = format!(
+                    "󰑐 Переключение на {}: пересборка initramfs...",
+                    target
+                );
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let ok = hw::switch_gpu_mode(target);
+                    s.input(ControlCenterMsg::GpuSwitchFinished(ok, target));
+                });
+            }
+            ControlCenterMsg::GpuSwitchFinished(ok, target) => {
+                self.gpu_switching = false;
+                if ok {
+                    self.gpu_mode = target.to_string();
+                    self.gpu_status_ok = true;
+                    self.gpu_status_text = tr(
+                        "󰄬 Ready. Mode will apply after reboot.",
+                        "󰄬 Готово. Режим применится после перезагрузки.",
+                    )
+                    .to_string();
+                    self.show_reboot = true;
+                } else {
+                    self.gpu_status_ok = false;
+                    self.gpu_status_text = tr(
+                        "󰅙 Envycontrol switch error",
+                        "󰅙 Ошибка переключения envycontrol",
+                    )
+                    .to_string();
+                }
+            }
+            ControlCenterMsg::Reboot => {
+                let _ = Command::new("systemctl").arg("reboot").spawn();
+            }
+        }
+    }
 }
 
 pub fn build_control_center<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (Box, i32, i32)
+) -> (gtk4::Box, i32, i32)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
 {
-    let root = Box::new(Orientation::Vertical, 10);
-    root.add_css_class("cc");
-    root.set_size_request(384, -1);
-
-    // ---------------------------------------------------------
-    // 1. ШАПКА
-    // ---------------------------------------------------------
-    let head = Box::new(Orientation::Horizontal, 8);
-    head.add_css_class("cc-head");
-
-    let head_txt = Box::new(Orientation::Vertical, 2);
-    head_txt.set_hexpand(true);
-    head_txt.append(&make_label(&hw::get_hostname(), "cc-host", 0.0));
-
-    let meta = Box::new(Orientation::Horizontal, 8);
-    let bat_lbl = make_label(&hw::get_battery_line(), "cc-meta-accent", 0.0);
-    let up_lbl = make_label(&hw::get_uptime_line(), "cc-meta", 0.0);
-    meta.append(&bat_lbl);
-    meta.append(&up_lbl);
-
-    let upds = hw::get_updates_info();
-    let upd_btn = Button::new();
-    upd_btn.add_css_class("cc-meta-btn");
-    upd_btn.set_valign(Align::Center);
-
-    let upd_lbl = make_label("", "cc-meta-btn-lbl", 0.0);
-    upd_btn.set_child(Some(&upd_lbl));
-
-    fn apply_updates_ui(btn: &Button, lbl: &Label, info: &hw::SystemUpdates) {
-        if info.total > 0 {
-            lbl.set_label(&format!("󰚰 {}", info.total));
-            btn.add_css_class("has-updates");
-
-            let pkg_word = tr_plural(info.total, "package", "packages", "пакет", "пакета", "пакетов");
-            let mut tt = tr_fmt!(
-                "Ready to update: {total} {pkg_word}\n• Repositories: {repo}\n• AUR: {aur}",
-                "Готово к обновлению: {total} {pkg_word}\n• Репозитории: {repo}\n• AUR: {aur}",
-                total = info.total,
-                pkg_word = pkg_word,
-                repo = info.repo,
-                aur = info.aur,
-            );
-            if !info.sample_packages.is_empty() {
-                tt.push_str(tr("\n\nPackages:\n  ", "\n\nПакеты:\n  "));
-                tt.push_str(&info.sample_packages.join(", "));
-            }
-            tt.push_str(tr(
-                "\n\nLMB: Update system (paru)\nRMB: Recheck",
-                "\n\nЛКМ: Обновить систему (paru)\nПКМ: Перепроверить",
-            ));
-            btn.set_tooltip_text(Some(&tt));
-        } else {
-            lbl.set_label("󰚰 0");
-            btn.remove_css_class("has-updates");
-            btn.set_tooltip_text(Some(tr(
-                "All packages up to date\nLMB: Update (paru)\nRMB: Recheck",
-                "Все пакеты обновлены\nЛКМ: Обновить (paru)\nПКМ: Перепроверить",
-            )));
-        }
-    }
-
-    apply_updates_ui(&upd_btn, &upd_lbl, &upds);
-
-    {
-        let u_btn = upd_btn.clone();
-        let u_lbl = upd_lbl.clone();
-        UPDATES_CALLBACK.with(|cb| {
-            *cb.borrow_mut() = Some(Rc::new(move |fresh| {
-                apply_updates_ui(&u_btn, &u_lbl, &fresh);
-            }));
-        });
-    }
-
-    let c_cb_upd = close_cb.clone();
-    let upd_lbl_clone = upd_lbl.clone();
-
-    let click_gesture = gtk4::GestureClick::new();
-    click_gesture.set_button(0);
-    click_gesture.connect_pressed(move |gesture, _, _, _| {
-        let btn = gesture.current_button();
-        if btn == 1 {
-            c_cb_upd();
-            thread::spawn(|| {
-                let _ = Command::new("uwsm")
-                    .args([
-                        "app",
-                        "--",
-                        "kitty",
-                        "-e",
-                        "sh",
-                        "-c",
-                        "paru; rc=$?; inerium-updates --check >/dev/null 2>&1 || true; if [ \"$rc\" -ne 0 ]; then printf '\\n[paru завершился с кодом %s] Нажмите Enter для закрытия...' \"$rc\"; read -r _; fi",
-                    ])
-                    .spawn();
-            });
-        } else if btn == 3 {
-            upd_lbl_clone.set_label("󰑐 ...");
-            thread::spawn(move || {
-                let _ = Command::new("inerium-updates").arg("--check").output();
-                let fresh = hw::get_updates_info();
-                glib::MainContext::default().invoke(move || {
-                    UPDATES_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(fresh);
-                        }
-                    });
-                });
-            });
-        }
-    });
-    upd_btn.add_controller(click_gesture);
-    meta.append(&upd_btn);
-    head_txt.append(&meta);
-    head.append(&head_txt);
-
-    // Кнопка перехода в галерею обоев
-    let wall_btn = Button::with_label("󰸉");
-    wall_btn.add_css_class("cc-icon-btn");
-    wall_btn.set_tooltip_text(Some(tr("Desktop Wallpapers", "Обои рабочего стола")));
-    wall_btn.set_valign(Align::Center);
-    let n_cb_w = nav_cb.clone();
-    wall_btn.connect_clicked(move |_| n_cb_w("wallpaper"));
-    head.append(&wall_btn);
-
-    // Кнопка автоблокировки экрана (ингибитор)
-    let idle_btn = Button::new();
-    idle_btn.add_css_class("cc-icon-btn");
-    idle_btn.set_valign(Align::Center);
-
-    let is_idle_active = Rc::new(RefCell::new(hw::is_hypridle_active()));
-    let update_idle_btn = {
-        let idle_btn = idle_btn.clone();
-        let is_idle_active = is_idle_active.clone();
-        Rc::new(move || {
-            let active = *is_idle_active.borrow();
-            if active {
-                idle_btn.set_label("󰒳");
-                idle_btn.remove_css_class("amber");
-                idle_btn.remove_css_class("on");
-                idle_btn.set_tooltip_text(Some(tr("Autolock: On", "Автоблокировка: вкл")));
-            } else {
-                idle_btn.set_label("󰈈");
-                idle_btn.add_css_class("amber");
-                idle_btn.add_css_class("on");
-                idle_btn.set_tooltip_text(Some(tr("Autolock: Off", "Автоблокировка: выкл")));
-            }
-        })
+    let init = ControlCenterInit {
+        nav_cb: std::boxed::Box::new(nav_cb),
+        close_cb: std::boxed::Box::new(close_cb),
     };
-    update_idle_btn();
 
-    let i_flag = is_idle_active.clone();
-    let u_idle = update_idle_btn.clone();
-    idle_btn.connect_clicked(move |_| {
-        let next = !*i_flag.borrow();
-        *i_flag.borrow_mut() = next;
-        u_idle(); // Instant UI update!
-        hw::toggle_hypridle(next);
-    });
-    head.append(&idle_btn);
-
-    // Кнопка блокировки
-    let lock_btn = Button::with_label("󰌾");
-    lock_btn.add_css_class("cc-icon-btn");
-    lock_btn.set_tooltip_text(Some(tr("Lock", "Заблокировать")));
-    lock_btn.set_valign(Align::Center);
-    let c_cb = close_cb.clone();
-    lock_btn.connect_clicked(move |_| {
-        c_cb();
-        thread::spawn(|| {
-            let _ = Command::new("sh").args(["-c", "hyprlock || loginctl lock-session"]).output();
-        });
-    });
-    head.append(&lock_btn);
-
-    // Кнопка питания
-    let power_btn = Button::with_label("⏻");
-    power_btn.add_css_class("cc-icon-btn");
-    power_btn.add_css_class("danger");
-    power_btn.set_tooltip_text(Some(tr("Power menu", "Меню питания")));
-    power_btn.set_valign(Align::Center);
-    let n_cb = nav_cb.clone();
-    power_btn.connect_clicked(move |_| {
-        n_cb("power");
-    });
-    head.append(&power_btn);
-    root.append(&head);
-
-    let content = Box::new(Orientation::Vertical, 10);
-    content.set_vexpand(true);
-    content.set_hexpand(true);
-
-    // ---------------------------------------------------------
-    // 2. ПЛИТКИ БЫСТРЫХ ПЕРЕКЛЮЧАТЕЛЕЙ (3x2 Grid)
-    // ---------------------------------------------------------
-    let grid = Grid::new();
-    grid.set_column_spacing(8);
-    grid.set_row_spacing(8);
-    grid.set_column_homogeneous(true);
-
-    fn create_tile(
-        icon: &str,
-        title: &str,
-        color_class: &str,
-        has_more: bool,
-    ) -> (Box, Button, Option<Button>, Label, Label) {
-        let tile = Box::new(Orientation::Horizontal, 0);
-        tile.add_css_class("cc-tile");
-        if !color_class.is_empty() {
-            tile.add_css_class(color_class);
-        }
-
-        let main = Button::new();
-        main.add_css_class("cc-tile-main");
-        main.set_hexpand(true);
-
-        let inner = Box::new(Orientation::Horizontal, 9);
-        let ico = make_label(icon, "cc-tile-ico", 0.5);
-        inner.append(&ico);
-
-        let txt = Box::new(Orientation::Vertical, 1);
-        txt.set_valign(Align::Center);
-        txt.append(&make_label(title, "cc-tile-title", 0.0));
-        let sub = make_label("", "cc-tile-sub", 0.0);
-        sub.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        sub.set_max_width_chars(14);
-        txt.append(&sub);
-        inner.append(&txt);
-
-        main.set_child(Some(&inner));
-        tile.append(&main);
-
-        let more_btn = if has_more {
-            let more = Button::with_label("›");
-            more.add_css_class("cc-tile-more");
-            more.set_tooltip_text(Some(tr("Details", "Подробнее")));
-            tile.append(&more);
-            Some(more)
-        } else {
-            None
-        };
-
-        (tile, main, more_btn, ico, sub)
-    }
-
-    // Состояния плит
-    let is_wifi = Rc::new(RefCell::new(hw::is_wifi_enabled()));
-    let is_bt = Rc::new(RefCell::new(hw::is_bluetooth_enabled()));
-    let is_dnd = Rc::new(RefCell::new(hw::is_dnd_active()));
-    let is_mic_muted = Rc::new(RefCell::new(hw::is_mic_muted()));
-
-    // 4 основных плитки (2x2 Grid)
-    let (wifi_tile, wifi_btn, wifi_more, _wifi_ico, wifi_sub) = create_tile("󰤨", "Wi-Fi", "", true);
-    let (bt_tile, bt_btn, bt_more, _bt_ico, bt_sub) = create_tile("󰂯", "Bluetooth", "blue", true);
-    let (dnd_tile, dnd_btn, _dnd_more, _dnd_ico, dnd_sub) = create_tile("󰂛", tr("Do Not Disturb", "Не беспокоить"), "amber", false);
-    let (mic_tile, mic_btn, _mic_more, mic_ico, mic_sub) = create_tile("󰍬", tr("Microphone", "Микрофон"), "red", false);
-
-    // Первоначальная и динамическая отрисовка плиток
-    let update_tiles = {
-        let wifi_tile = wifi_tile.clone();
-        let wifi_sub = wifi_sub.clone();
-        let bt_tile = bt_tile.clone();
-        let bt_sub = bt_sub.clone();
-        let dnd_tile = dnd_tile.clone();
-        let dnd_sub = dnd_sub.clone();
-        let mic_tile = mic_tile.clone();
-        let mic_sub = mic_sub.clone();
-        let mic_ico = mic_ico.clone();
-        let is_wifi = is_wifi.clone();
-        let is_bt = is_bt.clone();
-        let is_dnd = is_dnd.clone();
-        let is_mic_muted = is_mic_muted.clone();
-
-        Rc::new(move || {
-            let wf = *is_wifi.borrow();
-            if wf {
-                wifi_tile.add_css_class("on");
-                if hw::is_hotspot_active() {
-                    wifi_sub.set_label(tr("Hotspot", "Точка доступа"));
-                } else if let Some(ref ssid) = hw::get_active_wifi_ssid() {
-                    wifi_sub.set_label(ssid);
-                } else {
-                    wifi_sub.set_label(tr("Connected", "Включен"));
-                }
-            } else {
-                wifi_tile.remove_css_class("on");
-                wifi_sub.set_label(tr("Disabled", "Выключен"));
-            }
-
-            let bt = *is_bt.borrow();
-            if bt {
-                bt_tile.add_css_class("on");
-                bt_sub.set_label(tr("Active", "Активен"));
-            } else {
-                bt_tile.remove_css_class("on");
-                bt_sub.set_label(tr("Disabled", "Выключен"));
-            }
-
-            let dnd = *is_dnd.borrow();
-            if dnd {
-                dnd_tile.add_css_class("on");
-                dnd_sub.set_label(tr("Notifications hidden", "Уведомления скрыты"));
-            } else {
-                dnd_tile.remove_css_class("on");
-                dnd_sub.set_label(tr("Off", "Выключено"));
-            }
-
-            let mm = *is_mic_muted.borrow();
-            if mm {
-                mic_tile.add_css_class("on");
-                mic_ico.set_label("󰍭");
-                mic_sub.set_label(tr("Muted", "Выключен"));
-            } else {
-                mic_tile.remove_css_class("on");
-                mic_ico.set_label("󰍬");
-                mic_sub.set_label(tr("Active", "Включен"));
-            }
-        })
-    };
-    update_tiles();
-
-    // Клики по основным плиткам с мгновенным обновлением UI
-    let u_wf = update_tiles.clone();
-    let w_flag = is_wifi.clone();
-    wifi_btn.connect_clicked(move |_| {
-        let next = !*w_flag.borrow();
-        *w_flag.borrow_mut() = next;
-        u_wf(); // Мгновенный отклик в интерфейсе
-        hw::toggle_wifi(next);
-    });
-    if let Some(more) = wifi_more {
-        let n = nav_cb.clone();
-        more.connect_clicked(move |_| n("network"));
-    }
-
-    let u_bt = update_tiles.clone();
-    let b_flag = is_bt.clone();
-    bt_btn.connect_clicked(move |_| {
-        let next = !*b_flag.borrow();
-        *b_flag.borrow_mut() = next;
-        u_bt(); // Мгновенный отклик в интерфейсе
-        hw::toggle_bluetooth(next);
-    });
-    if let Some(more) = bt_more {
-        let n = nav_cb.clone();
-        more.connect_clicked(move |_| n("bluetooth"));
-    }
-
-    let u_dnd = update_tiles.clone();
-    let d_flag = is_dnd.clone();
-    dnd_btn.connect_clicked(move |_| {
-        let next = !*d_flag.borrow();
-        *d_flag.borrow_mut() = next;
-        u_dnd(); // Мгновенный отклик в интерфейсе
-        hw::toggle_dnd();
-    });
-
-    let u_mic = update_tiles.clone();
-    let m_flag = is_mic_muted.clone();
-    mic_btn.connect_clicked(move |_| {
-        let next = !*m_flag.borrow();
-        *m_flag.borrow_mut() = next;
-        u_mic(); // Мгновенный отклик в интерфейсе
-        hw::toggle_mic_mute();
-    });
-
-    grid.attach(&wifi_tile, 0, 0, 1, 1);
-    grid.attach(&bt_tile, 1, 0, 1, 1);
-    grid.attach(&dnd_tile, 0, 1, 1, 1);
-    grid.attach(&mic_tile, 1, 1, 1, 1);
-    content.append(&grid);
-
-    // ---------------------------------------------------------
-    // 3. СЛАЙДЕРЫ (Громкость, Ноутбук, Внешний экран)
-    // ---------------------------------------------------------
-    let sliders = Box::new(Orientation::Vertical, 4);
-    sliders.add_css_class("cc-card");
-
-    // Слайдер громкости
-    let vol_row = Box::new(Orientation::Horizontal, 6);
-    let vol_ico = Button::with_label(if hw::is_volume_muted() { "󰝟" } else { "󰕾" });
-    vol_ico.add_css_class("cc-slider-ico");
-    vol_ico.set_tooltip_text(Some("Mute"));
-    let v_ico_clone = vol_ico.clone();
-    vol_ico.connect_clicked(move |_| {
-        hw::toggle_volume_mute();
-        let muted = hw::is_volume_muted();
-        v_ico_clone.set_label(if muted { "󰝟" } else { "󰕾" });
-    });
-    vol_row.append(&vol_ico);
-
-    let cur_vol = hw::get_volume();
-    let vol_sc = Scale::with_range(Orientation::Horizontal, 0.0, 150.0, 1.0);
-    vol_sc.add_css_class("cc-scale");
-    vol_sc.set_hexpand(true);
-    vol_sc.set_value(cur_vol as f64);
-    vol_row.append(&vol_sc);
-
-    let vol_pct = make_label(&format!("{}%", cur_vol), "cc-pct", 1.0);
-    vol_row.append(&vol_pct);
-
-    let vol_more = Button::with_label("›");
-    vol_more.add_css_class("cc-slider-ico");
-    vol_more.set_tooltip_text(Some(tr("Audio Devices", "Аудиоустройства")));
-    let n_cb_vol = nav_cb.clone();
-    vol_more.connect_clicked(move |_| n_cb_vol("audio"));
-    vol_row.append(&vol_more);
-
-    let v_pct_clone = vol_pct.clone();
-    vol_sc.connect_value_changed(move |sc| {
-        let val = sc.value() as u32;
-        v_pct_clone.set_label(&format!("{}%", val));
-        hw::set_volume(val);
-    });
-    sliders.append(&vol_row);
-
-    // Слайдер яркости ноутбука (скрыт на ПК без /sys/class/backlight)
-    if hw::has_backlight() {
-        let br_row = Box::new(Orientation::Horizontal, 6);
-        let br_ico = Button::with_label("󰃠");
-        br_ico.add_css_class("cc-slider-ico");
-        br_ico.set_tooltip_text(Some(tr("Laptop display brightness", "Яркость экрана ноутбука")));
-        br_row.append(&br_ico);
-
-        let cur_br = hw::get_laptop_brightness();
-        let br_sc = Scale::with_range(Orientation::Horizontal, 5.0, 100.0, 1.0);
-        br_sc.add_css_class("cc-scale");
-        br_sc.set_hexpand(true);
-        br_sc.set_value(cur_br as f64);
-        br_row.append(&br_sc);
-
-        let br_pct = make_label(&format!("{}%", cur_br), "cc-pct", 1.0);
-        br_row.append(&br_pct);
-
-        let b_pct_clone = br_pct.clone();
-        br_sc.connect_value_changed(move |sc| {
-            let val = sc.value() as u32;
-            b_pct_clone.set_label(&format!("{}%", val));
-            hw::set_laptop_brightness(val);
-        });
-        sliders.append(&br_row);
-    }
-
-    // Слайдер яркости внешнего монитора (DDC)
-    if hw::has_external_monitor() {
-        let ext_row = Box::new(Orientation::Horizontal, 6);
-        let ext_ico = Button::with_label("󰍹");
-        ext_ico.add_css_class("cc-slider-ico");
-        ext_ico.set_tooltip_text(Some(tr("External monitor brightness (DDC)", "Яркость внешнего монитора (DDC)")));
-        ext_row.append(&ext_ico);
-
-        let cur_ext = hw::get_cached_ddc_brightness();
-        let ext_sc = Scale::with_range(Orientation::Horizontal, 0.0, 100.0, 1.0);
-        ext_sc.add_css_class("cc-scale");
-        ext_sc.add_css_class("amber");
-        ext_sc.set_hexpand(true);
-        ext_sc.set_value(cur_ext as f64);
-        ext_row.append(&ext_sc);
-
-        let ext_pct = make_label(&format!("{}%", cur_ext), "cc-pct", 1.0);
-        ext_row.append(&ext_pct);
-
-        let e_pct_clone = ext_pct.clone();
-        ext_sc.connect_value_changed(move |sc| {
-            let val = sc.value() as u32;
-            e_pct_clone.set_label(&format!("{}%", val));
-            hw::set_ddc_brightness_async(val);
-        });
-
-        // Асинхронное освежение точного аппаратного значения
-        let e_sc_refresh = ext_sc.clone();
-        let e_pct_refresh = ext_pct.clone();
-        DDC_CALLBACK.with(|cb| {
-            *cb.borrow_mut() = Some(Rc::new(move |v: u32| {
-                e_sc_refresh.set_value(v as f64);
-                e_pct_refresh.set_label(&format!("{}%", v));
-            }));
-        });
-        hw::refresh_ddc_brightness_async();
-
-        sliders.append(&ext_row);
-    }
-    content.append(&sliders);
-
-    // ---------------------------------------------------------
-    // 4. ПИТАНИЕ И ПРОФИЛИ
-    // ---------------------------------------------------------
-    let has_ppd = hw::has_power_profiles();
-    let has_fan_telem = hw::has_fan_telemetry();
-    let has_ec = hw::has_msi_ec();
-    let has_bat_thresh = hw::has_battery_threshold();
-
-    if has_ppd || has_fan_telem || has_bat_thresh {
-        let pw_title = if has_fan_telem {
-            tr("POWER & COOLING", "ПИТАНИЕ И ОХЛАЖДЕНИЕ")
-        } else {
-            tr("POWER", "ПИТАНИЕ")
-        };
-        let pw_lbl = make_label(pw_title, "cc-label", 0.0);
-        content.append(&pw_lbl);
-    }
-
-    if has_ppd {
-        let seg = Box::new(Orientation::Horizontal, 2);
-        seg.add_css_class("cc-seg");
-        seg.set_homogeneous(true);
-
-        let eco_btn = Button::with_label(&format!("󰌪 {}", tr("Eco", "Эконом")));
-        eco_btn.add_css_class("eco");
-        let bal_btn = Button::with_label(&format!("󰾅 {}", tr("Balance", "Баланс")));
-        let turbo_btn = Button::with_label(&format!("󰓅 {}", tr("Turbo", "Турбо")));
-        turbo_btn.add_css_class("turbo");
-
-        let cur_prof = hw::get_power_profile();
-        match cur_prof.as_str() {
-            "power-saver" => eco_btn.add_css_class("active"),
-            "performance" => turbo_btn.add_css_class("active"),
-            _ => bal_btn.add_css_class("active"),
-        }
-
-        fn select_profile(target: &str, e: &Button, b: &Button, t: &Button) {
-            e.remove_css_class("active");
-            b.remove_css_class("active");
-            t.remove_css_class("active");
-            match target {
-                "power-saver" => e.add_css_class("active"),
-                "performance" => t.add_css_class("active"),
-                _ => b.add_css_class("active"),
-            }
-            hw::set_power_profile(target);
-        }
-
-        let e_c = eco_btn.clone();
-        let b_c = bal_btn.clone();
-        let t_c = turbo_btn.clone();
-        eco_btn.connect_clicked({
-            let e = e_c.clone();
-            let b = b_c.clone();
-            let t = t_c.clone();
-            move |_| select_profile("power-saver", &e, &b, &t)
-        });
-        bal_btn.connect_clicked({
-            let e = e_c.clone();
-            let b = b_c.clone();
-            let t = t_c.clone();
-            move |_| select_profile("balanced", &e, &b, &t)
-        });
-        turbo_btn.connect_clicked({
-            let e = e_c.clone();
-            let b = b_c.clone();
-            let t = t_c.clone();
-            move |_| select_profile("performance", &e, &b, &t)
-        });
-
-        seg.append(&eco_btn);
-        seg.append(&bal_btn);
-        seg.append(&turbo_btn);
-        content.append(&seg);
-    }
-
-    let mut update_fan_lbl_opt: Option<Rc<dyn Fn()>> = None;
-    if has_fan_telem {
-        // Colorless, subtle fan telemetry info with live refresh
-        let fan_lbl = make_label("", "cc-meta", 0.5);
-        fan_lbl.set_margin_top(2);
-        fan_lbl.set_margin_bottom(2);
-        content.append(&fan_lbl);
-
-        let update_fan_lbl = {
-            let fan_lbl = fan_lbl.clone();
-            Rc::new(move || {
-                let (cpu_rpm, gpu_rpm, cpu_pct, gpu_pct) = hw::get_fan_telemetry();
-                let c_pct = cpu_pct.unwrap_or(0);
-                let g_pct = gpu_pct.unwrap_or(0);
-                let is_cb = hw::get_cooler_boost();
-
-                let fan_str = if is_cb {
-                    match (cpu_rpm, gpu_rpm) {
-                        (Some(cr), Some(gr)) if cr > 0 && gr > 0 => {
-                            format!("󰈐 Cooler Boost: CPU {} RPM  ·  GPU {} RPM", cr, gr)
-                        }
-                        _ => tr(
-                            "󰈐 Cooler Boost: maximum speed (100%)",
-                            "󰈐 Cooler Boost: максимальные обороты (100%)",
-                        )
-                        .to_string(),
-                    }
-                } else {
-                    let mut parts = Vec::new();
-                    if let Some(cr) = cpu_rpm {
-                        if cr > 0 {
-                            if cpu_pct.is_some() {
-                                parts.push(format!("CPU {}% ({} RPM)", c_pct, cr));
-                            } else {
-                                parts.push(format!("Fan 1: {} RPM", cr));
-                            }
-                        } else if cpu_pct.is_some() {
-                            parts.push(format!("CPU {}%", c_pct));
-                        }
-                    } else if cpu_pct.is_some() {
-                        parts.push(format!("CPU {}%", c_pct));
-                    }
-
-                    if let Some(gr) = gpu_rpm {
-                        if gr > 0 {
-                            if gpu_pct.is_some() {
-                                parts.push(format!("GPU {}% ({} RPM)", g_pct, gr));
-                            } else {
-                                parts.push(format!("Fan 2: {} RPM", gr));
-                            }
-                        } else if gpu_pct.is_some() {
-                            parts.push(format!("GPU {}%", g_pct));
-                        }
-                    } else if gpu_pct.is_some() {
-                        parts.push(format!("GPU {}%", g_pct));
-                    }
-
-                    if parts.is_empty() {
-                        tr("󰈨 Fans: active", "󰈨 Кулеры: активный режим").to_string()
-                    } else {
-                        format!("󰈨 {}: {}", tr("Fans", "Кулеры"), parts.join(" · "))
-                    }
-                };
-                fan_lbl.set_label(&fan_str);
-            })
-        };
-        update_fan_lbl();
-
-        // Live periodic telemetry timer (1 sec) while widget is active/mapped
-        let u_fan_t = update_fan_lbl.clone();
-        let f_lbl_t = fan_lbl.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
-            if !f_lbl_t.is_mapped() {
-                return glib::ControlFlow::Break;
-            }
-            u_fan_t();
-            glib::ControlFlow::Continue
-        });
-        update_fan_lbl_opt = Some(update_fan_lbl);
-    }
-
-    // Чипы Cooler Boost (MSI EC) и Порога батареи (если поддерживается ядром)
-    if has_ec || has_bat_thresh {
-        let chips = Box::new(Orientation::Horizontal, 8);
-        chips.set_homogeneous(true);
-
-        if has_ec {
-            let cb_chip = Button::new();
-            cb_chip.add_css_class("cc-chip");
-            cb_chip.add_css_class("red");
-
-            let cb_active = Rc::new(RefCell::new(hw::get_cooler_boost()));
-            let update_cb_ui = {
-                let cb_chip = cb_chip.clone();
-                let cb_active = cb_active.clone();
-                Rc::new(move || {
-                    let active = *cb_active.borrow();
-                    if active {
-                        cb_chip.set_label(&format!("󰈐 {}: {}", tr("Cooler Boost", "Cooler Boost"), tr("on", "вкл")));
-                        cb_chip.add_css_class("on");
-                    } else {
-                        cb_chip.set_label(&format!("󰈐 {}", tr("Cooler Boost", "Cooler Boost")));
-                        cb_chip.remove_css_class("on");
-                    }
-                })
-            };
-            update_cb_ui();
-
-            let cb_active_c = cb_active.clone();
-            let u_cb = update_cb_ui.clone();
-            let u_fan_cb = update_fan_lbl_opt.clone();
-            cb_chip.connect_clicked(move |_| {
-                let cur = *cb_active_c.borrow();
-                let next = !cur;
-                *cb_active_c.borrow_mut() = next;
-                hw::set_cooler_boost(next);
-                u_cb();
-                if let Some(ref f) = u_fan_cb {
-                    f();
-                }
-            });
-            chips.append(&cb_chip);
-        }
-
-        if has_bat_thresh {
-            let bat_chip = Button::new();
-            bat_chip.add_css_class("cc-chip");
-            let bat_thresh = Rc::new(RefCell::new(hw::get_battery_threshold()));
-            let update_bat_ui = {
-                let bat_chip = bat_chip.clone();
-                let bat_thresh = bat_thresh.clone();
-                Rc::new(move || {
-                    let t = *bat_thresh.borrow();
-                    if t < 100 {
-                        bat_chip.set_label(&format!("󱈑 {}: {}%", tr("Battery Limit", "Лимит заряда"), t));
-                        bat_chip.add_css_class("on");
-                    } else {
-                        bat_chip.set_label(&format!("󱈑 {}", tr("Charge to 100%", "Заряд до 100%")));
-                        bat_chip.remove_css_class("on");
-                    }
-                })
-            };
-            update_bat_ui();
-
-            let bat_thresh_c = bat_thresh.clone();
-            let u_bat = update_bat_ui.clone();
-            bat_chip.connect_clicked(move |_| {
-                let cur = *bat_thresh_c.borrow();
-                let next = if cur < 100 { 100 } else { 80 };
-                *bat_thresh_c.borrow_mut() = next;
-                hw::set_battery_threshold(next);
-                u_bat();
-            });
-            chips.append(&bat_chip);
-        }
-        content.append(&chips);
-    }
-
-    // ---------------------------------------------------------
-    // 5. ГРАФИКА (EnvyControl — только если утилита доступна)
-    // ---------------------------------------------------------
-    if hw::has_envycontrol() {
-        let gpu_row = Box::new(Orientation::Horizontal, 8);
-        let gpu_txt = Box::new(Orientation::Vertical, 0);
-        gpu_txt.set_hexpand(true);
-        gpu_txt.set_valign(Align::Center);
-        gpu_txt.append(&make_label(tr("GRAPHICS", "ГРАФИКА"), "cc-label", 0.0));
-        let gpu_desc = make_label(tr("Hybrid graphics (iGPU + dGPU)", "Гибридная графика (iGPU + dGPU)"), "cc-foot", 0.0);
-        gpu_txt.append(&gpu_desc);
-        gpu_row.append(&gpu_txt);
-
-        let gpu_seg = Box::new(Orientation::Horizontal, 2);
-        gpu_seg.add_css_class("cc-seg");
-
-        let igpu_btn = Button::with_label("󰢮 iGPU");
-        let hybrid_btn = Button::with_label("󰾲 Hybrid");
-
-        let cur_mode = hw::get_gpu_mode();
-        if cur_mode == "integrated" {
-            igpu_btn.add_css_class("active");
-            gpu_desc.set_label(tr("Integrated graphics only (iGPU)", "Только встроенная графика (iGPU)"));
-        } else {
-            hybrid_btn.add_css_class("active");
-            gpu_desc.set_label(tr("iGPU + discrete GPU on demand", "iGPU + дискретная GPU по требованию"));
-        }
-
-        let gpu_status = make_label("", "cc-status", 0.0);
-        gpu_status.set_wrap(true);
-        gpu_status.set_visible(false);
-
-        let reboot_btn = Button::with_label(tr("󰜉  Reboot now", "󰜉  Перезагрузить сейчас"));
-        reboot_btn.add_css_class("cc-chip");
-        reboot_btn.add_css_class("on");
-        reboot_btn.set_visible(false);
-        reboot_btn.connect_clicked(|_| {
-            let _ = Command::new("systemctl").arg("reboot").spawn();
-        });
-
-        let igpu_res = igpu_btn.clone();
-        let hyb_res = hybrid_btn.clone();
-        let desc_res = gpu_desc.clone();
-        let stat_res = gpu_status.clone();
-        let reboot_res = reboot_btn.clone();
-
-        let cb = Rc::new(move |ok: bool, target: &'static str| {
-            igpu_res.set_sensitive(true);
-            hyb_res.set_sensitive(true);
-            if ok {
-                igpu_res.remove_css_class("active");
-                hyb_res.remove_css_class("active");
-                if target == "integrated" {
-                    igpu_res.add_css_class("active");
-                    desc_res.set_label(tr("Integrated graphics only (iGPU)", "Только встроенная графика (iGPU)"));
-                } else {
-                    hyb_res.add_css_class("active");
-                    desc_res.set_label(tr("iGPU + discrete GPU on demand", "iGPU + дискретная GPU по требованию"));
-                }
-                stat_res.set_label(tr("󰄬 Ready. Mode will apply after reboot.", "󰄬 Готово. Режим применится после перезагрузки."));
-                stat_res.add_css_class("ok");
-                reboot_res.set_visible(true);
-            } else {
-                stat_res.set_label(tr("󰅙 Envycontrol switch error", "󰅙 Ошибка переключения envycontrol"));
-                stat_res.add_css_class("err");
-            }
-        });
-
-        GPU_CALLBACK.with(|c| {
-            *c.borrow_mut() = Some(cb);
-        });
-
-        let igpu_click = igpu_btn.clone();
-        let hyb_click = hybrid_btn.clone();
-        let stat_click = gpu_status.clone();
-        igpu_btn.connect_clicked(move |_| {
-            igpu_click.set_sensitive(false);
-            hyb_click.set_sensitive(false);
-            stat_click.set_visible(true);
-            stat_click.set_label("󰑐 Переключение на integrated: пересборка initramfs...");
-            thread::spawn(move || {
-                let ok = hw::switch_gpu_mode("integrated");
-                glib::MainContext::default().invoke(move || {
-                    GPU_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(ok, "integrated");
-                        }
-                    });
-                });
-            });
-        });
-
-        let igpu_click2 = igpu_btn.clone();
-        let hyb_click2 = hybrid_btn.clone();
-        let stat_click2 = gpu_status.clone();
-        hybrid_btn.connect_clicked(move |_| {
-            igpu_click2.set_sensitive(false);
-            hyb_click2.set_sensitive(false);
-            stat_click2.set_visible(true);
-            stat_click2.set_label("󰑐 Переключение на hybrid: пересборка initramfs...");
-            thread::spawn(move || {
-                let ok = hw::switch_gpu_mode("hybrid");
-                glib::MainContext::default().invoke(move || {
-                    GPU_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(ok, "hybrid");
-                        }
-                    });
-                });
-            });
-        });
-
-        gpu_seg.append(&igpu_btn);
-        gpu_seg.append(&hybrid_btn);
-        gpu_row.append(&gpu_seg);
-        content.append(&gpu_row);
-        content.append(&gpu_status);
-        content.append(&reboot_btn);
-    }
-
-    let scroll = ScrolledWindow::builder()
-        .hscrollbar_policy(PolicyType::Never)
-        .vscrollbar_policy(PolicyType::Automatic)
-        .propagate_natural_width(true)
-        .vexpand(true)
-        .hexpand(true)
-        .min_content_height(480)
-        .child(&content)
-        .build();
-    root.append(&scroll);
-
+    let mut controller = ControlCenterModel::builder().launch(init).detach();
+    controller.detach_runtime();
+    let root = controller.widget().clone();
     (root, 384, 540)
 }

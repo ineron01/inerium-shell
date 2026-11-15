@@ -1,16 +1,16 @@
-use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::process::Command;
-use std::rc::Rc;
 use std::thread;
+use std::time::Duration;
 
 use gtk4::prelude::*;
-use gtk4::{Align, Box, Button, GestureClick, Label, Orientation, Picture, ProgressBar};
+use gtk4::{Align, GestureClick, Orientation};
 use inerium_i18n::tr;
+use relm4::prelude::*;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MediaInfo {
     pub title: String,
     pub artist: String,
@@ -24,7 +24,7 @@ pub struct MediaInfo {
     pub is_playing: bool,
 }
 
-fn query_media_info() -> Option<MediaInfo> {
+pub fn query_media_info() -> Option<MediaInfo> {
     let out = Command::new("playerctl")
         .args([
             "metadata",
@@ -48,9 +48,21 @@ fn query_media_info() -> Option<MediaInfo> {
         return None;
     }
 
-    let player_name = if parts.len() > 7 { parts[7].trim().to_string() } else { String::new() };
-    let position_us = if parts.len() > 8 { parts[8].trim().parse::<u64>().unwrap_or(0) } else { 0 };
-    let length_us = if parts.len() > 9 { parts[9].trim().parse::<u64>().unwrap_or(0) } else { 0 };
+    let player_name = if parts.len() > 7 {
+        parts[7].trim().to_string()
+    } else {
+        String::new()
+    };
+    let position_us = if parts.len() > 8 {
+        parts[8].trim().parse::<u64>().unwrap_or(0)
+    } else {
+        0
+    };
+    let length_us = if parts.len() > 9 {
+        parts[9].trim().parse::<u64>().unwrap_or(0)
+    } else {
+        0
+    };
 
     Some(MediaInfo {
         title: parts[0].trim().to_string(),
@@ -90,119 +102,390 @@ fn get_player_badge(name: &str) -> (&'static str, String) {
     }
 }
 
-type MediaCallback = Rc<dyn Fn(MediaInfo)>;
+fn resolve_art(url: &str, sender: &ComponentSender<MediaModel>) -> (Option<PathBuf>, String) {
+    if url.is_empty() {
+        return (None, String::new());
+    }
 
-thread_local! {
-    static MEDIA_CALLBACK: RefCell<Option<MediaCallback>> = RefCell::new(None);
+    if let Some(file_path) = url.strip_prefix("file://") {
+        let p = PathBuf::from(file_path);
+        if p.exists() {
+            (Some(p), url.to_string())
+        } else {
+            (None, url.to_string())
+        }
+    } else if url.starts_with("http://") || url.starts_with("https://") {
+        let cache_p = get_art_cache_path(url);
+        if cache_p.exists() {
+            (Some(cache_p), url.to_string())
+        } else {
+            let target_url = url.to_string();
+            let target_path = cache_p.clone();
+            let s = sender.clone();
+            thread::spawn(move || {
+                let _ = Command::new("curl")
+                    .args([
+                        "-s",
+                        "-L",
+                        "-o",
+                        target_path.to_str().unwrap_or(""),
+                        &target_url,
+                        "--max-time",
+                        "2",
+                    ])
+                    .output();
+                if target_path.exists() {
+                    s.input(MediaMsg::UpdateArt(Some(target_path)));
+                }
+            });
+            (None, url.to_string())
+        }
+    } else {
+        (None, url.to_string())
+    }
 }
 
-pub fn build_media_view<FNav, FClose>(
-    nav_cb: FNav,
-    _close_cb: FClose,
-) -> (Box, i32, i32)
-where
-    FNav: Fn(&str) + 'static + Clone,
-    FClose: Fn() + 'static + Clone,
-{
-    let root = Box::new(Orientation::Vertical, 10);
-    root.add_css_class("popup-container");
-    root.set_size_request(390, -1);
+pub struct MediaModel {
+    info: MediaInfo,
+    art_path: Option<PathBuf>,
+    last_art_url: String,
+    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    #[allow(dead_code)]
+    close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
 
-    // -------------------------------------------------------------
-    // 1. Header (Back, Player Badge, Status Pill)
-    // -------------------------------------------------------------
-    let head = Box::new(Orientation::Horizontal, 8);
-    let back_btn = Button::with_label("‹ Назад");
-    back_btn.add_css_class("back-btn");
-    let n_cb = nav_cb.clone();
-    back_btn.connect_clicked(move |_| n_cb("control"));
-    head.append(&back_btn);
+#[derive(Debug)]
+pub enum MediaMsg {
+    PollTick,
+    UpdateInfo(Option<MediaInfo>),
+    UpdateArt(Option<PathBuf>),
+    PlayPause,
+    Previous,
+    Next,
+    Seek(f64),
+    Back,
+}
 
-    let player_badge = Label::new(Some(tr("󰎆 Media Player", "󰎆 Медиаплеер")));
-    player_badge.add_css_class("media-badge");
-    player_badge.set_halign(Align::Start);
-    head.append(&player_badge);
+pub struct MediaInit {
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
 
-    let spacer = Box::new(Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    head.append(&spacer);
+#[relm4::component(pub)]
+impl SimpleComponent for MediaModel {
+    type Input = MediaMsg;
+    type Output = ();
+    type Init = MediaInit;
 
-    let status_pill = Label::new(Some(tr("Idle", "Ожидание")));
-    status_pill.add_css_class("media-status-pill");
-    head.append(&status_pill);
+    view! {
+        #[root]
+        gtk4::Box {
+            add_css_class: "popup-container",
+            set_orientation: Orientation::Vertical,
+            set_spacing: 10,
+            set_size_request: (390, -1),
 
-    root.append(&head);
+            // 1. Header (Back, Player Badge, Spacer, Status Pill)
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
 
-    // -------------------------------------------------------------
-    // 2. Track Info Card (Art, Title, Artist, Album)
-    // -------------------------------------------------------------
-    let card = Box::new(Orientation::Horizontal, 12);
-    card.add_css_class("media-card");
+                gtk4::Button {
+                    add_css_class: "back-btn",
+                    set_label: tr("‹ Back", "‹ Назад"),
+                    connect_clicked => MediaMsg::Back,
+                },
 
-    let art_box = Box::new(Orientation::Vertical, 0);
-    art_box.set_size_request(64, 64);
-    art_box.set_valign(Align::Center);
-    art_box.add_css_class("media-art-box");
+                #[name = "player_badge"]
+                gtk4::Label {
+                    add_css_class: "media-badge",
+                    set_halign: Align::Start,
+                    #[watch]
+                    set_label: &{
+                        let (ico, badge_text) = get_player_badge(&model.info.player_name);
+                        format!("{} {}", ico, badge_text)
+                    },
+                },
 
-    let art_pic = Picture::new();
-    art_pic.set_size_request(64, 64);
-    art_pic.set_content_fit(gtk4::ContentFit::Contain);
-    art_pic.set_can_shrink(true);
-    art_pic.add_css_class("media-art");
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+                    set_hexpand: true,
+                },
 
-    let art_fallback = Label::new(Some("󰎆"));
-    art_fallback.add_css_class("media-art-fallback");
-    art_fallback.set_valign(Align::Center);
-    art_fallback.set_halign(Align::Center);
+                #[name = "status_pill"]
+                gtk4::Label {
+                    #[watch]
+                    set_css_classes: if model.info.is_playing {
+                        &["media-status-pill"]
+                    } else {
+                        &["media-status-pill", "paused"]
+                    },
+                    #[watch]
+                    set_label: if model.info.is_playing {
+                        tr("󰐊 Playing", "󰐊 Играет")
+                    } else {
+                        tr("󰏤 Paused", "󰏤 Пауза")
+                    },
+                },
+            },
 
-    art_box.append(&art_pic);
-    art_box.append(&art_fallback);
-    card.append(&art_box);
+            // 2. Track Info Card (Art, Title, Artist/Album)
+            gtk4::Box {
+                add_css_class: "media-card",
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 12,
 
-    let meta_box = Box::new(Orientation::Vertical, 3);
-    meta_box.set_valign(Align::Center);
-    meta_box.set_hexpand(true);
+                gtk4::Box {
+                    add_css_class: "media-art-box",
+                    set_orientation: Orientation::Vertical,
+                    set_size_request: (64, 64),
+                    set_valign: Align::Center,
 
-    let track_title = Label::new(Some(tr("Nothing playing", "Ничего не воспроизводится")));
-    track_title.add_css_class("media-title");
-    track_title.set_xalign(0.0);
-    track_title.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    track_title.set_max_width_chars(25);
-    meta_box.append(&track_title);
+                    #[name = "art_pic"]
+                    gtk4::Picture {
+                        add_css_class: "media-art",
+                        set_size_request: (64, 64),
+                        set_content_fit: gtk4::ContentFit::Contain,
+                        set_can_shrink: true,
+                        #[watch]
+                        set_visible: model.art_path.is_some(),
+                        #[watch]
+                        set_filename: model.art_path.as_deref(),
+                    },
 
-    let track_artist = Label::new(Some(tr("Waiting for media stream...", "Ожидание медиапотока...")));
-    track_artist.add_css_class("media-artist");
-    track_artist.set_xalign(0.0);
-    track_artist.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    track_artist.set_max_width_chars(27);
-    meta_box.append(&track_artist);
+                    #[name = "art_fallback"]
+                    gtk4::Label {
+                        add_css_class: "media-art-fallback",
+                        set_valign: Align::Center,
+                        set_halign: Align::Center,
+                        set_label: "󰎆",
+                        #[watch]
+                        set_visible: model.art_path.is_none(),
+                    },
+                },
 
-    card.append(&meta_box);
-    root.append(&card);
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 3,
+                    set_valign: Align::Center,
+                    set_hexpand: true,
 
-    // -------------------------------------------------------------
-    // 3. Progress Bar & Time Timestamps
-    // -------------------------------------------------------------
-    let progress_box = Box::new(Orientation::Vertical, 4);
-    progress_box.set_margin_start(4);
-    progress_box.set_margin_end(4);
+                    gtk4::Label {
+                        add_css_class: "media-title",
+                        set_xalign: 0.0,
+                        set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                        set_max_width_chars: 25,
+                        #[watch]
+                        set_label: if model.info.title.is_empty() {
+                            tr("Nothing playing", "Ничего не воспроизводится")
+                        } else {
+                            &model.info.title
+                        },
+                    },
 
-    let progress_bar = ProgressBar::new();
-    progress_bar.add_css_class("media-progress");
-    progress_bar.set_fraction(0.0);
+                    gtk4::Label {
+                        add_css_class: "media-artist",
+                        set_xalign: 0.0,
+                        set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                        set_max_width_chars: 27,
+                        #[watch]
+                        set_label: &{
+                            if model.info.title.is_empty() {
+                                tr("Waiting for media stream...", "Ожидание медиапотока...").to_string()
+                            } else if !model.info.album.is_empty()
+                                && model.info.album != model.info.title
+                                && model.info.album != model.info.artist
+                            {
+                                format!("{} · {}", model.info.artist, model.info.album)
+                            } else if !model.info.artist.is_empty() {
+                                model.info.artist.clone()
+                            } else {
+                                tr("Unknown artist", "Неизвестный исполнитель").to_string()
+                            }
+                        },
+                    },
+                },
+            },
 
-    let current_length_us = Rc::new(RefCell::new(0u64));
-    let len_click_ref = current_length_us.clone();
+            // 3. Progress Bar & Time Timestamps
+            gtk4::Box {
+                set_orientation: Orientation::Vertical,
+                set_spacing: 4,
+                set_margin_start: 4,
+                set_margin_end: 4,
 
-    // Click on progress bar to seek
-    let click_gesture = GestureClick::new();
-    click_gesture.connect_pressed(move |gesture, _, x, _| {
-        let total_us = *len_click_ref.borrow();
-        if total_us > 0
-            && let Some(widget) = gesture.widget() {
-                let width = widget.width() as f64;
+                #[name = "progress_bar"]
+                gtk4::ProgressBar {
+                    add_css_class: "media-progress",
+                    #[watch]
+                    set_fraction: if model.info.length_us > 0 {
+                        (model.info.position_us as f64 / model.info.length_us as f64).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    },
+                },
+
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+
+                    gtk4::Label {
+                        add_css_class: "media-time",
+                        set_halign: Align::Start,
+                        #[watch]
+                        set_label: if !model.info.position_str.is_empty() {
+                            &model.info.position_str
+                        } else {
+                            "0:00"
+                        },
+                    },
+
+                    gtk4::Box {
+                        set_orientation: Orientation::Horizontal,
+                        set_hexpand: true,
+                    },
+
+                    gtk4::Label {
+                        add_css_class: "media-time",
+                        set_halign: Align::End,
+                        #[watch]
+                        set_label: if !model.info.length_str.is_empty() {
+                            &model.info.length_str
+                        } else {
+                            "0:00"
+                        },
+                    },
+                },
+            },
+
+            // 4. Playback Controls (Prev, Play/Pause, Next)
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 14,
+                set_halign: Align::Center,
+                set_margin_top: 2,
+                set_margin_bottom: 2,
+
+                gtk4::Button {
+                    add_css_class: "media-btn",
+                    set_label: "󰒮",
+                    connect_clicked => MediaMsg::Previous,
+                },
+
+                #[name = "play_btn"]
+                gtk4::Button {
+                    add_css_class: "play-btn",
+                    #[watch]
+                    set_label: if model.info.is_playing { "󰏤" } else { "󰐊" },
+                    connect_clicked => MediaMsg::PlayPause,
+                },
+
+                gtk4::Button {
+                    add_css_class: "media-btn",
+                    set_label: "󰒭",
+                    connect_clicked => MediaMsg::Next,
+                },
+            },
+        }
+    }
+
+    fn init(
+        init: Self::Init,
+        root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let initial_info = query_media_info().unwrap_or_default();
+        let (art_path, last_art_url) = resolve_art(&initial_info.art_url, &sender);
+
+        let model = MediaModel {
+            info: initial_info,
+            art_path,
+            last_art_url,
+            nav_cb: init.nav_cb,
+            close_cb: init.close_cb,
+        };
+
+        let widgets = view_output!();
+
+        // Attach gesture click for seeking on progress bar
+        let s_seek = sender.clone();
+        let gesture = GestureClick::new();
+        gesture.connect_pressed(move |g, _, x, _| {
+            if let Some(w) = g.widget() {
+                let width = w.width() as f64;
                 if width > 0.0 {
                     let frac = (x / width).clamp(0.0, 1.0);
+                    s_seek.input(MediaMsg::Seek(frac));
+                }
+            }
+        });
+        widgets.progress_bar.add_controller(gesture);
+
+        // Periodic 1-second refresh timer while root widget is mapped
+        let root_mapped = root.clone();
+        let s_timer = sender.clone();
+        glib::timeout_add_local(Duration::from_millis(1000), move || {
+            if !root_mapped.is_mapped() {
+                return glib::ControlFlow::Break;
+            }
+            s_timer.input(MediaMsg::PollTick);
+            glib::ControlFlow::Continue
+        });
+
+        ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        match msg {
+            MediaMsg::PollTick => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let info = query_media_info();
+                    s.input(MediaMsg::UpdateInfo(info));
+                });
+            }
+            MediaMsg::UpdateInfo(opt_info) => {
+                let info = opt_info.unwrap_or_default();
+                if info.art_url != self.last_art_url {
+                    let (path, url) = resolve_art(&info.art_url, &sender);
+                    self.art_path = path;
+                    self.last_art_url = url;
+                }
+                self.info = info;
+            }
+            MediaMsg::UpdateArt(path) => {
+                self.art_path = path;
+            }
+            MediaMsg::PlayPause => {
+                self.info.is_playing = !self.info.is_playing;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("playerctl").arg("play-pause").output();
+                    thread::sleep(Duration::from_millis(120));
+                    let fresh = query_media_info();
+                    s.input(MediaMsg::UpdateInfo(fresh));
+                });
+            }
+            MediaMsg::Previous => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("playerctl").arg("previous").output();
+                    thread::sleep(Duration::from_millis(120));
+                    let fresh = query_media_info();
+                    s.input(MediaMsg::UpdateInfo(fresh));
+                });
+            }
+            MediaMsg::Next => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("playerctl").arg("next").output();
+                    thread::sleep(Duration::from_millis(120));
+                    let fresh = query_media_info();
+                    s.input(MediaMsg::UpdateInfo(fresh));
+                });
+            }
+            MediaMsg::Seek(frac) => {
+                let total_us = self.info.length_us;
+                if total_us > 0 {
                     let target_sec = (total_us as f64 / 1_000_000.0) * frac;
                     thread::spawn(move || {
                         let _ = Command::new("playerctl")
@@ -211,271 +494,28 @@ where
                     });
                 }
             }
-    });
-    progress_bar.add_controller(click_gesture);
-    progress_box.append(&progress_bar);
-
-    let time_box = Box::new(Orientation::Horizontal, 0);
-    let time_pos = Label::new(Some("0:00"));
-    time_pos.add_css_class("media-time");
-    time_pos.set_halign(Align::Start);
-    time_box.append(&time_pos);
-
-    let time_spacer = Box::new(Orientation::Horizontal, 0);
-    time_spacer.set_hexpand(true);
-    time_box.append(&time_spacer);
-
-    let time_len = Label::new(Some("0:00"));
-    time_len.add_css_class("media-time");
-    time_len.set_halign(Align::End);
-    time_box.append(&time_len);
-
-    progress_box.append(&time_box);
-    root.append(&progress_box);
-
-    // -------------------------------------------------------------
-    // 4. Playback Controls (Prev, Play/Pause, Next)
-    // -------------------------------------------------------------
-    let ctrl_box = Box::new(Orientation::Horizontal, 14);
-    ctrl_box.set_halign(Align::Center);
-    ctrl_box.set_margin_top(2);
-    ctrl_box.set_margin_bottom(2);
-
-    let prev_btn = Button::with_label("󰒮");
-    prev_btn.add_css_class("media-btn");
-    ctrl_box.append(&prev_btn);
-
-    let play_btn = Button::with_label("󰐊");
-    play_btn.add_css_class("play-btn");
-    ctrl_box.append(&play_btn);
-
-    let next_btn = Button::with_label("󰒭");
-    next_btn.add_css_class("media-btn");
-    ctrl_box.append(&next_btn);
-
-    root.append(&ctrl_box);
-
-    // -------------------------------------------------------------
-    // 5. Reactive State & UI Binding
-    // -------------------------------------------------------------
-    let title_ui = track_title.clone();
-    let artist_ui = track_artist.clone();
-    let pic_ui = art_pic.clone();
-    let fb_ui = art_fallback.clone();
-    let play_ui = play_btn.clone();
-    let p_bar_ui = progress_bar.clone();
-    let pos_ui = time_pos.clone();
-    let len_ui = time_len.clone();
-    let badge_ui = player_badge.clone();
-    let pill_ui = status_pill.clone();
-
-    let is_playing_state = Rc::new(RefCell::new(false));
-    let last_art_url = Rc::new(RefCell::new(String::new()));
-    let len_state = current_length_us.clone();
-
-    let is_p_ref = is_playing_state.clone();
-    let last_art_ref = last_art_url.clone();
-
-    let apply_info = Rc::new(move |info: MediaInfo| {
-        *is_p_ref.borrow_mut() = info.is_playing;
-        *len_state.borrow_mut() = info.length_us;
-
-        // Play/Pause button
-        play_ui.set_label(if info.is_playing { "󰏤" } else { "󰐊" });
-
-        // Player Badge & Status Pill
-        let (ico, badge_text) = get_player_badge(&info.player_name);
-        badge_ui.set_label(&format!("{} {}", ico, badge_text));
-
-        if info.is_playing {
-            pill_ui.set_label(tr("󰐊 Playing", "󰐊 Играет"));
-            pill_ui.remove_css_class("paused");
-        } else {
-            pill_ui.set_label(tr("󰏤 Paused", "󰏤 Пауза"));
-            pill_ui.add_css_class("paused");
-        }
-
-        // Title & Artist/Album
-        if info.title.is_empty() {
-            title_ui.set_label(tr("Nothing playing", "Ничего не воспроизводится"));
-            artist_ui.set_label(tr("Waiting for media stream...", "Ожидание медиапотока..."));
-            pos_ui.set_label("0:00");
-            len_ui.set_label("0:00");
-            p_bar_ui.set_fraction(0.0);
-            pic_ui.set_visible(false);
-            fb_ui.set_visible(true);
-            return;
-        }
-
-        title_ui.set_label(&info.title);
-
-        let sub_text = if !info.album.is_empty() && info.album != info.title && info.album != info.artist {
-            format!("{} · {}", info.artist, info.album)
-        } else if !info.artist.is_empty() {
-            info.artist.clone()
-        } else {
-            tr("Unknown artist", "Неизвестный исполнитель").to_string()
-        };
-        artist_ui.set_label(&sub_text);
-
-        // Timestamps & Progress Fraction
-        pos_ui.set_label(if !info.position_str.is_empty() { &info.position_str } else { "0:00" });
-        len_ui.set_label(if !info.length_str.is_empty() { &info.length_str } else { "0:00" });
-
-        let frac = if info.length_us > 0 {
-            (info.position_us as f64 / info.length_us as f64).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        p_bar_ui.set_fraction(frac);
-
-        // Album Art Handling
-        let url = info.art_url.clone();
-        if url.is_empty() {
-            pic_ui.set_visible(false);
-            fb_ui.set_visible(true);
-            *last_art_ref.borrow_mut() = String::new();
-        } else if *last_art_ref.borrow() != url {
-            *last_art_ref.borrow_mut() = url.clone();
-
-            if let Some(file_path) = url.strip_prefix("file://") {
-                let p = std::path::Path::new(file_path);
-                if p.exists() {
-                    pic_ui.set_filename(Some(p));
-                    pic_ui.set_visible(true);
-                    fb_ui.set_visible(false);
-                } else {
-                    pic_ui.set_visible(false);
-                    fb_ui.set_visible(true);
-                }
-            } else if url.starts_with("http://") || url.starts_with("https://") {
-                let cache_p = get_art_cache_path(&url);
-                if cache_p.exists() {
-                    pic_ui.set_filename(Some(&cache_p));
-                    pic_ui.set_visible(true);
-                    fb_ui.set_visible(false);
-                } else {
-                    pic_ui.set_visible(false);
-                    fb_ui.set_visible(true);
-                    let target_url = url.clone();
-                    let target_path = cache_p.clone();
-                    thread::spawn(move || {
-                        let _ = Command::new("curl")
-                            .args(["-s", "-L", "-o", target_path.to_str().unwrap_or(""), &target_url, "--max-time", "2"])
-                            .output();
-                        if target_path.exists() {
-                            glib::MainContext::default().invoke(move || {
-                                MEDIA_CALLBACK.with(|cb| {
-                                    if let Some(ref f) = *cb.borrow()
-                                        && let Some(inf) = query_media_info() {
-                                            f(inf);
-                                        }
-                                });
-                            });
-                        }
-                    });
-                }
-            } else {
-                pic_ui.set_visible(false);
-                fb_ui.set_visible(true);
+            MediaMsg::Back => {
+                (self.nav_cb)("control");
             }
         }
-    });
-
-    // Initial query
-    if let Some(info) = query_media_info() {
-        apply_info(info);
-    } else {
-        apply_info(MediaInfo::default());
     }
+}
 
-    // Register callback for async events
-    let apply_cb = apply_info.clone();
-    let cb = Rc::new(move |info: MediaInfo| {
-        apply_cb(info);
-    });
-    MEDIA_CALLBACK.with(|c| {
-        *c.borrow_mut() = Some(cb);
-    });
+pub fn build_media_view<FNav, FClose>(
+    nav_cb: FNav,
+    close_cb: FClose,
+) -> (gtk4::Box, i32, i32)
+where
+    FNav: Fn(&str) + 'static + Clone,
+    FClose: Fn() + 'static + Clone,
+{
+    let init = MediaInit {
+        nav_cb: std::boxed::Box::new(nav_cb),
+        close_cb: std::boxed::Box::new(close_cb),
+    };
 
-    // Live position and status timer (1 sec) while mapped
-    let root_mapped = root.clone();
-    let apply_timer = apply_info.clone();
-    glib::timeout_add_local(std::time::Duration::from_millis(1000), move || {
-        if !root_mapped.is_mapped() {
-            return glib::ControlFlow::Break;
-        }
-        if let Some(info) = query_media_info() {
-            apply_timer(info);
-        }
-        glib::ControlFlow::Continue
-    });
-
-    // Previous button
-    prev_btn.connect_clicked(move |_| {
-        thread::spawn(move || {
-            let _ = Command::new("playerctl").arg("previous").output();
-            thread::sleep(std::time::Duration::from_millis(150));
-            if let Some(info) = query_media_info() {
-                glib::MainContext::default().invoke(move || {
-                    MEDIA_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(info);
-                        }
-                    });
-                });
-            }
-        });
-    });
-
-    // Play/Pause button with instant optimistic UI toggle
-    let play_click = play_btn.clone();
-    let is_p_click = is_playing_state.clone();
-    let pill_click = status_pill.clone();
-    play_btn.connect_clicked(move |_| {
-        let cur = *is_p_click.borrow();
-        let next = !cur;
-        *is_p_click.borrow_mut() = next;
-        play_click.set_label(if next { "󰏤" } else { "󰐊" });
-        if next {
-            pill_click.set_label("󰐊 Играет");
-            pill_click.remove_css_class("paused");
-        } else {
-            pill_click.set_label("󰏤 Пауза");
-            pill_click.add_css_class("paused");
-        }
-
-        thread::spawn(move || {
-            let _ = Command::new("playerctl").arg("play-pause").output();
-            thread::sleep(std::time::Duration::from_millis(150));
-            if let Some(info) = query_media_info() {
-                glib::MainContext::default().invoke(move || {
-                    MEDIA_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(info);
-                        }
-                    });
-                });
-            }
-        });
-    });
-
-    // Next button
-    next_btn.connect_clicked(move |_| {
-        thread::spawn(move || {
-            let _ = Command::new("playerctl").arg("next").output();
-            thread::sleep(std::time::Duration::from_millis(150));
-            if let Some(info) = query_media_info() {
-                glib::MainContext::default().invoke(move || {
-                    MEDIA_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(info);
-                        }
-                    });
-                });
-            }
-        });
-    });
-
+    let mut controller = MediaModel::builder().launch(init).detach();
+    controller.detach_runtime();
+    let root = controller.widget().clone();
     (root, 390, 210)
 }

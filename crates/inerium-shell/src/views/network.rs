@@ -1,16 +1,16 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::Command;
-use std::rc::Rc;
 use std::thread;
+use std::time::Duration;
 
 use gtk4::prelude::*;
-use gtk4::{Box, Button, Entry, Label, Orientation, ScrolledWindow, Switch};
+use gtk4::{Button, Label, Orientation, PolicyType};
+use inerium_i18n::{tr, tr_fmt};
+use relm4::prelude::*;
 
 use crate::hw;
-use inerium_i18n::{tr, tr_fmt};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WifiAp {
     pub ssid: String,
     pub signal: u32,
@@ -19,30 +19,10 @@ pub struct WifiAp {
     pub is_saved: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SavedConn {
     pub uuid: String,
     pub _name: String,
-}
-
-#[allow(clippy::enum_variant_names)]
-pub enum NetEvent {
-    RescanDone(Vec<WifiAp>),
-    ConnectDone {
-        ssid: String,
-        success: bool,
-        error: Option<String>,
-        networks: Vec<WifiAp>,
-    },
-    DisconnectDone {
-        networks: Vec<WifiAp>,
-    },
-}
-
-type NetCallback = Rc<dyn Fn(NetEvent)>;
-
-thread_local! {
-    static NET_CALLBACK: RefCell<Option<NetCallback>> = RefCell::new(None);
 }
 
 pub fn query_saved_wifi_connections() -> HashMap<String, SavedConn> {
@@ -116,7 +96,6 @@ pub fn query_wifi_networks() -> Vec<WifiAp> {
         }
     }
 
-    // Если сейчас подключены к сети, но она не попала в скан (скрытая сеть / лаг сканера)
     if let Some(ref act) = active_ssid {
         if let Some(existing) = networks.iter_mut().find(|n| &n.ssid == act) {
             existing.is_active = true;
@@ -131,7 +110,6 @@ pub fn query_wifi_networks() -> Vec<WifiAp> {
         }
     }
 
-    // Sort: 1) Active first; 2) Saved networks by signal; 3) Unsaved networks by signal
     networks.sort_by(|a, b| {
         b.is_active
             .cmp(&a.is_active)
@@ -142,34 +120,527 @@ pub fn query_wifi_networks() -> Vec<WifiAp> {
     networks
 }
 
+fn parse_cmd_output(res: Result<std::process::Output, std::io::Error>) -> (bool, String) {
+    match res {
+        Ok(r) => {
+            if r.status.success() {
+                (true, String::new())
+            } else {
+                let err = String::from_utf8_lossy(&r.stderr).trim().to_string();
+                let msg = if err.is_empty() {
+                    String::from_utf8_lossy(&r.stdout).trim().to_string()
+                } else {
+                    err
+                };
+                (false, msg)
+            }
+        }
+        Err(e) => (false, e.to_string()),
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PasswordPromptState {
+    pub ssid: String,
+    pub password: String,
+    pub error_msg: Option<String>,
+    pub is_connecting: bool,
+}
+
+pub struct NetworkModel {
+    pub wifi_enabled: bool,
+    pub is_scanning: bool,
+    pub hotspot_active: bool,
+    pub active_ssid: Option<String>,
+    pub networks: Vec<WifiAp>,
+    pub password_prompt: Option<PasswordPromptState>,
+    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    #[allow(dead_code)]
+    close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[derive(Debug)]
+pub enum NetworkMsg {
+    ToggleWifi(bool),
+    StartRescan,
+    RescanFinished(Vec<WifiAp>),
+    SelectAp(WifiAp),
+    PasswordInput(String),
+    SubmitPassword,
+    CancelPassword,
+    ConnectFinished {
+        ssid: String,
+        success: bool,
+        error: Option<String>,
+        networks: Vec<WifiAp>,
+    },
+    DisconnectFinished(Vec<WifiAp>),
+    StopHotspot,
+    Back,
+}
+
+pub struct NetworkInit {
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
+}
+
+#[relm4::component(pub)]
+impl SimpleComponent for NetworkModel {
+    type Input = NetworkMsg;
+    type Output = ();
+    type Init = NetworkInit;
+
+    view! {
+        #[root]
+        gtk4::Box {
+            add_css_class: "popup-container",
+            set_orientation: Orientation::Vertical,
+            set_spacing: 10,
+            set_size_request: (390, -1),
+
+            // Header (Back, Title & Status subtitle, Power switch)
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                gtk4::Button {
+                    add_css_class: "back-btn",
+                    set_label: tr("‹ Back", "‹ Назад"),
+                    connect_clicked => NetworkMsg::Back,
+                },
+
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 1,
+                    set_hexpand: true,
+
+                    gtk4::Label {
+                        add_css_class: "cc-host",
+                        set_xalign: 0.0,
+                        set_label: tr("Wi-Fi & Networks", "Wi-Fi и сети"),
+                    },
+
+                    #[name = "status_sub"]
+                    gtk4::Label {
+                        add_css_class: "card-sub",
+                        set_xalign: 0.0,
+                        #[watch]
+                        set_label: &{
+                            if model.hotspot_active {
+                                tr("󱜠 Hotspot is active", "󱜠 Раздача Wi-Fi активна").to_string()
+                            } else if !model.wifi_enabled {
+                                tr("Wi-Fi is turned off", "Беспроводная сеть выключена").to_string()
+                            } else if let Some(ref ssid) = model.active_ssid {
+                                tr_fmt!("󰄬 Connected: {ssid}", "󰄬 Подключено: {ssid}", ssid = ssid)
+                            } else {
+                                tr("Not connected", "Не подключено").to_string()
+                            }
+                        },
+                    },
+                },
+
+                #[name = "pwr_switch"]
+                gtk4::Switch {
+                    set_active: model.wifi_enabled,
+                    connect_state_set[sender] => move |_, state| {
+                        sender.input(NetworkMsg::ToggleWifi(state));
+                        glib::Propagation::Proceed
+                    },
+                },
+            },
+
+            // Subheader (AVAILABLE NETWORKS / HOTSPOT, Rescan button)
+            gtk4::Box {
+                set_orientation: Orientation::Horizontal,
+                set_spacing: 8,
+
+                #[name = "subhead_lbl"]
+                gtk4::Label {
+                    add_css_class: "cc-label",
+                    set_xalign: 0.0,
+                    set_hexpand: true,
+                    #[watch]
+                    set_label: if model.hotspot_active {
+                        tr("HOTSPOT", "ТОЧКА ДОСТУПА")
+                    } else {
+                        tr("AVAILABLE NETWORKS", "ДОСТУПНЫЕ СЕТИ")
+                    },
+                },
+
+                #[name = "rescan_btn"]
+                gtk4::Button {
+                    add_css_class: "cc-chip",
+                    #[watch]
+                    set_visible: !model.hotspot_active,
+                    #[watch]
+                    set_sensitive: !model.is_scanning,
+                    #[watch]
+                    set_label: if model.is_scanning {
+                        tr("󰑐 Searching...", "󰑐 Поиск сетей...")
+                    } else {
+                        tr("󰑐 Refresh", "󰑐 Обновить")
+                    },
+                    connect_clicked => NetworkMsg::StartRescan,
+                },
+            },
+
+            // Inline Password Auth Box (visible when password prompt is open)
+            #[name = "auth_box"]
+            gtk4::Box {
+                add_css_class: "cc-card",
+                set_orientation: Orientation::Vertical,
+                set_spacing: 6,
+                #[watch]
+                set_visible: model.password_prompt.is_some(),
+
+                #[name = "auth_target_lbl"]
+                gtk4::Label {
+                    add_css_class: "card-title",
+                    set_xalign: 0.0,
+                    #[watch]
+                    set_label: &if let Some(ref p) = model.password_prompt {
+                        tr_fmt!("Connecting to «{ssid}»", "Подключение к «{ssid}»", ssid = p.ssid)
+                    } else {
+                        String::new()
+                    },
+                },
+
+                #[name = "pass_entry"]
+                gtk4::Entry {
+                    set_placeholder_text: Some(tr("Wi-Fi password", "Пароль Wi-Fi сети")),
+                    set_visibility: false,
+                    connect_changed[sender] => move |e| {
+                        sender.input(NetworkMsg::PasswordInput(e.text().to_string()));
+                    },
+                    connect_activate => NetworkMsg::SubmitPassword,
+                },
+
+                #[name = "error_lbl"]
+                gtk4::Label {
+                    add_css_class: "auth-error",
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    #[watch]
+                    set_visible: model
+                        .password_prompt
+                        .as_ref()
+                        .and_then(|p| p.error_msg.as_ref())
+                        .is_some(),
+                    #[watch]
+                    set_label: &model
+                        .password_prompt
+                        .as_ref()
+                        .and_then(|p| p.error_msg.as_ref())
+                        .cloned()
+                        .unwrap_or_default(),
+                },
+
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    gtk4::Button {
+                        add_css_class: "cc-chip",
+                        add_css_class: "on",
+                        #[watch]
+                        set_sensitive: !model
+                            .password_prompt
+                            .as_ref()
+                            .is_some_and(|p| p.is_connecting),
+                        #[watch]
+                        set_label: if model
+                            .password_prompt
+                            .as_ref()
+                            .is_some_and(|p| p.is_connecting)
+                        {
+                            tr("󰑐 Connecting...", "󰑐 Подключение...")
+                        } else {
+                            tr("Connect", "Подключить")
+                        },
+                        connect_clicked => NetworkMsg::SubmitPassword,
+                    },
+
+                    gtk4::Button {
+                        add_css_class: "cc-chip",
+                        set_label: tr("Cancel", "Отмена"),
+                        connect_clicked => NetworkMsg::CancelPassword,
+                    },
+                },
+            },
+
+            // Scrolled Network List
+            gtk4::ScrolledWindow {
+                add_css_class: "list-scroll",
+                set_policy: (PolicyType::Never, PolicyType::Automatic),
+                set_propagate_natural_height: true,
+                set_min_content_height: 180,
+                set_max_content_height: 320,
+                set_vexpand: true,
+
+                #[name = "list_box"]
+                gtk4::Box {
+                    set_orientation: Orientation::Vertical,
+                    set_spacing: 4,
+                },
+            },
+        }
+    }
+
+    fn init(
+        init: Self::Init,
+        _root: Self::Root,
+        sender: ComponentSender<Self>,
+    ) -> ComponentParts<Self> {
+        let wifi_enabled = hw::is_wifi_enabled();
+        let hotspot_active = hw::is_hotspot_active();
+        let active_ssid = hw::get_active_wifi_ssid();
+        let networks = if wifi_enabled && !hotspot_active {
+            query_wifi_networks()
+        } else {
+            Vec::new()
+        };
+
+        let model = NetworkModel {
+            wifi_enabled,
+            is_scanning: false,
+            hotspot_active,
+            active_ssid,
+            networks,
+            password_prompt: None,
+            nav_cb: init.nav_cb,
+            close_cb: init.close_cb,
+        };
+
+        let widgets = view_output!();
+
+        populate_wifi_list(
+            &widgets.list_box,
+            &model.networks,
+            model.hotspot_active,
+            model.wifi_enabled,
+            &sender,
+        );
+
+        ComponentParts { model, widgets }
+    }
+
+    fn post_view() {
+        if self.password_prompt.is_some() && !pass_entry.has_focus() {
+            pass_entry.grab_focus();
+        }
+        populate_wifi_list(
+            list_box,
+            &self.networks,
+            self.hotspot_active,
+            self.wifi_enabled,
+            &sender,
+        );
+    }
+
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        match msg {
+            NetworkMsg::ToggleWifi(state) => {
+                self.wifi_enabled = state;
+                hw::toggle_wifi(state);
+
+                let s = sender.clone();
+                glib::timeout_add_local_once(Duration::from_millis(500), move || {
+                    let nets = if state { query_wifi_networks() } else { Vec::new() };
+                    s.input(NetworkMsg::RescanFinished(nets));
+                });
+            }
+            NetworkMsg::StartRescan => {
+                self.is_scanning = true;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    let _ = Command::new("nmcli").args(["dev", "wifi", "rescan"]).output();
+                    let fresh = query_wifi_networks();
+                    s.input(NetworkMsg::RescanFinished(fresh));
+                });
+            }
+            NetworkMsg::RescanFinished(fresh) => {
+                self.is_scanning = false;
+                self.networks = fresh;
+                self.active_ssid = hw::get_active_wifi_ssid();
+                self.hotspot_active = hw::is_hotspot_active();
+            }
+            NetworkMsg::SelectAp(net) => {
+                if net.is_active {
+                    let s_fin = sender.clone();
+                    let ssid = net.ssid.clone();
+                    thread::spawn(move || {
+                        let saved_map = query_saved_wifi_connections();
+                        if let Some(conn) = saved_map.get(&ssid) {
+                            let _ = Command::new("nmcli")
+                                .args(["connection", "down", "uuid", &conn.uuid])
+                                .output();
+                        } else {
+                            let _ = Command::new("nmcli")
+                                .args(["connection", "down", "id", &ssid])
+                                .output();
+                        }
+                        let fresh = query_wifi_networks();
+                        s_fin.input(NetworkMsg::DisconnectFinished(fresh));
+                    });
+                } else if net.is_saved {
+                    let s_fin = sender.clone();
+                    let ssid = net.ssid.clone();
+                    thread::spawn(move || {
+                        let saved_map = query_saved_wifi_connections();
+                        let res = if let Some(conn) = saved_map.get(&ssid) {
+                            Command::new("nmcli")
+                                .args(["connection", "up", "uuid", &conn.uuid])
+                                .output()
+                        } else {
+                            Command::new("nmcli")
+                                .args(["connection", "up", "id", &ssid])
+                                .output()
+                        };
+                        let (success, err_msg) = parse_cmd_output(res);
+                        let fresh = query_wifi_networks();
+                        s_fin.input(NetworkMsg::ConnectFinished {
+                            ssid,
+                            success,
+                            error: if !success { Some(err_msg) } else { None },
+                            networks: fresh,
+                        });
+                    });
+                } else if !net.security.is_empty() && !net.security.contains("--") {
+                    self.password_prompt = Some(PasswordPromptState {
+                        ssid: net.ssid,
+                        password: String::new(),
+                        error_msg: None,
+                        is_connecting: false,
+                    });
+                } else {
+                    let s_fin = sender.clone();
+                    let ssid = net.ssid.clone();
+                    thread::spawn(move || {
+                        let res = Command::new("nmcli")
+                            .args(["dev", "wifi", "connect", &ssid])
+                            .output();
+                        let (success, err_msg) = parse_cmd_output(res);
+                        let fresh = query_wifi_networks();
+                        s_fin.input(NetworkMsg::ConnectFinished {
+                            ssid,
+                            success,
+                            error: if !success { Some(err_msg) } else { None },
+                            networks: fresh,
+                        });
+                    });
+                }
+            }
+            NetworkMsg::PasswordInput(text) => {
+                if let Some(ref mut p) = self.password_prompt {
+                    p.password = text;
+                }
+            }
+            NetworkMsg::SubmitPassword => {
+                if let Some(ref mut prompt) = self.password_prompt {
+                    prompt.is_connecting = true;
+                    prompt.error_msg = None;
+                    let ssid = prompt.ssid.clone();
+                    let pass = prompt.password.clone();
+                    let s_fin = sender.clone();
+                    thread::spawn(move || {
+                        let res = Command::new("nmcli")
+                            .args(["dev", "wifi", "connect", &ssid, "password", &pass])
+                            .output();
+                        let (success, err_msg) = parse_cmd_output(res);
+                        let fresh = query_wifi_networks();
+                        s_fin.input(NetworkMsg::ConnectFinished {
+                            ssid,
+                            success,
+                            error: if !success { Some(err_msg) } else { None },
+                            networks: fresh,
+                        });
+                    });
+                }
+            }
+            NetworkMsg::CancelPassword => {
+                self.password_prompt = None;
+            }
+            NetworkMsg::ConnectFinished {
+                ssid,
+                success,
+                error,
+                networks,
+            } => {
+                self.networks = networks;
+                self.active_ssid = hw::get_active_wifi_ssid();
+                if success {
+                    self.password_prompt = None;
+                } else if let Some(ref mut prompt) = self.password_prompt {
+                    prompt.is_connecting = false;
+                    let err_text = error.unwrap_or_else(|| {
+                        tr("Connection error", "Ошибка подключения").to_string()
+                    });
+                    let clean = err_text
+                        .trim_start_matches("Error: ")
+                        .trim_start_matches("Ошибка: ");
+                    prompt.error_msg = Some(format!("󰅖 {}", clean));
+                    prompt.ssid = ssid;
+                }
+            }
+            NetworkMsg::DisconnectFinished(fresh) => {
+                self.networks = fresh;
+                self.active_ssid = hw::get_active_wifi_ssid();
+            }
+            NetworkMsg::StopHotspot => {
+                let s_fin = sender.clone();
+                thread::spawn(move || {
+                    let bin = hw::home_dir().join(".local/bin/inerium-hotspot");
+                    let mut cmd = if bin.exists() {
+                        Command::new(bin)
+                    } else {
+                        Command::new("inerium-hotspot")
+                    };
+                    let _ = cmd.arg("toggle").output();
+                    thread::sleep(Duration::from_millis(800));
+                    let fresh = query_wifi_networks();
+                    s_fin.input(NetworkMsg::RescanFinished(fresh));
+                });
+            }
+            NetworkMsg::Back => {
+                (self.nav_cb)("control");
+            }
+        }
+    }
+}
+
 fn populate_wifi_list(
-    list_box: &Box,
-    networks: Vec<WifiAp>,
-    auth_box: &Box,
-    auth_target_lbl: &Label,
-    pass_entry: &Entry,
-    error_lbl: &Label,
-    current_target_ssid: &Rc<RefCell<String>>,
+    list_box: &gtk4::Box,
+    networks: &[WifiAp],
+    hotspot_active: bool,
+    wifi_enabled: bool,
+    sender: &ComponentSender<NetworkModel>,
 ) {
-    if hw::is_hotspot_active() {
-        let card = Box::new(Orientation::Vertical, 10);
+    while let Some(child) = list_box.first_child() {
+        list_box.remove(&child);
+    }
+
+    if hotspot_active {
+        let card = gtk4::Box::new(Orientation::Vertical, 10);
         card.add_css_class("cc-card");
         card.set_margin_top(8);
         card.set_margin_bottom(8);
 
-        let top_row = Box::new(Orientation::Horizontal, 8);
+        let top_row = gtk4::Box::new(Orientation::Horizontal, 8);
         let ico = Label::new(Some("󱜠"));
         ico.add_css_class("card-icon");
         top_row.append(&ico);
 
-        let title_box = Box::new(Orientation::Vertical, 2);
+        let title_box = gtk4::Box::new(Orientation::Vertical, 2);
         title_box.set_hexpand(true);
         let title = Label::new(Some(tr("Hotspot Active", "Занято точкой доступа")));
         title.add_css_class("card-title");
         title.set_xalign(0.0);
         title_box.append(&title);
 
-        let sub = Label::new(Some(tr("Wi-Fi Hotspot is active", "Раздача Wi-Fi (точка доступа)")));
+        let sub = Label::new(Some(tr(
+            "Wi-Fi Hotspot is active",
+            "Раздача Wi-Fi (точка доступа)",
+        )));
         sub.add_css_class("card-sub");
         sub.set_xalign(0.0);
         title_box.append(&sub);
@@ -188,27 +659,11 @@ fn populate_wifi_list(
         let stop_btn = Button::with_label(tr("󱜡  Stop Hotspot", "󱜡  Выключить точку доступа"));
         stop_btn.add_css_class("cc-chip");
         stop_btn.add_css_class("on");
-        stop_btn.connect_clicked(|b| {
+        let s = sender.clone();
+        stop_btn.connect_clicked(move |b| {
             b.set_sensitive(false);
             b.set_label(tr("󰑐 Stopping...", "󰑐 Выключение..."));
-            thread::spawn(|| {
-                let bin = hw::home_dir().join(".local/bin/inerium-hotspot");
-                let mut cmd = if bin.exists() {
-                    Command::new(bin)
-                } else {
-                    Command::new("inerium-hotspot")
-                };
-                let _ = cmd.arg("toggle").output();
-                thread::sleep(std::time::Duration::from_millis(800));
-                let nets = query_wifi_networks();
-                glib::MainContext::default().invoke(move || {
-                    NET_CALLBACK.with(|cb| {
-                        if let Some(ref f) = *cb.borrow() {
-                            f(NetEvent::RescanDone(nets));
-                        }
-                    });
-                });
-            });
+            s.input(NetworkMsg::StopHotspot);
         });
         card.append(&stop_btn);
 
@@ -217,8 +672,11 @@ fn populate_wifi_list(
     }
 
     if networks.is_empty() {
-        let empty_lbl = Label::new(Some(if hw::is_wifi_enabled() {
-            tr("No networks found. Click «Refresh»", "Сети не найдены. Нажмите «Обновить»")
+        let empty_lbl = Label::new(Some(if wifi_enabled {
+            tr(
+                "No networks found. Click «Refresh»",
+                "Сети не найдены. Нажмите «Обновить»",
+            )
         } else {
             tr("Wi-Fi is turned off", "Wi-Fi выключен")
         }));
@@ -235,7 +693,7 @@ fn populate_wifi_list(
             row.add_css_class("active");
         }
 
-        let inner = Box::new(Orientation::Horizontal, 8);
+        let inner = gtk4::Box::new(Orientation::Horizontal, 8);
         let sig_ico = if net.signal > 75 {
             "󰤨"
         } else if net.signal > 50 {
@@ -249,7 +707,7 @@ fn populate_wifi_list(
         ico.add_css_class("card-icon");
         inner.append(&ico);
 
-        let txt = Box::new(Orientation::Vertical, 1);
+        let txt = gtk4::Box::new(Orientation::Vertical, 1);
         txt.set_hexpand(true);
         let name_lbl = Label::new(Some(&net.ssid));
         name_lbl.add_css_class("card-title");
@@ -258,8 +716,16 @@ fn populate_wifi_list(
         txt.append(&name_lbl);
 
         let sec_str = if net.is_active {
-            let sec_desc = if net.security.is_empty() { tr("Open network", "Открытая сеть") } else { &net.security };
-            tr_fmt!("Connected • {sec_desc}", "Подключено • {sec_desc}", sec_desc = sec_desc)
+            let sec_desc = if net.security.is_empty() {
+                tr("Open network", "Открытая сеть")
+            } else {
+                &net.security
+            };
+            tr_fmt!(
+                "Connected • {sec_desc}",
+                "Подключено • {sec_desc}",
+                sec_desc = sec_desc
+            )
         } else if net.security.is_empty() {
             tr("Open network", "Открытая сеть").to_string()
         } else {
@@ -276,15 +742,10 @@ fn populate_wifi_list(
         badge.add_css_class("card-badge");
         if net.is_active {
             badge.set_label(tr("󰄬 Connected", "󰄬 В сети"));
-        } else if net.is_saved {
-            badge.set_label(tr("Saved", "Сохранено"));
-        }
-        if net.is_active {
-            badge.set_label("󰄬 В сети");
             badge.add_css_class("active");
             badge.set_visible(true);
         } else if net.is_saved {
-            badge.set_label("󰄬 Сохранено");
+            badge.set_label(tr("Saved", "Сохранено"));
             badge.add_css_class("saved");
             badge.set_visible(true);
         } else {
@@ -294,136 +755,21 @@ fn populate_wifi_list(
 
         row.set_child(Some(&inner));
 
-        let ssid_str = net.ssid.clone();
-        let is_sec = !net.security.is_empty() && !net.security.contains("--");
-        let a_box = auth_box.clone();
-        let a_tgt = auth_target_lbl.clone();
-        let p_ent = pass_entry.clone();
-        let err_lbl_c = error_lbl.clone();
-        let tgt_ref = current_target_ssid.clone();
+        let s_click = sender.clone();
+        let net_item = net.clone();
         let r_ui = row.clone();
         let b_ui = badge.clone();
-        let is_active = net.is_active;
-        let is_saved = net.is_saved;
-
         row.connect_clicked(move |_| {
-            if is_active {
-                // Currently connected -> Disconnect
-                let s = ssid_str.clone();
-                b_ui.set_label("󰑐 Отключение...");
+            if net_item.is_active {
+                b_ui.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
                 b_ui.set_visible(true);
                 r_ui.set_sensitive(false);
-
-                thread::spawn(move || {
-                    let saved_map = query_saved_wifi_connections();
-                    if let Some(conn) = saved_map.get(&s) {
-                        let _ = Command::new("nmcli").args(["connection", "down", "uuid", &conn.uuid]).output();
-                    } else {
-                        let _ = Command::new("nmcli").args(["connection", "down", "id", &s]).output();
-                    }
-                    let nets = query_wifi_networks();
-                    glib::MainContext::default().invoke(move || {
-                        NET_CALLBACK.with(|cb| {
-                            if let Some(ref f) = *cb.borrow() {
-                                f(NetEvent::DisconnectDone { networks: nets });
-                            }
-                        });
-                    });
-                });
-            } else if is_saved {
-                // Saved network -> Connect directly without asking for password!
-                let s = ssid_str.clone();
-                b_ui.set_label("󰑐 Подключение...");
+            } else if net_item.is_saved || net_item.security.is_empty() || net_item.security.contains("--") {
+                b_ui.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                 b_ui.set_visible(true);
                 r_ui.set_sensitive(false);
-
-                thread::spawn(move || {
-                    let saved_map = query_saved_wifi_connections();
-                    let res = if let Some(conn) = saved_map.get(&s) {
-                        Command::new("nmcli").args(["connection", "up", "uuid", &conn.uuid]).output()
-                    } else {
-                        Command::new("nmcli").args(["connection", "up", "id", &s]).output()
-                    };
-
-                    let (success, err_msg) = match res {
-                        Ok(r) => {
-                            if r.status.success() {
-                                (true, String::new())
-                            } else {
-                                let err = String::from_utf8_lossy(&r.stderr).trim().to_string();
-                                let msg = if err.is_empty() {
-                                    String::from_utf8_lossy(&r.stdout).trim().to_string()
-                                } else {
-                                    err
-                                };
-                                (false, msg)
-                            }
-                        }
-                        Err(e) => (false, e.to_string()),
-                    };
-                    let nets = query_wifi_networks();
-                    glib::MainContext::default().invoke(move || {
-                        NET_CALLBACK.with(|cb| {
-                            if let Some(ref f) = *cb.borrow() {
-                                f(NetEvent::ConnectDone {
-                                    ssid: s,
-                                    success,
-                                    error: if !success { Some(err_msg) } else { None },
-                                    networks: nets,
-                                });
-                            }
-                        });
-                    });
-                });
-            } else if is_sec {
-                // Unsaved secured network -> Open password input dialog
-                *tgt_ref.borrow_mut() = ssid_str.clone();
-                a_tgt.set_label(&format!("Подключение к «{}»", ssid_str));
-                p_ent.set_text("");
-                err_lbl_c.set_visible(false);
-                err_lbl_c.set_text("");
-                a_box.set_visible(true);
-                p_ent.grab_focus();
-            } else {
-                // Open unsaved network -> Connect directly
-                let s = ssid_str.clone();
-                b_ui.set_label("󰑐 Подключение...");
-                b_ui.set_visible(true);
-                r_ui.set_sensitive(false);
-
-                thread::spawn(move || {
-                    let res = Command::new("nmcli").args(["dev", "wifi", "connect", &s]).output();
-                    let (success, err_msg) = match res {
-                        Ok(r) => {
-                            if r.status.success() {
-                                (true, String::new())
-                            } else {
-                                let err = String::from_utf8_lossy(&r.stderr).trim().to_string();
-                                let msg = if err.is_empty() {
-                                    String::from_utf8_lossy(&r.stdout).trim().to_string()
-                                } else {
-                                    err
-                                };
-                                (false, msg)
-                            }
-                        }
-                        Err(e) => (false, e.to_string()),
-                    };
-                    let nets = query_wifi_networks();
-                    glib::MainContext::default().invoke(move || {
-                        NET_CALLBACK.with(|cb| {
-                            if let Some(ref f) = *cb.borrow() {
-                                f(NetEvent::ConnectDone {
-                                    ssid: s,
-                                    success,
-                                    error: if !success { Some(err_msg) } else { None },
-                                    networks: nets,
-                                });
-                            }
-                        });
-                    });
-                });
             }
+            s_click.input(NetworkMsg::SelectAp(net_item.clone()));
         });
 
         list_box.append(&row);
@@ -432,334 +778,19 @@ fn populate_wifi_list(
 
 pub fn build_network_view<FNav, FClose>(
     nav_cb: FNav,
-    _close_cb: FClose,
-) -> (Box, i32, i32)
+    close_cb: FClose,
+) -> (gtk4::Box, i32, i32)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
 {
-    let root = Box::new(Orientation::Vertical, 10);
-    root.add_css_class("popup-container");
-    root.set_size_request(390, -1);
-
-    // Header
-    let head = Box::new(Orientation::Horizontal, 8);
-    let back_btn = Button::with_label(tr("‹ Back", "‹ Назад"));
-    back_btn.add_css_class("back-btn");
-    let n_cb = nav_cb.clone();
-    back_btn.connect_clicked(move |_| n_cb("control"));
-    head.append(&back_btn);
-
-    let title_box = Box::new(Orientation::Vertical, 1);
-    title_box.set_hexpand(true);
-
-    let title = Label::new(Some(tr("Wi-Fi & Networks", "Wi-Fi и сети")));
-    title.add_css_class("cc-host");
-    title.set_xalign(0.0);
-    title_box.append(&title);
-
-    let status_sub = Label::new(None);
-    status_sub.add_css_class("card-sub");
-    status_sub.set_xalign(0.0);
-    title_box.append(&status_sub);
-
-    head.append(&title_box);
-
-    let pwr_switch = Switch::new();
-    pwr_switch.set_active(hw::is_wifi_enabled());
-    head.append(&pwr_switch);
-    root.append(&head);
-
-    // Subheader with Rescan
-    let subhead = Box::new(Orientation::Horizontal, 8);
-    let lbl = Label::new(Some(tr("AVAILABLE NETWORKS", "ДОСТУПНЫЕ СЕТИ")));
-    lbl.add_css_class("cc-label");
-    lbl.set_xalign(0.0);
-    lbl.set_hexpand(true);
-    subhead.append(&lbl);
-
-    let rescan_btn = Button::with_label(tr("󰑐 Refresh", "󰑐 Обновить"));
-    rescan_btn.add_css_class("cc-chip");
-    subhead.append(&rescan_btn);
-
-    let lbl_c = lbl.clone();
-    let rescan_c = rescan_btn.clone();
-    let update_status_sub = {
-        let sub = status_sub.clone();
-        Rc::new(move || {
-            if hw::is_hotspot_active() {
-                sub.set_label(tr("󱜠 Hotspot is active", "󱜠 Раздача Wi-Fi активна"));
-                lbl_c.set_label(tr("HOTSPOT", "ТОЧКА ДОСТУПА"));
-                rescan_c.set_visible(false);
-            } else if !hw::is_wifi_enabled() {
-                sub.set_label(tr("Wi-Fi is turned off", "Беспроводная сеть выключена"));
-                lbl_c.set_label(tr("AVAILABLE NETWORKS", "ДОСТУПНЫЕ СЕТИ"));
-                rescan_c.set_visible(true);
-            } else if let Some(ssid) = hw::get_active_wifi_ssid() {
-                sub.set_label(&tr_fmt!("󰄬 Connected: {ssid}", "󰄬 Подключено: {ssid}", ssid = ssid));
-                lbl_c.set_label(tr("AVAILABLE NETWORKS", "ДОСТУПНЫЕ СЕТИ"));
-                rescan_c.set_visible(true);
-            } else {
-                sub.set_label(tr("Not connected", "Не подключено"));
-                lbl_c.set_label(tr("AVAILABLE NETWORKS", "ДОСТУПНЫЕ СЕТИ"));
-                rescan_c.set_visible(true);
-            }
-        })
+    let init = NetworkInit {
+        nav_cb: std::boxed::Box::new(nav_cb),
+        close_cb: std::boxed::Box::new(close_cb),
     };
-    update_status_sub();
-    root.append(&subhead);
 
-    // Inline Auth Box (hidden by default)
-    let auth_box = Box::new(Orientation::Vertical, 6);
-    auth_box.add_css_class("cc-card");
-    auth_box.set_visible(false);
-
-    let auth_target_lbl = Label::new(None);
-    auth_target_lbl.add_css_class("card-title");
-    auth_target_lbl.set_xalign(0.0);
-    auth_box.append(&auth_target_lbl);
-
-    let pass_entry = Entry::new();
-    pass_entry.set_placeholder_text(Some(tr("Wi-Fi password", "Пароль Wi-Fi сети")));
-    pass_entry.set_visibility(false);
-    auth_box.append(&pass_entry);
-
-    let error_lbl = Label::new(None);
-    error_lbl.add_css_class("auth-error");
-    error_lbl.set_xalign(0.0);
-    error_lbl.set_wrap(true);
-    error_lbl.set_visible(false);
-    auth_box.append(&error_lbl);
-
-    let auth_actions = Box::new(Orientation::Horizontal, 8);
-    let connect_btn = Button::with_label(tr("Connect", "Подключить"));
-    connect_btn.add_css_class("cc-chip");
-    connect_btn.add_css_class("on");
-
-    let cancel_btn = Button::with_label(tr("Cancel", "Отмена"));
-    cancel_btn.add_css_class("cc-chip");
-
-    let a_box_c = auth_box.clone();
-    let err_lbl_clear = error_lbl.clone();
-    cancel_btn.connect_clicked(move |_| {
-        err_lbl_clear.set_visible(false);
-        err_lbl_clear.set_text("");
-        a_box_c.set_visible(false);
-    });
-
-    auth_actions.append(&connect_btn);
-    auth_actions.append(&cancel_btn);
-    auth_box.append(&auth_actions);
-    root.append(&auth_box);
-
-    // Enter in pass_entry triggers connect_btn
-    let conn_click_trigger = connect_btn.clone();
-    pass_entry.connect_activate(move |_| {
-        conn_click_trigger.emit_clicked();
-    });
-
-    // Networks List
-    let scroll = ScrolledWindow::new();
-    scroll.add_css_class("list-scroll");
-    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
-    scroll.set_propagate_natural_height(true);
-    scroll.set_min_content_height(180);
-    scroll.set_max_content_height(320);
-    scroll.set_vexpand(true);
-
-    let list_box = Box::new(Orientation::Vertical, 4);
-    let current_target_ssid = Rc::new(RefCell::new(String::new()));
-
-    // Initial population
-    let initial_networks = query_wifi_networks();
-    populate_wifi_list(
-        &list_box,
-        initial_networks,
-        &auth_box,
-        &auth_target_lbl,
-        &pass_entry,
-        &error_lbl,
-        &current_target_ssid,
-    );
-
-    // Register thread-local callback on main thread
-    let r_btn_ui = rescan_btn.clone();
-    let c_btn_ui = connect_btn.clone();
-    let l_b_ui = list_box.clone();
-    let a_b_ui = auth_box.clone();
-    let a_tgt_ui = auth_target_lbl.clone();
-    let p_val_ui = pass_entry.clone();
-    let err_ui = error_lbl.clone();
-    let c_tgt_ui = current_target_ssid.clone();
-
-    let u_sub = update_status_sub.clone();
-    let cb = Rc::new(move |evt: NetEvent| {
-        u_sub();
-        match evt {
-            NetEvent::RescanDone(networks) => {
-                r_btn_ui.set_label("󰑐 Обновить");
-                r_btn_ui.set_sensitive(true);
-
-                while let Some(child) = l_b_ui.first_child() {
-                    l_b_ui.remove(&child);
-                }
-                populate_wifi_list(
-                    &l_b_ui,
-                    networks,
-                    &a_b_ui,
-                    &a_tgt_ui,
-                    &p_val_ui,
-                    &err_ui,
-                    &c_tgt_ui,
-                );
-            }
-            NetEvent::ConnectDone { ssid, success, error, networks } => {
-                c_btn_ui.set_sensitive(true);
-                c_btn_ui.set_label(tr("Connect", "Подключить"));
-
-                if success {
-                    a_b_ui.set_visible(false);
-                    err_ui.set_visible(false);
-                    err_ui.set_text("");
-                } else {
-                    let err_text = error.unwrap_or_else(|| tr("Connection error", "Ошибка подключения").to_string());
-                    let clean = err_text.trim_start_matches("Error: ").trim_start_matches("Ошибка: ");
-                    err_ui.set_text(&format!("󰅖 {}", clean));
-                    err_ui.set_visible(true);
-                    if a_b_ui.is_visible() {
-                        a_tgt_ui.set_label(&tr_fmt!("Connecting to «{ssid}»", "Подключение к «{ssid}»", ssid = ssid));
-                        p_val_ui.grab_focus();
-                    }
-                }
-
-                while let Some(child) = l_b_ui.first_child() {
-                    l_b_ui.remove(&child);
-                }
-                populate_wifi_list(
-                    &l_b_ui,
-                    networks,
-                    &a_b_ui,
-                    &a_tgt_ui,
-                    &p_val_ui,
-                    &err_ui,
-                    &c_tgt_ui,
-                );
-            }
-            NetEvent::DisconnectDone { networks } => {
-                while let Some(child) = l_b_ui.first_child() {
-                    l_b_ui.remove(&child);
-                }
-                populate_wifi_list(
-                    &l_b_ui,
-                    networks,
-                    &a_b_ui,
-                    &a_tgt_ui,
-                    &p_val_ui,
-                    &err_ui,
-                    &c_tgt_ui,
-                );
-            }
-        }
-    });
-
-    NET_CALLBACK.with(|c| {
-        *c.borrow_mut() = Some(cb);
-    });
-
-    // Rescan button clicked
-    let r_btn_c = rescan_btn.clone();
-    rescan_btn.connect_clicked(move |_| {
-        r_btn_c.set_sensitive(false);
-        r_btn_c.set_label("󰑐 Поиск сетей...");
-
-        thread::spawn(move || {
-            let _ = Command::new("nmcli").args(["dev", "wifi", "rescan"]).output();
-            let fresh = query_wifi_networks();
-            glib::MainContext::default().invoke(move || {
-                NET_CALLBACK.with(|cb| {
-                    if let Some(ref f) = *cb.borrow() {
-                        f(NetEvent::RescanDone(fresh));
-                    }
-                });
-            });
-        });
-    });
-
-    // Connect button clicked inside auth box
-    let c_tgt = current_target_ssid.clone();
-    let p_val = pass_entry.clone();
-    let conn_btn_c = connect_btn.clone();
-    let err_click_ref = error_lbl.clone();
-
-    connect_btn.connect_clicked(move |_| {
-        let ssid = c_tgt.borrow().clone();
-        let password = p_val.text().to_string();
-        if ssid.is_empty() {
-            return;
-        }
-
-        conn_btn_c.set_sensitive(false);
-        conn_btn_c.set_label("󰑐 Подключение...");
-        err_click_ref.set_visible(false);
-        err_click_ref.set_text("");
-
-        thread::spawn(move || {
-            let res = Command::new("nmcli")
-                .args(["dev", "wifi", "connect", &ssid, "password", &password])
-                .output();
-            let (success, err_msg) = match res {
-                Ok(r) => {
-                    if r.status.success() {
-                        (true, String::new())
-                    } else {
-                        let err = String::from_utf8_lossy(&r.stderr).trim().to_string();
-                        let msg = if err.is_empty() {
-                            String::from_utf8_lossy(&r.stdout).trim().to_string()
-                        } else {
-                            err
-                        };
-                        (false, msg)
-                    }
-                }
-                Err(e) => (false, e.to_string()),
-            };
-            let fresh = query_wifi_networks();
-            glib::MainContext::default().invoke(move || {
-                NET_CALLBACK.with(|cb| {
-                    if let Some(ref f) = *cb.borrow() {
-                        f(NetEvent::ConnectDone {
-                            ssid,
-                            success,
-                            error: if !success { Some(err_msg) } else { None },
-                            networks: fresh,
-                        });
-                    }
-                });
-            });
-        });
-    });
-
-    // Power switch toggling
-    let u_sub_pwr = update_status_sub.clone();
-    pwr_switch.connect_state_set(move |_, state| {
-        hw::toggle_wifi(state);
-        let u = u_sub_pwr.clone();
-
-        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-            u();
-            let nets = if state { query_wifi_networks() } else { Vec::new() };
-            NET_CALLBACK.with(|cb| {
-                if let Some(ref f) = *cb.borrow() {
-                    f(NetEvent::RescanDone(nets));
-                }
-            });
-        });
-
-        glib::Propagation::Proceed
-    });
-
-    scroll.set_child(Some(&list_box));
-    root.append(&scroll);
-
+    let mut controller = NetworkModel::builder().launch(init).detach();
+    controller.detach_runtime();
+    let root = controller.widget().clone();
     (root, 390, 380)
 }
