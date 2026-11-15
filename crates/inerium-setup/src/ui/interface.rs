@@ -29,10 +29,9 @@ const KB_TOGGLE_OPTIONS: &[(&str, &str, &str)] = &[
 ];
 
 const LAUNCHER_BIND_OPTIONS: &[(&str, &str, &str)] = &[
-    ("SUPER_L", "Super (single tap release)", "Super (одиночное нажатие)"),
     ("SUPER + R", "Super + R", "Super + R"),
-    ("SUPER + D", "Super + D", "Super + D"),
     ("ALT + Space", "Alt + Space (Spotlight style)", "Alt + Space (как в macOS / Spotlight)"),
+    ("SUPER + D", "Super + D", "Super + D"),
 ];
 
 const IDLE_PRESETS: &[(&str, &str, u32, u32, u32)] = &[
@@ -261,8 +260,8 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     let ovr_title = Label::new(Some(tr(
         lang,
-        "Input, displays & power (local overrides)",
-        "Ввод, дисплеи и питание (локальные overrides)",
+        "Input, keyboard & power settings",
+        "Настройки клавиатуры, ввода и питания",
     )));
     ovr_title.add_css_class("card-title");
     ovr_title.set_xalign(0.0);
@@ -271,7 +270,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     let ovr_sub = Label::new(Some(tr(
         lang,
         "Saved to inputs_local.lua, binds_local.lua & hypridle_local.conf (gitignored)",
-        "Сохраняется в inputs_local.lua, binds_local.lua и hypridle_local.conf (не отслеживается Git)",
+        "Сохраняется в inputs_local.lua, binds_local.lua и hypridle_local.conf",
     )));
     ovr_sub.add_css_class("card-muted");
     ovr_sub.set_xalign(0.0);
@@ -593,9 +592,9 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     ovr_card.append(&pwr_section);
 
-    // Action buttons for overrides
+    // Action buttons for settings
     let ovr_actions = Box::new(Orientation::Horizontal, 8);
-    let ovr_reset_btn = Button::with_label(tr(lang, "Reset overrides", "Сбросить overrides"));
+    let ovr_reset_btn = Button::with_label(tr(lang, "Reset settings", "Сбросить настройки"));
     ovr_reset_btn.add_css_class("btn-danger");
     ovr_actions.append(&ovr_reset_btn);
 
@@ -603,7 +602,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     spacer.set_hexpand(true);
     ovr_actions.append(&spacer);
 
-    let ovr_save_btn = Button::with_label(tr(lang, "Save overrides", "Сохранить overrides"));
+    let ovr_save_btn = Button::with_label(tr(lang, "Save & Apply", "Сохранить и применить"));
     ovr_save_btn.add_css_class("btn-primary");
     ovr_actions.append(&ovr_save_btn);
     ovr_card.append(&ovr_actions);

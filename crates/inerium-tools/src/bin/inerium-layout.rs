@@ -9,42 +9,42 @@ use inerium_tools::format::escape_json;
 use inerium_tools::ipc::hyprland::get_socket2;
 
 fn get_current_layout() -> &'static str {
-    if let Ok(out) = Command::new("hyprctl").args(["devices", "-j"]).output() {
-        let text = String::from_utf8_lossy(&out.stdout);
-        for target in &["telink-vxe-v87-2.4g-dongle-keyboard", "at-translated-set-2-keyboard"] {
-            if let Some(pos) = text.find(target) {
-                let end = (pos + 600).min(text.len());
-                let slice = &text[pos..end];
-                if let Some(kpos) = slice.find("\"active_keymap\": \"") {
-                    let rest = &slice[kpos + 18..];
-                    if let Some(q_pos) = rest.find('"') {
-                        let km = &rest[..q_pos];
-                        if km.contains("Russian") || km.contains("RU") {
-                            return "RU";
-                        } else {
-                            return "EN";
-                        }
-                    }
-                }
+    if let Ok(out) = Command::new("hyprctl").args(["devices", "-j"]).output()
+        && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout)
+        && let Some(keyboards) = val.get("keyboards").and_then(|v| v.as_array())
+    {
+        let mut fallback_km: Option<&str> = None;
+        for kb in keyboards {
+            let km = kb.get("active_keymap").and_then(|v| v.as_str()).unwrap_or("");
+            if km.is_empty() {
+                continue;
             }
+            if kb.get("main").and_then(|v| v.as_bool()) == Some(true) {
+                return if km.contains("Russian") || km.contains("RU") {
+                    "RU"
+                } else {
+                    "EN"
+                };
+            }
+            if fallback_km.is_none() {
+                fallback_km = Some(km);
+            }
+        }
+        if let Some(km) = fallback_km {
+            return if km.contains("Russian") || km.contains("RU") {
+                "RU"
+            } else {
+                "EN"
+            };
         }
     }
     "RU"
 }
 
 fn switch_keyboards() {
-    let cur = get_current_layout();
-    let target_idx = if cur == "RU" { "0" } else { "1" };
-    for target in &[
-        "telink-vxe-v87-2.4g-dongle-keyboard",
-        "telink-vxe-v87-2.4g-dongle",
-        "at-translated-set-2-keyboard",
-        "ydotoold-virtual-device"
-    ] {
-        let _ = Command::new("hyprctl")
-            .args(["switchxkblayout", target, target_idx])
-            .output();
-    }
+    let _ = Command::new("hyprctl")
+        .args(["switchxkblayout", "all", "next"])
+        .output();
 }
 
 fn format_output(layout: &str, waybar: bool) -> String {
