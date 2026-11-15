@@ -32,9 +32,6 @@ hl.on("hyprland.start", function ()
     -- Панель Waybar: запуск с резервной конфигурацией и стилями
     hl.exec_cmd("waybar -c " .. home .. "/.config/waybar/config_backup.jsonc -s " .. home .. "/.config/waybar/style_backup.css")
 
-    -- VPN клиент AmneziaVPN (если установлен и не запущен)
-    hl.exec_cmd("pgrep -x AmneziaVPN >/dev/null || /opt/AmneziaVPN/bin/AmneziaVPN --autostart")
-
     -- Индексация приложений для поиска в лаунчере на любых раскладках (QWERTY <-> JCUKEN)
     hl.exec_cmd("sudo -n /usr/local/bin/inerium-desktop-indexer")
 end)
