@@ -27,6 +27,7 @@ ExecStart=/usr/bin/rclone mount gdrive: %h/GoogleDrive \
   --volname="Google Drive" \
   --tpslimit=10 \
   --bind=0.0.0.0 \
+  --daemon-timeout=5s \
   --contimeout=10s
 ExecStartPost=/usr/bin/bash -c 'sleep 1 && /usr/bin/rclone rc vfs/refresh recursive=true || true'
 # lazy-unmount: не падать с "Device or resource busy", если Dolphin держит файлы
