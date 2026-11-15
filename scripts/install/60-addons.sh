@@ -98,6 +98,10 @@ install_camera_addon() {
         ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
     fi
 
+    if [[ -f "$REPO_DIR/local/share/applications/phone-webcam.desktop.template" ]]; then
+        render_template "$REPO_DIR/local/share/applications/phone-webcam.desktop.template" "$HOME/.local/share/applications/phone-webcam.desktop"
+    fi
+
     local bridge_src="$REPO_DIR/config/systemd/user/inerium-camera-bridge.service"
     local bridge_dst="$HOME/.config/systemd/user/inerium-camera-bridge.service"
     if [[ -f "$bridge_src" ]]; then
@@ -127,6 +131,10 @@ install_novpn_addon() {
         install_root_if_changed 644 "$novpn_sys/systemd/novpn.service" /etc/systemd/system/novpn.service
         sudo systemctl daemon-reload || true
         sudo systemctl enable novpn.service || true
+    fi
+
+    if [[ -f "$REPO_DIR/local/share/applications/google-chrome-direct.desktop.template" ]]; then
+        render_template "$REPO_DIR/local/share/applications/google-chrome-direct.desktop.template" "$HOME/.local/share/applications/google-chrome-direct.desktop"
     fi
 }
 
