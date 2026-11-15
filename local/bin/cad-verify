@@ -1,0 +1,462 @@
+#!/home/ineron/.local/share/cad-env/bin/python
+import argparse
+import math
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+import trimesh
+import numpy as np
+
+def check_fit(extents, max_box):
+    mx, my, mz = max_box
+    dx, dy, dz = extents
+
+    z_fit = dz <= mz
+    direct_fit = z_fit and ((dx <= mx and dy <= my) or (dy <= mx and dx <= my))
+
+    diag_span_x = (dx + dy) / math.sqrt(2)
+    diag_span_y = (dx + dy) / math.sqrt(2)
+    diag_fit = z_fit and (diag_span_x <= mx and diag_span_y <= my)
+
+    if not diag_fit and z_fit:
+        theta = math.atan2(my, mx)
+        span_x = dx * math.cos(theta) + dy * math.sin(theta)
+        span_y = dx * math.sin(theta) + dy * math.cos(theta)
+        if span_x <= mx and span_y <= my:
+            diag_fit = True
+
+    if direct_fit:
+        return "PASS (Direct fit on bed)"
+    elif diag_fit:
+        return "PASS (45° diagonal fit)"
+    else:
+        return f"EXCEEDS limit ({mx:.1f}x{my:.1f}x{mz:.1f} mm)"
+
+def check_step_brep(step_path: Path):
+    if not step_path.exists():
+        return None
+    try:
+        from build123d import import_step
+        shape = import_step(str(step_path.resolve()))
+        is_val = shape.is_valid if not callable(shape.is_valid) else shape.is_valid()
+        if is_val:
+            return f"[OK] Valid solid for Kompas-3D ({step_path.name})"
+        else:
+            return f"[ERROR] Broken B-Rep topology ({step_path.name})"
+    except Exception as e:
+        return f"[ERROR] OpenCASCADE import failed ({e})"
+
+def render_blender_workbench(file_path: Path, preview_path: Path) -> bool:
+    if not shutil.which("blender"):
+        return False
+    suffix = file_path.suffix.lower()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        v1_path = tmp_path / "v1.png"
+        v2_path = tmp_path / "v2.png"
+        v3_path = tmp_path / "v3.png"
+        v4_path = tmp_path / "v4.png"
+
+        script = f"""
+import bpy, sys, math
+from mathutils import Vector
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+fp = "{file_path.resolve()}"
+suf = "{suffix}"
+
+try:
+    if suf == ".stl":
+        bpy.ops.wm.stl_import(filepath=fp)
+    elif suf == ".obj":
+        bpy.ops.wm.obj_import(filepath=fp)
+    elif suf in [".glb", ".gltf"]:
+        bpy.ops.import_scene.gltf(filepath=fp)
+    elif suf == ".ply":
+        bpy.ops.wm.ply_import(filepath=fp)
+    elif suf == ".3mf":
+        try:
+            bpy.ops.wm.lib3mf_import(filepath=fp)
+        except Exception:
+            bpy.ops.wm.stl_import(filepath=fp)
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+
+meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+if not meshes:
+    sys.exit(1)
+
+bpy.ops.object.select_all(action='DESELECT')
+for m in meshes:
+    m.select_set(True)
+bpy.context.view_layer.objects.active = meshes[0]
+if len(meshes) > 1:
+    try:
+        bpy.ops.object.join()
+    except Exception:
+        pass
+
+obj = bpy.context.view_layer.objects.active
+bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+obj.location = (0, 0, 0)
+
+bbox = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+min_v = Vector((min(c.x for c in bbox), min(c.y for c in bbox), min(c.z for c in bbox)))
+max_v = Vector((max(c.x for c in bbox), max(c.y for c in bbox), max(c.z for c in bbox)))
+extent = max_v - min_v
+max_dim = max(extent.x, extent.y, extent.z)
+if max_dim <= 0:
+    max_dim = 1.0
+
+cam_data = bpy.data.cameras.new("PreviewCam")
+cam_obj = bpy.data.objects.new("PreviewCam", cam_data)
+bpy.context.scene.collection.objects.link(cam_obj)
+bpy.context.scene.camera = cam_obj
+
+scene = bpy.context.scene
+scene.render.engine = 'BLENDER_WORKBENCH'
+scene.render.resolution_x = 600
+scene.render.resolution_y = 450
+scene.render.film_transparent = False
+
+shading = scene.display.shading
+shading.light = 'STUDIO'
+has_mats = any(len(m.data.materials) > 0 for m in meshes if hasattr(m, 'data') and hasattr(m.data, 'materials'))
+shading.color_type = 'MATERIAL' if has_mats else 'SINGLE'
+shading.single_color = (0.45, 0.58, 0.75)
+shading.show_cavity = True
+shading.cavity_type = 'BOTH'
+shading.cavity_ridge_factor = 2.0
+shading.cavity_valley_factor = 2.0
+shading.show_shadows = True
+
+dist = max_dim * 2.2
+
+# 1. Iso Front-Top
+cam_data.type = 'PERSP'
+cam_obj.location = (dist * 0.7, -dist * 0.9, dist * 0.65)
+cam_obj.rotation_euler = (Vector((0, 0, 0)) - cam_obj.location).to_track_quat('-Z', 'Y').to_euler()
+scene.render.filepath = "{v1_path.resolve()}"
+bpy.ops.render.render(write_still=True)
+
+# 2. Top (XY)
+cam_data.type = 'ORTHO'
+cam_data.ortho_scale = max(extent.x * 1.25, extent.y * 1.6, max_dim * 1.3)
+cam_obj.location = (0, 0, dist * 1.5)
+cam_obj.rotation_euler = (0, 0, 0)
+scene.render.filepath = "{v2_path.resolve()}"
+bpy.ops.render.render(write_still=True)
+
+# 3. Front (XZ)
+cam_data.type = 'ORTHO'
+cam_data.ortho_scale = max(extent.x * 1.25, extent.z * 1.6, max_dim * 1.3)
+cam_obj.location = (0, -dist * 1.5, 0)
+cam_obj.rotation_euler = (math.radians(90), 0, 0)
+scene.render.filepath = "{v3_path.resolve()}"
+bpy.ops.render.render(write_still=True)
+
+# 4. Iso Rear-Bottom
+cam_data.type = 'PERSP'
+cam_obj.location = (-dist * 0.7, dist * 0.9, -dist * 0.65)
+cam_obj.rotation_euler = (Vector((0, 0, 0)) - cam_obj.location).to_track_quat('-Z', 'Y').to_euler()
+scene.render.filepath = "{v4_path.resolve()}"
+bpy.ops.render.render(write_still=True)
+"""
+        try:
+            res = subprocess.run(
+                ["blender", "-b", "--factory-startup", "--python-expr", script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30
+            )
+            if res.returncode != 0 or not all(p.exists() and p.stat().st_size > 0 for p in [v1_path, v2_path, v3_path, v4_path]):
+                return False
+
+            from PIL import Image, ImageDraw
+            canvas = Image.new("RGB", (1200, 900), color=(22, 22, 30))
+            im1 = Image.open(v1_path)
+            im2 = Image.open(v2_path)
+            im3 = Image.open(v3_path)
+            im4 = Image.open(v4_path)
+
+            canvas.paste(im1, (0, 0))
+            canvas.paste(im2, (600, 0))
+            canvas.paste(im3, (0, 450))
+            canvas.paste(im4, (600, 450))
+
+            draw = ImageDraw.Draw(canvas)
+            # Dividers
+            draw.line([(600, 0), (600, 900)], fill=(40, 44, 64), width=2)
+            draw.line([(0, 450), (1200, 450)], fill=(40, 44, 64), width=2)
+
+            labels = [
+                ("Iso Front-Top", (15, 12)),
+                ("Top View (XY)", (615, 12)),
+                ("Front View (XZ)", (15, 462)),
+                ("Iso Rear-Bottom", (615, 462))
+            ]
+            for text, pos in labels:
+                bbox_w = len(text) * 8 + 12
+                draw.rectangle([pos[0]-4, pos[1]-2, pos[0]+bbox_w, pos[1]+16], fill=(16, 17, 24))
+                draw.text(pos, text, fill=(192, 202, 245))
+
+            canvas.save(preview_path, format="PNG")
+            return preview_path.exists() and preview_path.stat().st_size > 0
+        except Exception:
+            return False
+
+def render_matplotlib_fallback(mesh: trimesh.Trimesh, preview_path: Path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    mesh_to_plot = mesh
+    if len(mesh.faces) > 8000:
+        try:
+            mesh_to_plot = mesh.simplify_quadric_decimation(8000)
+        except Exception:
+            mesh_to_plot = mesh
+
+    fig = plt.figure(figsize=(12, 9), facecolor="#16161e")
+    views = [
+        ("Isometric View (30°, 45°)", 30, 45),
+        ("Top View (XY)", 90, -90),
+        ("Front View (XZ)", 0, -90),
+        ("Right Side View (YZ)", 0, 0)
+    ]
+
+    verts = mesh_to_plot.vertices[mesh_to_plot.faces]
+    extents = mesh.extents
+    max_extent = max(extents) / 2.0 if max(extents) > 0 else 1.0
+    center = mesh.centroid
+
+    for i, (title, elev, azim) in enumerate(views, 1):
+        ax = fig.add_subplot(2, 2, i, projection="3d", facecolor="#16161e")
+        ax.view_init(elev=elev, azim=azim)
+        poly = Poly3DCollection(verts, alpha=0.92, edgecolor="#24283b", linewidths=0.25)
+        poly.set_facecolor("#7aa2f7")
+        ax.add_collection3d(poly)
+        ax.set_xlim(center[0] - max_extent, center[0] + max_extent)
+        ax.set_ylim(center[1] - max_extent, center[1] + max_extent)
+        ax.set_zlim(center[2] - max_extent, center[2] + max_extent)
+        ax.set_title(title, color="#c0caf5", fontsize=11, fontweight="bold", pad=8)
+        ax.tick_params(colors="#565f89", labelsize=7)
+        ax.xaxis.pane.set_facecolor("#1a1b26")
+        ax.yaxis.pane.set_facecolor("#1a1b26")
+        ax.zaxis.pane.set_facecolor("#1a1b26")
+
+    plt.tight_layout()
+    fig.savefig(preview_path, dpi=120, facecolor=fig.get_facecolor(), edgecolor="none")
+    plt.close(fig)
+
+def render_preview(file_path: Path, mesh: trimesh.Trimesh, preview_path: Path) -> str:
+    # 1. Primary: Fast headless Blender Workbench 4-view grid
+    if render_blender_workbench(file_path, preview_path):
+        return "Blender Workbench 4-View Grid"
+
+    # 2. Resilient fallback: Matplotlib 4-view projection
+    try:
+        render_matplotlib_fallback(mesh, preview_path)
+        return "Matplotlib 4-View (Fallback)"
+    except Exception as e:
+        return f"Render Failed ({e})"
+
+def verify_file(file_path: Path, max_box=None):
+    if not file_path.is_file():
+        print(f"Error: file not found: {file_path}", file=sys.stderr)
+        return False
+
+    suffix = file_path.suffix.lower()
+    temp_stl_to_clean = None
+    mesh_path = file_path
+    step_path = None
+
+    # Handle direct .step / .stp files
+    if suffix in [".step", ".stp"]:
+        step_path = file_path
+        companion_stl = file_path.with_suffix(".stl")
+        if companion_stl.is_file():
+            mesh_path = companion_stl
+        else:
+            try:
+                from build123d import import_step, export_stl
+                shape = import_step(str(file_path.resolve()))
+                fd, tmp_file = tempfile.mkstemp(suffix=".stl")
+                os.close(fd)
+                temp_stl_to_clean = Path(tmp_file)
+                export_stl(shape, str(temp_stl_to_clean))
+                mesh_path = temp_stl_to_clean
+            except Exception as e:
+                print(f"Error converting STEP to mesh: {e}", file=sys.stderr)
+                return False
+    else:
+        # Search for companion .step / .stp file
+        for cand_suf in [".step", ".stp"]:
+            cand = file_path.with_suffix(cand_suf)
+            if cand.is_file():
+                step_path = cand
+                break
+
+    step_status = check_step_brep(step_path) if step_path else "None detected"
+
+    try:
+        loaded = trimesh.load(mesh_path)
+    except Exception as e:
+        print(f"Error loading mesh {mesh_path}: {e}", file=sys.stderr)
+        if temp_stl_to_clean and temp_stl_to_clean.exists():
+            temp_stl_to_clean.unlink()
+        return False
+
+    has_uv = False
+    has_mat = False
+
+    if isinstance(loaded, trimesh.Scene):
+        for geom in loaded.geometry.values():
+            if hasattr(geom, "visual"):
+                if getattr(geom.visual, "uv", None) is not None and len(geom.visual.uv) > 0:
+                    has_uv = True
+                if getattr(geom.visual, "material", None) is not None:
+                    has_mat = True
+        mesh = loaded.to_geometry()
+    else:
+        mesh = loaded
+        if hasattr(mesh, "visual"):
+            if getattr(mesh.visual, "uv", None) is not None and len(mesh.visual.uv) > 0:
+                has_uv = True
+            if getattr(mesh.visual, "material", None) is not None:
+                has_mat = True
+
+    extents = mesh.extents
+    dx, dy, dz = extents[0], extents[1], extents[2]
+    vertices_cnt = len(mesh.vertices)
+    faces_cnt = len(mesh.faces)
+
+    watertight = mesh.is_watertight
+    if not watertight:
+        mesh.merge_vertices()
+        watertight = mesh.is_watertight
+
+    # Disconnected bodies check
+    body_count = getattr(mesh, "body_count", 1)
+    body_warn = f" | WARNING: Multiple disconnected bodies ({body_count})" if body_count > 1 else ""
+    solid_str = f"[OK] Watertight solid (manifold){body_warn}" if watertight else f"[WARN] Open mesh (non-watertight){body_warn}"
+
+    # Fast DFM Metric Check (Effective thickness τ = Volume / Area + Micro-faces)
+    dfm_metrics_str = "N/A"
+    dfm_quality_str = "[OK] Production-ready"
+    try:
+        area_mm2 = mesh.area
+        area_cm2 = area_mm2 / 100.0
+        if watertight and mesh.volume > 0:
+            vol_mm3 = mesh.volume
+            vol_cm3 = vol_mm3 / 1000.0
+            tau = vol_mm3 / area_mm2 if area_mm2 > 0 else 0.0
+            dfm_metrics_str = f"Vol={vol_cm3:.2f} cm³ | Area={area_cm2:.2f} cm² | Eff. Thk τ={tau:.2f} mm"
+            if tau < 0.40:
+                dfm_quality_str = f"[WARN] Very thin walls (τ={tau:.2f} mm < 0.40 mm)"
+        else:
+            dfm_metrics_str = f"Area={area_cm2:.2f} cm² (Non-watertight: Volume unavailable)"
+            dfm_quality_str = "[WARN] Non-watertight mesh"
+
+        degen_faces = int((mesh.area_faces < 1e-5).sum()) if len(mesh.faces) > 0 else 0
+        if degen_faces > 0:
+            dfm_quality_str += f" | {degen_faces} degenerate/micro-triangles"
+        else:
+            dfm_quality_str += " (No degenerate triangles)"
+    except Exception as e:
+        dfm_metrics_str = f"Error computing DFM: {e}"
+
+    # FDM Overhang (>45°) and Bed Contact Area Analysis
+    bed_contact_str = "N/A"
+    overhang_str = "N/A"
+    try:
+        if len(mesh.faces) > 0 and len(mesh.vertices) > 0:
+            z_min = float(mesh.bounds[0][2])
+            tri_centers = mesh.triangles_center
+            normals = mesh.face_normals
+            areas = mesh.area_faces
+            total_surf_area = float(areas.sum())
+
+            # First layer bed contact: faces near z_min pointing straight down
+            bed_mask = (tri_centers[:, 2] <= (z_min + 0.25)) & (normals[:, 2] < -0.95)
+            bed_area_mm2 = float(areas[bed_mask].sum())
+            bed_area_cm2 = bed_area_mm2 / 100.0
+
+            bed_contact_str = f"{bed_area_cm2:.2f} cm² ({bed_area_mm2:.1f} mm²)"
+            if bed_area_mm2 < 2.0:
+                bed_contact_str += " | [WARN] Minimal bed adhesion area (resting on edge/point or floating)"
+            else:
+                bed_contact_str += " [OK]"
+
+            # Overhang faces: strictly above the bed layer with normal angle > 45° (nz < -0.707)
+            overhang_mask = (tri_centers[:, 2] > (z_min + 0.25)) & (normals[:, 2] < -0.707)
+            overhang_area_mm2 = float(areas[overhang_mask].sum())
+            overhang_area_cm2 = overhang_area_mm2 / 100.0
+            overhang_pct = (overhang_area_mm2 / total_surf_area) * 100.0 if total_surf_area > 0 else 0.0
+
+            overhang_label = f"{overhang_pct:.1f}% of surface area ({overhang_area_cm2:.2f} cm²)"
+            if overhang_pct > 10.0:
+                overhang_str = f"{overhang_label} | [WARN] High overhangs — consider reorienting or adding 45° chamfers"
+            else:
+                overhang_str = f"{overhang_label} [OK]"
+    except Exception as e:
+        bed_contact_str = f"Error: {e}"
+        overhang_str = f"Error: {e}"
+
+    preview_path = file_path.parent / f"{file_path.stem}_preview.png"
+    renderer = render_preview(mesh_path, mesh, preview_path)
+
+    if temp_stl_to_clean and temp_stl_to_clean.exists():
+        temp_stl_to_clean.unlink()
+
+    uv_str = "Present" if has_uv else "None"
+    mat_str = "Present" if has_mat else "None"
+
+    print("=" * 64)
+    print(f"CAD/Mesh Verify: {file_path.name}")
+    print(f"Format:          {file_path.suffix.upper()} ({type(loaded).__name__})")
+    print(f"STEP B-Rep:      {step_status}")
+    print(f"Geometry:        {vertices_cnt} vertices, {faces_cnt} faces (triangles)")
+    print(f"Bounding Box:    X={dx:.2f} mm x Y={dy:.2f} mm x Z={dz:.2f} mm")
+    print(f"Solid Status:    {solid_str}")
+    print(f"DFM Metrics:     {dfm_metrics_str}")
+    print(f"DFM Quality:     {dfm_quality_str}")
+    print(f"Bed Contact Area: {bed_contact_str}")
+    print(f"FDM Overhangs (>45°): {overhang_str}")
+    print(f"Game Assets:     UVs: {uv_str} | Materials: {mat_str}")
+    if max_box:
+        print(f"Bed Fit:         {check_fit(extents, max_box)}")
+    print(f"Preview:         {preview_path.name} ({renderer})")
+    print("=" * 64)
+    return True
+
+def main():
+    parser = argparse.ArgumentParser(description="Universal 3D/CAD Mesh Validator and 4-View Preview Renderer")
+    parser.add_argument("files", nargs="+", type=Path, help="3D model files (.stl, .step, .stp, .obj, .glb, .ply, .3mf)")
+    parser.add_argument("--max-box", type=str, default=None, help="Max bounding box X,Y,Z (e.g. 180,180,180)")
+
+    args = parser.parse_args()
+
+    max_box = None
+    if args.max_box:
+        try:
+            max_box = [float(v.strip()) for v in args.max_box.split(",")]
+            if len(max_box) != 3:
+                raise ValueError
+        except ValueError:
+            print("Error: --max-box must be formatted as X,Y,Z (e.g. 180,180,180)", file=sys.stderr)
+            sys.exit(1)
+
+    for f in args.files:
+        verify_file(f, max_box)
+
+if __name__ == "__main__":
+    main()

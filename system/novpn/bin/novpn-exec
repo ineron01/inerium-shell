@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Ensure novpn is active
+if ! ip netns list | grep -qw "novpn"; then
+    systemctl start novpn.service
+fi
+
+TARGET_USER="${SUDO_USER:-ineron}"
+TARGET_UID=$(id -u "$TARGET_USER")
+TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+TARGET_RUNTIME="/run/user/$TARGET_UID"
+
+# Auto-detect Wayland socket if not passed
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    if [ -S "$TARGET_RUNTIME/wayland-1" ]; then
+        WAYLAND_DISPLAY="wayland-1"
+    elif [ -S "$TARGET_RUNTIME/wayland-0" ]; then
+        WAYLAND_DISPLAY="wayland-0"
+    fi
+fi
+
+exec ip netns exec novpn sudo -u "$TARGET_USER" \
+    env --chdir="$PWD" \
+        HOME="$TARGET_HOME" \
+        USER="$TARGET_USER" \
+        LOGNAME="$TARGET_USER" \
+        UID="$TARGET_UID" \
+        DISPLAY="${DISPLAY:-:0}" \
+        WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$TARGET_RUNTIME}" \
+        DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$TARGET_RUNTIME/bus}" \
+        PULSE_SERVER="${PULSE_SERVER:-unix:$TARGET_RUNTIME/pulse/native}" \
+        PIPEWIRE_RUNTIME_DIR="${PIPEWIRE_RUNTIME_DIR:-$TARGET_RUNTIME}" \
+        XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-Hyprland}" \
+        XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}" \
+        XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
+        XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$TARGET_HOME/.config}" \
+        XDG_CACHE_HOME="${XDG_CACHE_HOME:-$TARGET_HOME/.cache}" \
+        "$@"

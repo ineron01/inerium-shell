@@ -1,0 +1,17 @@
+[Unit]
+Description=Software fan regulator for MSI Bravo 15 C7VE (EC ignores CPU temperature)
+After=systemd-modules-load.service local-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/modprobe msi-ec
+ExecStartPre=/usr/bin/modprobe ec_sys write_support=1
+ExecStart=/usr/local/bin/msi-fan-regulator
+Restart=always
+RestartSec=2
+TimeoutStopSec=5
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

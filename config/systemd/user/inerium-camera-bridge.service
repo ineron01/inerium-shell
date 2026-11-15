@@ -1,0 +1,15 @@
+[Unit]
+Description=Inerium Camera persistent V4L2/SHM bridge
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/rm -f /tmp/inerium-cam-ingest.sock /tmp/inerium-cam-preview.sock
+ExecStart=%h/.local/bin/inerium-camera _bridge
+Restart=always
+RestartSec=1
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target

@@ -59,6 +59,17 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 ## Documentation & User Guide
 
 - **[Hotkeys, Gestures & Waybar Tutorial](docs/keybindings.md)** ([Русская версия](docs/keybindings.ru.md)) — Complete guide for system navigation, window tiling, shortcuts, touchpad gestures, and Waybar interactive features.
+- **[Optional Modules & Add-ons Guide](docs/addons.md)** ([Русская версия](docs/addons.ru.md)) — Detailed documentation for Inerium Camera, MSI Cooling (`msi-ec` DKMS + fan regulator), and noVPN split-tunneling.
+- **[Android Phone Webcam Setup](docs/camera-setup.md)** ([Русская версия](docs/camera-setup.ru.md)) — One-time ADB setup instructions for using a smartphone as a Linux webcam.
+
+## Optional System Add-ons
+
+Inerium Shell provides optional system extensions that can be selected in the installer TUI or passed via CLI flags:
+
+- `--with-camera`: **Inerium Camera** — Turns an Android phone into a high-definition webcam (`/dev/video0`) with GTK4 GUI, dynamic switching (back/front/laptop), and portrait/landscape support.
+- `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Patched `msi-ec` DKMS driver (includes Bravo 15 C7VE patch) + automatic CPU/GPU fan regulator daemon.
+- `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
+- `--all-addons`: Installs all optional add-ons together.
 
 ## First-login setup
 

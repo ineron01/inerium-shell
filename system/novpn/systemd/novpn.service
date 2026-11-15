@@ -1,0 +1,13 @@
+[Unit]
+Description=Direct Non-VPN Isolated Network Namespace (novpn)
+After=network-online.target AmneziaVPN.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/novpn-up
+ExecStop=/usr/local/bin/novpn-down
+
+[Install]
+WantedBy=multi-user.target
