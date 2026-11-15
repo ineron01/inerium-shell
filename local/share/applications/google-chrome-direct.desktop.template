@@ -1,0 +1,27 @@
+[Desktop Entry]
+Version=1.0
+Name=Google Chrome (Без VPN)
+Name[ru]=Google Chrome (Без VPN)
+GenericName=Web Browser
+GenericName[ru]=Веб-браузер
+Comment=Access the Internet directly without VPN
+Comment[ru]=Доступ в Интернет напрямую через провайдера без VPN
+StartupWMClass=google-chrome-direct
+Exec=novpn google-chrome-stable --user-data-dir=__HOME__/.config/google-chrome-direct %U
+StartupNotify=true
+Terminal=false
+Icon=google-chrome
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=application/pdf;application/rdf+xml;application/rss+xml;application/xhtml+xml;application/xhtml_xml;application/xml;image/gif;image/jpeg;image/png;image/webp;text/html;text/xml;x-scheme-handler/http;x-scheme-handler/https;
+Actions=new-window;new-private-window;
+
+Keywords=,hfepth;,tp;,tpdgy;[hjv;bez;brauzer;browser;chrome;crome;dgy;direct;dt,;ghtvjq;ghzvjq;google;lbhtrn;novpn;spn;ueuk;ueuk[hjv;veb;vpn;web;без;безвпн;браузер;веб;впн;вшкусе;гугл;гуглхром;директ;икфгяук;икщцыук;иуя;мзт;муи;премой;прямой;пщщпду;скщьу;сркщьу;тщмзт;хром;цуи;ызт;
+Keywords[ru]=,hfepth;,tp;,tpdgy;[hjv;bez;brauzer;browser;chrome;crome;dgy;direct;dt,;ghtvjq;ghzvjq;google;lbhtrn;novpn;spn;ueuk;ueuk[hjv;veb;vpn;web;без;безвпн;браузер;веб;впн;вшкусе;гугл;гуглхром;директ;икфгяук;икщцыук;иуя;мзт;муи;премой;прямой;пщщпду;скщьу;сркщьу;тщмзт;хром;цуи;ызт;
+[Desktop Action new-window]
+Name=Новое окно
+Exec=novpn google-chrome-stable --user-data-dir=__HOME__/.config/google-chrome-direct
+
+[Desktop Action new-private-window]
+Name=Новое окно в режиме инкогнито
+Exec=novpn google-chrome-stable --user-data-dir=__HOME__/.config/google-chrome-direct --incognito

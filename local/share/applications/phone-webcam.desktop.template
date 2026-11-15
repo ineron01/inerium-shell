@@ -1,0 +1,48 @@
+[Desktop Entry]
+Name=Веб-камера
+Name[ru]=Веб-камера
+GenericName=Веб-камера
+GenericName[ru]=Веб-камера
+Comment=Управление и превью веб-камер (встроенная и внешняя)
+Comment[ru]=Управление и превью веб-камер (встроенная и внешняя)
+Exec=uwsm app -- __HOME__/.local/bin/inerium-camera
+Icon=camera-web
+Terminal=false
+Type=Application
+StartupWMClass=org.inerium.camera
+Categories=AudioVideo;Video;
+Keywords=camera;dt,;kamera;inerium;phone;rfvthf;uwsm;veb;webcam;веб;гцыь;зрщту;камера;лфтфпфцф;лфьукф;муи;сфьукф;цуисфь;
+Keywords[ru]=camera;dt,;kamera;inerium;phone;rfvthf;uwsm;veb;webcam;веб;гцыь;зрщту;камера;лфтфпфцф;лфьукф;муи;сфьукф;цуисфь;
+Actions=ToggleCLI;Preview;Builtin;Front;Back;Torch;Stop;Reset;
+
+[Desktop Action ToggleCLI]
+Name=Быстрое переключение (вкл/выкл)
+Exec=__HOME__/.local/bin/inerium-camera toggle
+
+[Desktop Action Preview]
+Name=Показать / скрыть превью
+Exec=__HOME__/.local/bin/inerium-camera preview
+
+[Desktop Action Builtin]
+Name=Встроенная камера ноутбука
+Exec=__HOME__/.local/bin/inerium-camera -l
+
+[Desktop Action Front]
+Name=Внешняя фронтальная камера
+Exec=__HOME__/.local/bin/inerium-camera -f
+
+[Desktop Action Back]
+Name=Внешняя основная камера
+Exec=__HOME__/.local/bin/inerium-camera -b
+
+[Desktop Action Torch]
+Name=Включить с подсветкой
+Exec=__HOME__/.local/bin/inerium-camera -t
+
+[Desktop Action Stop]
+Name=Остановить камеру
+Exec=__HOME__/.local/bin/inerium-camera stop
+
+[Desktop Action Reset]
+Name=Аварийный сброс камеры
+Exec=__HOME__/.local/bin/inerium-camera reset
