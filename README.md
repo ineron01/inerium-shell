@@ -1,5 +1,7 @@
 # inerium-shell
 
+[English](README.md) | [Русский](README.ru.md)
+
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
 
 ## Structure
@@ -56,10 +58,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 
 ## Documentation & User Guide
 
-- **[Hotkeys, Gestures & Waybar Tutorial (Руководство по горячим клавишам)](docs/keybindings.md)** — Полное иллюстрированное руководство по управлению системой, тайлингу окон, шорткатам, жестам тачпада и скрытым возможностям панели Waybar.
+- **[Hotkeys, Gestures & Waybar Tutorial](docs/keybindings.md)** ([Русская версия](docs/keybindings.ru.md)) — Complete guide for system navigation, window tiling, shortcuts, touchpad gestures, and Waybar interactive features.
 
 ## First-login setup
 
-`inerium-first-login` runs one-time steps (account sign-ins and similar) from `~/.config/inerium/first-login.d/` in a floating terminal at the first Hyprland login, remembers completed steps, and re-offers postponed ones on the next login. This repository ships no steps; personal overlays drop executables there (each must exit 0 for `--check` once configured). Re-run anytime from Rofi ("Первичная настройка") or with `inerium-first-login --reset`.
+`inerium-first-login` runs one-time steps (account sign-ins and similar) from `~/.config/inerium/first-login.d/` in a floating terminal at the first Hyprland login, remembers completed steps, and re-offers postponed ones on the next login. This repository ships no steps; personal overlays drop executables there (each must exit 0 for `--check` once configured). Re-run anytime from Rofi ("First-login Setup" / "Первичная настройка") or with `inerium-first-login --reset`.
 
 Hardware-specific MSI features (`msi-fan-regulator`) are gated behind the `msi-ec` Cargo feature and disabled in the universal workspace build by default. All panels and utilities perform runtime capability detection (`/sys/devices/platform/msi-ec`, `/sys/class/backlight`, `/sys/class/power_supply/`, `/sys/class/net/`, `envycontrol`) and gracefully hide unavailable controls.

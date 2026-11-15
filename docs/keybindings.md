@@ -1,148 +1,159 @@
-# 🚀 Inerium Desktop — Руководство по горячим клавишам и управлению
+# 🚀 Inerium Desktop — Hotkeys, Gestures & Waybar Tutorial
 
-Добро пожаловать в **Inerium Desktop**! Эта система построена вокруг композитора **Hyprland**, статусной панели **Waybar** и фирменного набора утилит **Inerium**.
+[ English | [Русский](keybindings.ru.md) ]
 
-Главный принцип управления — **клавиатурная эргономика и тайлинг**: окна организуются автоматически без нагромождения друг на друга, а ключевые действия выполняются мгновенно с помощью комбинаций клавиш. При этом система полностью поддерживает привычное управление мышью и удобные жесты тачпада.
+Welcome to **Inerium Desktop**! This desktop environment is built around the **Hyprland** Wayland compositor (Lua API), the **Waybar** status bar, and the native **Inerium** Rust utility suite.
+
+The core design principle is **keyboard ergonomics and automatic tiling**: windows tile cleanly without clutter, and all primary actions are triggered instantly via shortcuts. The system also offers full mouse control and smooth multi-touch gestures for laptop touchpads.
 
 > [!TIP]
-> Основная клавиша-модификатор (**`Super`**) — это клавиша **`Windows`** (или **`Cmd`** на клавиатурах Apple).
+> The primary modifier key (**`Super`**) is the **`Windows`** key (or **`Cmd`** on Apple keyboards).
 
 ---
 
-## 📑 Быстрая шпаргалка (Cheat Sheet)
+## 📑 Quick Cheat Sheet
 
-| Действие | Комбинация | Описание |
+| Action | Shortcut | Description |
 | :--- | :--- | :--- |
-| **Меню приложений** | `Super + Пробел` | Быстрый поиск и запуск программ (Rofi) |
-| **Терминал** | `Super + Enter` | Эмулятор терминала Kitty |
-| **Файловый менеджер** | `Super + E` | Dolphin |
-| **Браузер** | `Super + W` | Веб-браузер по умолчанию |
-| **Центр управления** | `Super + A` | Панель быстрых настроек Inerium (Wi-Fi, Bluetooth, профили) |
-| **Буфер обмена** | `Super + V` | История скопированного текста и изображений |
-| **Переключатель окон** | `Super + Tab` | Поиск и переключение между запущенными окнами |
-| **Калькулятор** | `Super + =` или `Super + C` | Быстрый калькулятор с историей вычислений |
-| **Системный монитор** | `Ctrl + Shift + Esc` | Мониторинг процессора, памяти и процессов (`btop`) |
-| **Скриншот области** | `PrintScreen` | Выделение области с редактором (стрелки, текст, блюр) |
-| **Скриншот экрана** | `Shift + PrintScreen` | Мгновенный снимок всего дисплея |
-| **Пипетка цвета** | `Super + P` | Взять цвет с экрана с автокопированием HEX |
-| **Блокировка экрана** | `Super + L` | Экран блокировки Hyprlock |
-| **Меню питания** | `Super + Alt + C` или `Power` | Выключение, перезагрузка, сон, выход |
-| **Смена раскладки** | `Alt + Shift` | Переключение Английский / Русский |
+| **Application Launcher** | `Super + Space` | Fast application search and launcher (Rofi) |
+| **Terminal** | `Super + Enter` | Kitty terminal emulator |
+| **File Manager** | `Super + E` | Dolphin file manager |
+| **Web Browser** | `Super + W` | Default web browser |
+| **Text Editor** | `Super + T` | Default GUI text editor |
+| **Calculator** | `Super + C` or `XF86Calculator` | Fast calculator with history |
+| **Control Center** | `Super + A` | Inerium quick settings panel (Wi-Fi, Bluetooth, power profiles) |
+| **Clipboard History** | `Super + V` | Copied text and image history (`inerium-clipboard`) |
+| **Window Switcher** | `Super + Tab` | Search and switch between active windows (Rofi) |
+| **System Monitor** | `Ctrl + Shift + Esc` | Process, CPU, GPU, and RAM monitor (`btop`) |
+| **Area Screenshot** | `Print` | Interactive area capture with annotation editor (`satty`) |
+| **Fullscreen Screenshot** | `Shift + Print` | Instant full-screen screenshot copied to clipboard & disk |
+| **Color Picker** | `Super + P` | Grab color from screen with automatic HEX copy (`hyprpicker`) |
+| **Lock Screen** | `Super + L` | Screen lock via Hyprlock |
+| **Power Menu** | `Super + Alt + C` or `Power` | Power off, reboot, suspend, lock, or log out |
+| **Switch Keyboard Layout** | `Alt + Shift` | Toggle layout (English / Russian) |
 
 ---
 
-## 🪟 1. Управление окнами (Тайлинг)
+## 🪟 1. Window Management & Tiling
 
-В Inerium Desktop окна автоматически размещаются плиткой (тайлинг). Вы можете менять их геометрию, переводить в плавающий режим или разворачивать.
+Windows are automatically organized into an ergonomic tiling layout. You can adjust geometry, toggle floating mode, or expand windows to fullscreen.
 
-| Комбинация | Действие |
+| Shortcut | Action |
 | :--- | :--- |
-| `Super + Q` | **Закрыть** активное окно |
-| `Super + Shift + Q` | **Принудительно закрыть** (Kill process) зависшее окно |
-| `Super + Escape` | **Режим «Убийцы окон»** — курсор превращается в прицел, клик по окну закрывает его |
-| `Super + F` | **Полноэкранный режим** (Fullscreen) |
-| `Super + D` | **Максимизация** (развернуть на весь экран, сохраняя панель Waybar) |
-| `Super + Alt + Пробел` | **Плавающий режим** (Toggle Float) — открепить окно от тайлинга |
-| `Super + J` | **Сменить деление тайлинга** (Toggle Split) — горизонтальный / вертикальный сплит |
-| `Super + ← / → / ↑ / ↓` | **Смена фокуса** — перейти к соседнему окну в выбранном направлении |
-| `Super + Shift + ← / → / ↑ / ↓` | **Переместить окно** в сетке тайлинга в указанную сторону |
-| `Alt + Tab` | **Циклический фокус** — переход к следующему окну |
+| `Super + Q` | **Close** active window |
+| `Super + Shift + Q` | **Force kill** (SIGKILL) unresponsive window process |
+| `Super + Escape` | **Window Killer mode** — cursor turns into a crosshair; click any window to kill it |
+| `Super + F` | **Exclusive Fullscreen** (hides Waybar panel) |
+| `Super + D` | **Maximize** (fullscreen while keeping Waybar panel visible) |
+| `Super + Alt + Space` | **Toggle Floating mode** — detach window from tiling grid |
+| `Super + J` | **Toggle Split direction** — switch between horizontal and vertical split |
+| `Super + ← / → / ↑ / ↓` | **Change focus** — move focus to adjacent window in given direction |
+| `Alt + Tab` | **Cycle focus** — cycle focus through windows in current workspace |
+| `Super + Shift + ← / → / ↑ / ↓` | **Move window** — swap window position in tiling grid |
+| `Super + Shift + MouseWheel Up / Down` | **Move to monitor** — send active window to previous / next monitor |
+| `Super + Ctrl + Shift + ← / →` | **Move to monitor workspace** — send window to next / previous workspace on current monitor |
+| `Super + Ctrl + Shift + MouseWheel Up / Down` | **Move to monitor workspace** — send window to next / previous workspace via mouse wheel |
 
 ---
 
-## 🖥️ 2. Рабочие столы (Воркспейсы) и мониторы
+## 🖥️ 2. Workspaces & Multi-Monitor Navigation
 
-Рабочее пространство разделено на виртуальные столы. При подключении внешнего монитора столы распределяются независимо (например, 1–3 на ноутбуке, 4–6 на мониторе).
+Workspaces are virtual desktops. When an external monitor is connected, workspaces are cleanly separated across outputs (e.g. 1–3 on laptop display, 4–6 on external monitor).
 
-| Комбинация | Действие |
+| Shortcut | Action |
 | :--- | :--- |
-| `Super + 1..6` | **Перейти** на рабочий стол 1–6 |
-| `Super + Shift + 1..6` | **Перенести окно** на стол 1–6 и перейти за ним |
-| `Super + Alt + 1..6` | **Тихий перенос** — отправить окно на стол 1–6 без переключения стола |
-| `Super + Ctrl + ← / →` | Переключить воркспейс на текущем мониторе (предыдущий / следующий) |
-| `Super + Ctrl + ↓` | Перейти на **первый свободный пустой** воркспейс на этом мониторе |
-| `Super + Ctrl + 1..3` | Сфокусировать монитор 1, 2 или 3 |
-| `Super + S` | **Scratchpad (Карман)** — скрыть / показать специальный рабочий стол |
-| `Super + Shift + S` | **Отправить в Scratchpad** текущее окно (убрать окно в фоновый карман) |
+| `Super + 1..6` | **Switch** to workspace 1..6 |
+| `Super + Shift + 1..6` | **Move window** to workspace 1..6 and follow focus |
+| `Super + Alt + 1..6` | **Silent move** — send window to workspace 1..6 without switching active workspace |
+| `Super + Ctrl + ← / →` | Cycle workspace on current monitor (previous / next) |
+| `Super + Ctrl + ↓` | Jump to **first empty** workspace on current monitor |
+| `Super + Ctrl + 1..3` | Focus physical monitor 1, 2, or 3 |
+| `Super + S` | **Scratchpad** — toggle special floating drawer workspace |
+| `Super + Shift + S` | **Send to Scratchpad** — move active window to special background drawer |
 
 ---
 
-## 🖱️ 3. Мышь и экранная лупа (Zoom)
+## 🖱️ 3. Mouse Controls & Screen Magnifier (Zoom)
 
-| Комбинация / Действие | Результат |
+| Shortcut / Action | Result |
 | :--- | :--- |
-| `Super + Зажать ЛКМ` | **Перетаскивание окна** мышью (работает и для тайлинговых окон) |
-| `Super + Зажать ПКМ` | **Изменение размера окна** мышью |
-| `Super + Колесико мыши` | Быстрое перелистывание рабочих столов |
-| `Super + Shift + Колесико` | Переместить активное окно на соседний монитор |
-| `Super + Ctrl + Shift + ← / →` | Переместить активное окно на следующий / предыдущий стол монитора |
-| `Super + Ctrl + Shift + Колесико` | Переместить окно на соседний воркспейс монитора |
-| `Super + Plus (+)` / `Minus (-)` | **Экранная лупа (Zoom)** — плавное приближение от 100% до 300% (шаг 0.3) |
-| `Super + Numpad [+]` / `[-]` | Масштабирование экрана с цифрового блока клавиатуры |
+| `Super + Hold Left Click` | **Drag & move window** (works seamlessly on tiled windows too) |
+| `Super + Hold Right Click` | **Resize window** interactively |
+| `Super + Mouse Wheel` | Fast cycle through workspaces on current monitor |
+| `Super + Ctrl + Mouse Wheel` | Cycle workspaces on current monitor |
+| `Super + Plus (+)` / `Minus (-)` | **Screen Magnifier (Zoom)** — smooth hardware zoom from 1.0x to 3.0x (0.3 step) |
+| `Super + Keypad [+]` / `[-]` | Screen magnifier zoom via numeric keypad |
 
 ---
 
-## 🖐️ 4. Жесты тачпада (Touchpad Gestures)
+## 🖐️ 4. Touchpad Gestures
 
-Для владельцев ноутбуков доступны нативные плавные мультитач-жесты:
+For laptop users, native smooth multi-touch gestures are configured out of the box:
 
-- **Свайп 4 пальцами влево / вправо** — быстрое переключение между рабочими столами.
-- **Свайп 3 пальцами вниз** — закрыть активное окно (`close`).
-- **Свайп 3 пальцами вверх** — развернуть окно на весь экран (`fullscreen`).
-- **Свайп 3 пальцами влево** — переключить окно в плавающий / тайлинговый режим (`float`).
-
----
-
-## 🎵 5. Мультимедиа и системные клавиши
-
-Индикация громкости и яркости выводится через плавный OSD-индикатор (**SwayOSD**):
-
-- **Громкость:** Клавиши `Fn + Volume Up / Down` (или мультимедийные клавиши звука).
-- **Mute звука:** Клавиша `Mute` (или `Fn + Mute`).
-- **Mute микрофона:** Клавиша `Mic Mute` (индикатор на клавиатуре синхронизирован).
-- **Яркость:** Клавиши `Fn + Brightness Up / Down`.
-- **Медиаплеер:** Клавиши `Play / Pause`, `Next Track`, `Previous Track` (управляют плеером браузера, Spotify и др.).
+- **4-Finger Swipe Left / Right** — fast switching between workspaces.
+- **3-Finger Swipe Down** — close active window (`close`).
+- **3-Finger Swipe Up** — toggle fullscreen (`fullscreen`).
+- **3-Finger Swipe Left** — toggle window floating / tiling state (`float`).
 
 ---
 
-## 💡 6. Секреты и возможности панели Waybar
+## 🎵 5. Multimedia & Hardware Keys
 
-Верхняя статусная панель Inerium Waybar — полностью интерактивная. Многие действия можно выполнять кликом:
+Hardware volume and brightness changes trigger smooth, non-intrusive on-screen displays (**SwayOSD**):
 
-- **Иконка ОС (слева):**
-  - *ЛКМ:* Открыть меню приложений (Rofi).
-  - *ПКМ:* Открыть менеджер буфера обмена.
-- **Пустое пространство панели (справа и слева от часов):**
-  - *Клик ЛКМ / ПКМ:* Мгновенно открыть **Центр управления** (Inerium Control Center).
-- **Виджет мониторинга железа (CPU / RAM / Температура):**
-  - *ЛКМ:* Переключить отображение CPU ↔ RAM.
-  - *ПКМ:* Запустить подробный системный монитор `btop`.
-- **Виджет медиаплеера (название трека):**
-  - *ЛКМ:* Открыть карточку трека с управлением.
-  - *ПКМ:* Поставить трек на паузу / снять с паузы.
-  - *Колесико мыши:* Переключение на следующий / предыдущий трек.
-- **Часы (по центру):**
-  - *ЛКМ:* Переключить краткий / полный формат даты.
-  - *ПКМ:* Сбросить выбранный месяц календаря на текущий.
-  - *Колесико мыши:* Листать месяцы календаря вперед и назад.
-- **Индикатор раскладки:**
-  - *ЛКМ:* Переключить язык ввода.
-- **Звук:**
-  - *ЛКМ:* Быстрое меню вывода звука (динамики / наушники).
-  - *ПКМ:* Включить / выключить звук (Mute).
-  - *СКМ (Колесико):* Открыть расширенный микшер `pavucontrol`.
-  - *Прокрутка колесиком:* Точная регулировка громкости с шагом 2%.
-- **Сеть / Wi-Fi:**
-  - *ЛКМ:* Меню доступных Wi-Fi сетей.
-  - *ПКМ:* Быстрое включение / выключение адаптера Wi-Fi.
-  - *СКМ:* Открыть редактор сетевых подключений.
-- **Bluetooth:**
-  - *ЛКМ:* Список сохраненных Bluetooth-устройств для подключения в 1 клик.
-  - *ПКМ:* Включение / выключение адаптера Bluetooth.
-  - *СКМ:* Менеджер устройств Blueman.
-- **Батарея:**
-  - *ЛКМ:* Переключить отображение (процент заряда ↔ расчетное оставшееся время работы).
-- **Колокольчик (DND):**
-  - *ЛКМ / ПКМ:* Режим «Не беспокоить» (Do Not Disturb) — глушит всплывающие уведомления.
-- **Кнопка выключения (⏻):**
-  - *ЛКМ:* Меню выключения, сна и перезагрузки.
+- **Volume:** `Fn + Volume Up / Down` (or dedicated multimedia keys).
+- **Audio Mute:** `Mute` key (or `Fn + Mute`).
+- **Mic Mute:** `Mic Mute` key (keyboard indicator LED stays in sync).
+- **Brightness:** `Fn + Brightness Up / Down`.
+- **Media Playback:** `Play / Pause`, `Next Track`, `Previous Track` (controls Spotify, browser players, MPV, etc.).
+
+---
+
+## 💡 6. Waybar Interactive Features & Secrets
+
+The top Inerium Waybar status panel is fully interactive. Most modules respond to clicks, right-clicks, and wheel scrolling:
+
+- **OS Icon (Left):**
+  - *Left Click:* Open application launcher (Rofi).
+  - *Right Click:* Open clipboard history manager (`inerium-clipboard`).
+- **Workspaces Widget:**
+  - *Left Click:* Switch to clicked workspace.
+  - *Scroll Wheel:* Cycle next / previous workspace on current monitor.
+- **Hardware Monitor (CPU / RAM / Temperature):**
+  - *Left Click:* Toggle display mode (CPU ↔ RAM usage).
+  - *Right Click:* Launch detailed interactive system monitor (`btop`).
+- **Media Player Widget (MPRIS track info):**
+  - *Left Click:* Open interactive track card with playback controls (`inerium-popup media`).
+  - *Right Click:* Play / Pause current track.
+  - *Scroll Wheel:* Skip to next / previous track.
+- **Empty Panel Space (Left & Right of Clock):**
+  - *Left / Right Click:* Instantly open **Inerium Control Center** (`inerium-popup control`).
+- **Clock & Calendar (Center):**
+  - *Left Click:* Toggle between compact (`HH:MM`) and full (`Day, DD Mon HH:MM`) date format.
+  - *Right Click:* Reset calendar view to current month.
+  - *Scroll Wheel:* Browse calendar months forward and backward.
+- **Keyboard Layout Indicator:**
+  - *Left Click:* Toggle keyboard layout (US ↔ RU).
+- **Audio Module:**
+  - *Left Click:* Open audio output / input device selector popup (`inerium-popup audio`).
+  - *Right Click:* Mute / Unmute audio output.
+  - *Middle Click:* Open advanced PulseAudio / PipeWire mixer (`pavucontrol`).
+  - *Scroll Wheel:* Fine-tune volume in 2% steps with SwayOSD feedback.
+- **Network / Wi-Fi Module:**
+  - *Left Click:* Open Wi-Fi networks and connection menu (`inerium-popup network`).
+  - *Right Click:* Fast toggle Wi-Fi radio on / off (`inerium-toggle-network.sh`).
+  - *Middle Click:* Open Network Connections editor (`nm-connection-editor`).
+- **Wi-Fi Hotspot Module:**
+  - *Left Click:* Fast toggle Wi-Fi hotspot on / off (`inerium-hotspot toggle`).
+- **Bluetooth Module:**
+  - *Left Click:* Open list of paired Bluetooth devices for 1-click connection (`inerium-popup bluetooth`).
+  - *Right Click:* Fast toggle Bluetooth radio on / off (`inerium-toggle-bluetooth.sh`).
+  - *Middle Click:* Open Bluetooth device manager (`blueman-manager`).
+- **Battery Module:**
+  - *Left Click:* Toggle display between charge percentage (%) and estimated remaining battery runtime.
+- **Do Not Disturb (DND Bell):**
+  - *Left / Right Click:* Toggle Do Not Disturb mode (mutes on-screen notification popups).
+- **Control Center Button ():**
+  - *Left / Right Click:* Open Inerium Control Center (`inerium-popup control`).
+- **Power Button (⏻):**
+  - *Left Click:* Open Power menu popup (`inerium-popup power` — Shutdown, Reboot, Suspend, Lock, Logout).
