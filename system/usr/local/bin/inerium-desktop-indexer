@@ -14,9 +14,15 @@ import shutil
 import subprocess
 import tempfile
 
-TARGET_DIR = "/usr/local/share/applications"
+if os.geteuid() == 0:
+    TARGET_DIR = "/usr/local/share/applications"
+    USER_DIRS = [os.path.join(p, ".local/share/applications") for p in glob.glob("/home/*") if not os.path.islink(p) and os.path.isdir(p)]
+else:
+    xdg_data = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    TARGET_DIR = os.path.join(xdg_data, "applications")
+    USER_DIRS = [TARGET_DIR]
+
 SOURCE_DIRS = ["/usr/share/applications"]
-USER_DIRS = glob.glob("/home/*/.local/share/applications")
 
 # Keyboard layout translation tables
 QWERTY_TO_JCUKEN = str.maketrans(
@@ -391,15 +397,16 @@ def index_all():
     for USER_DIR in USER_DIRS:
         run_as_owner(USER_DIR, process_user_dir)
 
-    # 3. Clean up deleted applications from TARGET_DIR
-    for dst_file in glob.glob(os.path.join(TARGET_DIR, "*.desktop")):
-        fname = os.path.basename(dst_file)
-        src_exists = any(os.path.isfile(os.path.join(s, fname)) for s in SOURCE_DIRS)
-        if not src_exists:
-            try:
-                os.remove(dst_file)
-            except Exception:
-                pass
+    # 3. Clean up deleted applications from TARGET_DIR (only when running as root for system directory)
+    if os.geteuid() == 0:
+        for dst_file in glob.glob(os.path.join(TARGET_DIR, "*.desktop")):
+            fname = os.path.basename(dst_file)
+            src_exists = any(os.path.isfile(os.path.join(s, fname)) for s in SOURCE_DIRS)
+            if not src_exists:
+                try:
+                    os.remove(dst_file)
+                except Exception:
+                    pass
 
     # 4. Update desktop databases
     update_desktop_database(TARGET_DIR)

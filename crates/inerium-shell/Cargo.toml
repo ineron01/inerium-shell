@@ -8,8 +8,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-inerium-i18n = { path = "../inerium-i18n" }
-inerium-hw = { path = "../inerium-hw" }
+inerium-i18n = { workspace = true }
+inerium-hw = { workspace = true }
 gtk4 = { workspace = true }
 gdk4 = { workspace = true }
 gio = { workspace = true }

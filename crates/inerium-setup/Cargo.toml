@@ -8,7 +8,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-inerium-i18n = { path = "../inerium-i18n" }
+inerium-i18n = { workspace = true }
 gtk4 = { workspace = true }
 gdk4 = { workspace = true }
 glib = { workspace = true }

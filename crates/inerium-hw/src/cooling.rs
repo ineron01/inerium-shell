@@ -25,6 +25,17 @@ impl PlatformControl {
         Self::None
     }
 
+    pub fn has_msi_ec(&self) -> bool {
+        #[cfg(feature = "msi-ec")]
+        {
+            matches!(self, Self::MsiEc { .. })
+        }
+        #[cfg(not(feature = "msi-ec"))]
+        {
+            false
+        }
+    }
+
     pub fn get_cooler_boost(&self) -> bool {
         match self {
             #[cfg(feature = "msi-ec")]
@@ -37,14 +48,14 @@ impl PlatformControl {
         }
     }
 
-    pub fn set_cooler_boost(&self, on: bool) {
+    pub fn set_cooler_boost(&self, _on: bool) {
         match self {
             #[cfg(feature = "msi-ec")]
             Self::MsiEc { base_path } => {
                 let cb = base_path.join("cooler_boost");
-                let val = if on { "on\n" } else { "off\n" };
+                let val = if _on { "on\n" } else { "off\n" };
                 let _ = fs::write(cb, val);
-                if !on {
+                if !_on {
                     self.apply_balanced_fan_curve();
                 }
             }

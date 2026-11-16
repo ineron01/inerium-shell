@@ -14,7 +14,7 @@ hl.on("hyprland.start", function ()
     hl.exec_cmd("xhost +SI:localuser:root")
 
     -- 4. Фоновая мультиязычная индексация приложений (oneshot)
-    hl.exec_cmd("sudo -n /usr/local/bin/inerium-desktop-indexer")
+    hl.exec_cmd("inerium-desktop-indexer")
 
     -- 5. Первичная настройка окружения и интеграций; если всё пройдено — выходит сразу
     hl.exec_cmd("inerium-setup --autostart")

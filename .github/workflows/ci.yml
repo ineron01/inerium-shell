@@ -46,12 +46,12 @@ jobs:
         run: |
           bash -n *.sh
           bash -n scripts/install/*.sh
-          for f in local/bin/*; do
+          for f in local/bin/* first-login.d/* system/novpn/bin/* system/usr/local/bin/*; do
             [[ -f "$f" ]] || continue
             if head -n 1 "$f" | grep -qE "bash|sh"; then
               bash -n "$f"
             elif head -n 1 "$f" | grep -q "python"; then
-              python3 -m py_compile "$f"
+              python3 -c "import ast; ast.parse(open('$f').read())"
             fi
           done
       - name: Lua syntax check

@@ -3,7 +3,7 @@
 # scripts/install/40-binaries.sh — Prebuilt binary delivery & Cargo build
 # ============================================================================
 
-USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-polkit"
+USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-camera inerium-polkit"
 
 install_from_binaries() {
     local tmp_dir bin missing_libs

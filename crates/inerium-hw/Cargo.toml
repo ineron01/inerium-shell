@@ -8,9 +8,9 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default = ["msi-ec"]
+default = []
 msi-ec = []
 
 [dependencies]
-inerium-i18n = { path = "../inerium-i18n" }
+inerium-i18n = { workspace = true }
 serde = { workspace = true }

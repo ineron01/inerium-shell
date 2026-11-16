@@ -98,8 +98,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 
 Inerium Shell provides optional system extensions that can be selected in the installer TUI or passed via CLI flags:
 
+- `--with-gdrive`: **Google Drive Integration** — Background `rclone` user service mount for cloud storage access in Dolphin.
+- `--with-converter`: **Dolphin Converter** — Context menu audio, video, document, and PDF converter with optional AI background removal (`silueta.onnx`).
 - `--with-camera`: **Inerium Camera** — Turns an Android phone into a high-definition webcam (`/dev/video0`) with GTK4 GUI, dynamic switching (back/front/laptop), and portrait/landscape support.
-- `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Patched `msi-ec` DKMS driver (includes Bravo 15 C7VE patch) + automatic CPU/GPU fan regulator daemon.
+- `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
 - `--all-addons`: Installs all optional add-ons together.
 

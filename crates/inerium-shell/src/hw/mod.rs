@@ -39,7 +39,7 @@ pub fn ctx() -> &'static HardwareContext {
 // 1. COOLING & FAN TELEMETRY FACADE
 // ============================================================================
 pub fn has_msi_ec() -> bool {
-    matches!(ctx().cooling.control, cooling::PlatformControl::MsiEc { .. })
+    ctx().cooling.control.has_msi_ec()
 }
 
 #[allow(dead_code)]

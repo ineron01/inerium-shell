@@ -8,8 +8,8 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-default = ["msi-ec"]
-msi-ec = []
+default = []
+msi-ec = ["inerium-hw/msi-ec"]
 
 [[bin]]
 name = "msi-fan-regulator"
@@ -17,8 +17,8 @@ path = "src/bin/msi-fan-regulator.rs"
 required-features = ["msi-ec"]
 
 [dependencies]
-inerium-hw = { path = "../inerium-hw" }
-inerium-i18n = { path = "../inerium-i18n" }
+inerium-hw = { workspace = true }
+inerium-i18n = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"

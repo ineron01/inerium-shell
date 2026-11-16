@@ -28,7 +28,6 @@ deploy_user_scripts_and_menus() {
     fi
 
     install_root_if_changed 755 "$REPO_DIR/system/usr/local/bin/inerium-desktop-indexer" /usr/local/bin/inerium-desktop-indexer
-    install_sudoers_template "$REPO_DIR/system/etc/sudoers.d/inerium-desktop-indexer.template" /etc/sudoers.d/inerium-desktop-indexer
     if [[ -f "$REPO_DIR/system/etc/udev/rules.d/99-inerium-hw.rules" ]]; then
         install_root_if_changed 644 "$REPO_DIR/system/etc/udev/rules.d/99-inerium-hw.rules" /etc/udev/rules.d/99-inerium-hw.rules
     fi
@@ -59,10 +58,10 @@ deploy_desktop_configs() {
 
     # Hyprland
     run "mkdir -p '$HOME/.config/hypr/config'"
-    for f in AGENTS.md hypridle.conf hyprland.lua hyprlock.conf hyprtoolkit.conf xdph.conf; do
+    for f in AGENTS.md hypridle.conf hyprland.lua hyprlock.conf xdph.conf; do
         [[ -f "$REPO_DIR/config/hypr/$f" ]] && link_item "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f"
     done
-    for f in "$REPO_DIR"/config/hypr/config/*.lua "$REPO_DIR"/config/hypr/config/theme_settings.json; do
+    for f in "$REPO_DIR"/config/hypr/config/*.lua; do
         [[ -f "$f" ]] || continue
         base="$(basename "$f")"
         if [[ "$base" == "autostart_backup.lua" || "$base" == "binds_backup.lua" ]]; then

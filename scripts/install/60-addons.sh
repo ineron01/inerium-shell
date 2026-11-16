@@ -60,9 +60,14 @@ install_camera_addon() {
     fi
 
     if [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
-        run_step "Compiling inerium-camera..." \
-            cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-camera
-        install -m 755 "$REPO_DIR/target/release/inerium-camera" "$HOME/.local/bin/inerium-camera"
+        if [[ ! -x "$HOME/.local/bin/inerium-camera" || "$INSTALL_MODE" == "source" ]]; then
+            run_step "Compiling inerium-camera..." \
+                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-camera
+            install -m 755 "$REPO_DIR/target/release/inerium-camera" "$HOME/.local/bin/inerium-camera"
+        fi
+        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam"
+        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
+    elif [[ -x "$HOME/.local/bin/inerium-camera" ]]; then
         ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam"
         ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
     fi
