@@ -1,32 +1,16 @@
--- Universal workspace rules (skipped if host-specific config.monitors_local overrides them)
+-- Workspace rules
+-- Wiki: https://wiki.hypr.land/Configuring/Workspace-Rules/
 
-if INERIUM_WORKSPACES_OVERRIDDEN then
-    return
+-- Workspaces 1-3: Laptop display (eDP-2 hybrid / eDP-1 integrated)
+for ws = 1, 3 do
+    hl.workspace_rule({ workspace = tostring(ws), monitor = "eDP-2", default = (ws == 1), persistent = true })
+    hl.workspace_rule({ workspace = tostring(ws), monitor = "eDP-1" })
 end
 
-local per_monitor = 3
-local count_path = (os.getenv("HOME") or "") .. "/.config/hypr/config/workspaces_count"
-local cf = io.open(count_path, "r")
-if cf then
-    local v = tonumber(cf:read("*l"))
-    cf:close()
-    if v and v >= 1 and v <= 9 then
-        per_monitor = math.floor(v)
-    end
+-- Workspaces 4-6: External display (HDMI-A-1)
+for ws = 4, 6 do
+    hl.workspace_rule({ workspace = tostring(ws), monitor = "HDMI-A-1", default = (ws == 4), persistent = true })
 end
 
-local has_secondary = MONITOR2 and MONITOR2 ~= "" and MONITOR2 ~= MONITOR1 and hl.get_monitor(MONITOR2) ~= nil
-
-if has_secondary then
-    for i = 1, per_monitor do
-        hl.workspace_rule({ workspace = tostring(i), monitor = MONITOR1, default = (i == 1), persistent = true })
-    end
-    for i = 1, per_monitor do
-        hl.workspace_rule({ workspace = tostring(per_monitor + i), monitor = MONITOR2, default = (i == 1), persistent = true })
-    end
-    hl.workspace_rule({ workspace = "name:gaming", monitor = MONITOR2 })
-else
-    for i = 1, per_monitor do
-        hl.workspace_rule({ workspace = tostring(i), default = (i == 1), persistent = true })
-    end
-end
+-- Gaming workspace pinned to external display
+hl.workspace_rule({ workspace = "name:gaming", monitor = "HDMI-A-1" })

@@ -52,10 +52,9 @@ hl.window_rule({
 -- иначе они тайлятся под ним и программа выглядит зависшей
 hl.window_rule({ match = { class = "^(programrelayfbd\\.exe)$", title = "negative:^(Owen Logic.*)$" }, float = true, center = true })
 
-hl.window_rule({ match = { class = "^(.*\\.exe)$", title = "negative:^$", float = true }, monitor = PRIMARY_MONITOR, center = true, fullscreen_state = 0 })
+hl.window_rule({ match = { class = "^(.*\\.exe)$", title = "negative:^$", float = true }, center = true, fullscreen_state = 0 })
 hl.window_rule({ match = { class = "^(.*\\.exe)$", title = "^$" }, float = true, no_anim = true })
-hl.window_rule({ match = { class = "^(.*[Ll]auncher.*)$" }, float = true, monitor = PRIMARY_MONITOR })
-hl.window_rule({ match = { class = "^(vesktop|discord)$" }, monitor = PRIMARY_MONITOR })
+hl.window_rule({ match = { class = "^(.*[Ll]auncher.*)$" }, float = true })
 hl.window_rule({ match = { class = "^(.*[Cc]alc.*)$" }, float = true, size = { "max(monitor_w, monitor_h)*0.17", "min(monitor_w, monitor_h)*0.43" } })
 hl.window_rule({ match = { class = "^(org\\.kde\\.keditfiletype)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.kde\\.ark)$" }, size = { "max(monitor_w, monitor_h)*0.40", "min(monitor_w, monitor_h)*0.40" } })
