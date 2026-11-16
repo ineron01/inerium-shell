@@ -1,20 +1,38 @@
-# inerium-shell
+# Inerium Shell
 
 [English](README.md) | [Русский](README.ru.md)
 
 Универсальное окружение рабочего стола для CachyOS / Arch Linux, построенное вокруг **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO** и нативного набора утилит на **Rust / GTK4** в фирменной цветовой палитре **Inerium Dragon**.
 
+---
+
 ## Структура репозитория
 
-- `Cargo.toml` — Rust workspace (`inerium-i18n`, `inerium-tools`, `inerium-shell`, `inerium-greeter`, `inerium-setup`, `dolphin-converter`)
-- `standalone/inerium-polkit/` — Автономный Polkit-агент (форк [soteria](https://github.com/ImVaskel/soteria), Apache-2.0; `gtk4 0.9` / `relm4 0.9`, выделен отдельно во избежание конфликта `links = "gtk-4"` с `gtk4 0.11`)
-- `config/` — Пользовательские конфигурации для создания симлинков (`hypr`, `waybar`, `rofi`, `mako`, `swayosd`, `fish`, `kitty`, `uwsm`, `systemd/user`, `qt5ct`, `qt6ct`, `gtk-3.0`, `gtk-4.0`)
-- `local/` — Пользовательские скрипты (`~/.local/bin/`) и сервисные меню Dolphin KIO
-- `system/` — Общесистемный `inerium-desktop-indexer`, шаблоны `greetd` (`--with-greeter`) и правило `sudoers.d`
-- `assets/` — Обои по умолчанию (`assets/wallpapers/`) и фоны экрана входа (`assets/backgrounds/`)
-- `pkglist-base.txt` — Базовый список пакетов Arch/CachyOS (минимальное чистое ядро)
-- `bootstrap.sh` — Однострочный TTY-бутстраппер (устанавливает `git`, клонирует репозиторий, запускает `install.sh --with-greeter`)
-- `install.sh` — Универсальный идемпотентный установщик (`--bin`, `--from-source`, `--with-greeter`, `--with-gdrive`, `--with-converter`, `--all-addons`)
+```
+inerium-shell/
+├── assets/                  # Обои по умолчанию и фоны экрана входа
+├── config/                  # Конфигурации для создания симлинков в ~/.config/*
+├── crates/                  # Единый воркспейс утилит на Rust
+│   ├── dolphin-converter/   # Конвертер медиа и документов для Dolphin с AI-удалением фона
+│   ├── inerium-camera/      # Менеджер виртуальной веб-камеры (Android ADB/Wi-Fi в /dev/video0)
+│   ├── inerium-greeter/     # Экран входа greetd на GTK4 с выбором сессий
+│   ├── inerium-hw/          # Модуль автоопределения железа и телеметрии sysfs
+│   ├── inerium-i18n/        # Каталог двуязычной локализации (RU / EN)
+│   ├── inerium-setup/       # Графический мастер настройки экранов и авторизаций
+│   ├── inerium-shell/       # Центр управления и интерактивные Relm4-попапы
+│   └── inerium-tools/       # Демоны телеметрии Waybar, IPC-мосты и контроль кулеров
+├── docs/                    # Иллюстрированные руководства, горячие клавиши и инструкции
+├── first-login.d/           # Шаги первичной авторизации (GitHub CLI, Google Drive)
+├── hardware/                # Пропатченный DKMS-драйвер ядра msi-ec (Bravo 15 C7VE)
+├── local/                   # Пользовательские скрипты (~/.local/bin/) и меню Dolphin KIO
+├── scripts/install/         # Модульные стадии установки (00-helpers .. 70-summary)
+├── standalone/              # Автономный Polkit-агент (inerium-polkit)
+├── system/                  # Системные udev-правила, greetd и юниты systemd
+├── bootstrap.sh             # Однострочный TTY-бутстраппер
+└── install.sh               # Универсальный оркестратор установки (--bin, --from-source)
+```
+
+---
 
 ## Способы установки и быстрый старт
 
@@ -56,11 +74,15 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 ./install.sh --bin --with-greeter --with-gdrive
 ```
 
-## Документация и руководство пользователя
+---
+
+## Документация и руководства
 
 - **[Руководство по горячим клавишам, жестам и Waybar](docs/keybindings.ru.md)** ([English version](docs/keybindings.md)) — Полное иллюстрированное руководство по управлению системой, тайлингу окон, шорткатам, жестам тачпада и скрытым возможностям панели Waybar.
 - **[Руководство по дополнительным модулям](docs/addons.ru.md)** ([English version](docs/addons.md)) — Подробная документация по Inerium Camera, охлаждению MSI (`msi-ec` DKMS + регулятор кулеров) и noVPN.
 - **[Настройка смартфона для Inerium Camera](docs/camera-setup.ru.md)** ([English version](docs/camera-setup.md)) — Пошаговая инструкция по настройке смартфона через ADB для работы в режиме веб-камеры.
+
+---
 
 ## Дополнительные системные модули (Add-ons)
 
@@ -71,8 +93,13 @@ Inerium Shell включает опциональные расширения, к
 - `--with-novpn`: **noVPN Split-Tunneling** — Прямой запуск выбранных приложений через физический сетевой шлюз в обход активного VPN.
 - `--all-addons`: Установка всех доступных дополнительных модулей одновременно.
 
-## Первичная настройка (First-login setup)
+---
 
-Утилита `inerium-first-login` выполняет однократные шаги настройки (вход в учетные записи и т. д.) из каталога `~/.config/inerium/first-login.d/` в плавающем окне терминала при первом входе в Hyprland, запоминает выполненные шаги и повторно предлагает отложенные при следующем входе. В базовом репозитории шаги отсутствуют; персональные оверлеи размещают там исполняемые файлы (каждый должен возвращать код 0 при вызове с флагом `--check` после успешной настройки). Повторный запуск доступен в любое время из Rofi («Первичная настройка») или командой `inerium-first-login --reset`.
+## Первичная настройка (`inerium-setup`)
 
-Специфичные аппаратные функции MSI (`msi-fan-regulator`) изолированы за Cargo-фичей `msi-ec` и по умолчанию отключены в универсальной сборке. Все панели и утилиты определяют возможности системы во время выполнения (`/sys/devices/platform/msi-ec`, `/sys/class/backlight`, `/sys/class/power_supply/`, `/sys/class/net/`, `envycontrol`) и скрывают недоступные элементы управления.
+При первом входе в сессию запускается графический мастер `inerium-setup` (GTK4):
+- Калибровка мониторов, частоты обновления и масштабирования.
+- Выбор обоев и стилей интерфейса.
+- Авторизация в GitHub CLI и Google Drive во встроенных терминалах без лишних окон.
+
+Повторный запуск доступен в любое время из лаунчера или командой `inerium-setup`.

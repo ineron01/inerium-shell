@@ -1,15 +1,17 @@
 [package]
 name = "inerium-camera"
-version = "0.1.0"
-edition = "2021"
+description = "High-performance virtual webcam manager and streamer (Android ADB/Wi-Fi to v4l2loopback)"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [dependencies]
-gtk4 = "0.11"
-gdk4 = "0.11"
-glib = "0.22"
+gtk4 = { workspace = true }
+gdk4 = { workspace = true }
+glib = { workspace = true }
 gstreamer = "0.25"
 gstreamer-app = "0.25"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "sync", "time", "signal", "net"] }
 nix = { version = "0.29", features = ["signal", "process"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }

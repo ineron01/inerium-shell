@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 mod bridge;
 mod cli;
 mod device;

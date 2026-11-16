@@ -1,0 +1,74 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-check:
+    name: Rust Workspace Checks
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+      options: --user root
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git rust pkgconf clang binutils \
+            gtk4 gtk4-layer-shell vte4 libadwaita \
+            pango cairo gdk-pixbuf2 glib2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Cargo check workspace
+        run: cargo check --workspace --all-targets
+      - name: Cargo clippy workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Cargo test workspace
+        run: cargo test --workspace
+      - name: Standalone polkit check
+        run: |
+          cargo check --manifest-path standalone/inerium-polkit/Cargo.toml
+          cargo clippy --manifest-path standalone/inerium-polkit/Cargo.toml -- -D warnings
+
+  syntax-lint:
+    name: Shell & Lua Syntax Lint
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+      options: --user root
+    steps:
+      - name: Install lua
+        run: pacman -Syu --noconfirm --needed git bash lua
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Bash syntax check
+        run: |
+          bash -n *.sh
+          bash -n scripts/install/*.sh
+          for f in local/bin/*; do
+            [[ -f "$f" ]] || continue
+            bash -n "$f"
+          done
+      - name: Lua syntax check
+        run: |
+          luac -p config/hypr/*.lua
+          luac -p config/hypr/config/*.lua
+
+  installer-dryrun:
+    name: Installer Smoke Test
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+      options: --user root
+    steps:
+      - name: Install runtime utilities
+        run: pacman -Syu --noconfirm --needed git bash
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Dry-run test (prebuilt mode)
+        run: ./install.sh --dry-run
+      - name: Dry-run test (from-source mode)
+        run: ./install.sh --from-source --dry-run

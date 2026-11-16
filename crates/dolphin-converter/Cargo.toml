@@ -1,7 +1,9 @@
 [package]
 name = "dolphin-convert"
-version = "0.1.0"
-edition = "2024"
+description = "Fast multi-format document and media converter CLI with AI background removal"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [dependencies]
 rayon = "1.10"

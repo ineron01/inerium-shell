@@ -55,7 +55,7 @@ jobs:
             inerium-clock inerium-dnd inerium-hotspot inerium-hwmon \
             inerium-layout inerium-network inerium-osd-watcher inerium-popup \
             inerium-updates inerium-shell inerium-setup dolphin-convert \
-            inerium-greeter; do
+            inerium-greeter inerium-camera; do
             install -m 755 "target/release/$bin" "dist/$bin"
           done
           install -m 755 standalone/inerium-polkit/target/release/inerium-polkit dist/inerium-polkit

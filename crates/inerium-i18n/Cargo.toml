@@ -1,6 +1,8 @@
 [package]
 name = "inerium-i18n"
-version = "0.1.0"
-edition = "2024"
+description = "Bilingual i18n localization catalog for Inerium Desktop"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [dependencies]

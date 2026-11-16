@@ -1,7 +1,9 @@
 [package]
 name = "inerium-hw"
-version = "0.1.0"
-edition = "2024"
+description = "Hardware discovery, sysfs abstraction, and telemetry primitives"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [features]
 default = ["msi-ec"]
@@ -9,4 +11,4 @@ msi-ec = []
 
 [dependencies]
 inerium-i18n = { path = "../inerium-i18n" }
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true }

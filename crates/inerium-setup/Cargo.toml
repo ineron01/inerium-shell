@@ -1,14 +1,16 @@
 [package]
 name = "inerium-setup"
-version = "0.1.0"
-edition = "2024"
+description = "GTK4 first-login onboarding, monitor calibration, and account sign-in wizard"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [dependencies]
 inerium-i18n = { path = "../inerium-i18n" }
-gtk4 = { version = "0.11", features = ["v4_10"] }
-gdk4 = "0.11"
-glib = "0.22"
-gio = "0.22"
+gtk4 = { workspace = true }
+gdk4 = { workspace = true }
+glib = { workspace = true }
+gio = { workspace = true }
 vte4 = { version = "0.10", features = ["v0_76"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }

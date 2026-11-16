@@ -1,16 +1,18 @@
 [package]
 name = "inerium-shell"
-version = "0.1.2"
-edition = "2024"
+description = "GTK4 / Layer Shell control center and interactive popup views"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
 
 [dependencies]
 inerium-i18n = { path = "../inerium-i18n" }
 inerium-hw = { path = "../inerium-hw" }
-gtk4 = { version = "0.11", features = ["v4_10"] }
-gdk4 = "0.11"
-gio = "0.22"
-glib = "0.22"
+gtk4 = { workspace = true }
+gdk4 = { workspace = true }
+gio = { workspace = true }
+glib = { workspace = true }
 gtk4-layer-shell = "0.8"
-relm4 = "0.11"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+relm4 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
