@@ -11,38 +11,7 @@ install_msi_ec_addon() {
         for f in /usr/lib/modules/*/pkgbase; do
             [[ -f "$f" ]] && headers+=("$(<"$f")-headers")
         done
-        install_pkgs dkms envycontrol "${headers[@]}"
-    fi
-
-    local src_dir="$REPO_DIR/hardware/msi-ec"
-    local version="0.13"
-    [[ -f "$src_dir/Makefile.vars" ]] && version="$(awk -F':=' '/^VERSION/{gsub(/[[:space:]]/, "", $2); print $2}' "$src_dir/Makefile.vars")"
-    local dst_dir="/usr/src/msi-ec-${version}"
-
-    # Remove any conflicting packaged msi-ec
-    local pkg
-    for pkg in msi-ec-dkms-git msi-ec-dkms msi-ec-git; do
-        if pacman -Qq "$pkg" >/dev/null 2>&1; then
-            run "sudo pacman -Rn --noconfirm $pkg || true"
-        fi
-    done
-
-    if [[ "$DRY_RUN" -eq 0 && -d "$src_dir" ]]; then
-        local stage
-        stage="$(mktemp -d)"
-        for f in dkms.conf Makefile Makefile.vars msi-ec.c ec_memory_configuration.h; do
-            [[ -f "$src_dir/$f" ]] && install -m 644 "$src_dir/$f" "$stage/$f"
-        done
-        sed -i "s/@VERSION@/$version/g" "$stage/dkms.conf"
-        if ! (diff -rq "$stage" "$dst_dir" >/dev/null 2>&1 && dkms status -m msi-ec -v "$version" -k "$(uname -r)" 2>/dev/null | grep -q 'installed'); then
-            log "Building/installing patched msi-ec via DKMS ($version)..."
-            sudo rm -rf "$dst_dir"
-            sudo install -d -m 755 "$dst_dir"
-            sudo install -m 644 "$stage"/* "$dst_dir/"
-            sudo dkms install --force -m msi-ec -v "$version" || true
-            MSI_EC_REBUILT=1
-        fi
-        rm -rf "$stage"
+        install_pkgs dkms msi-ec-dkms-git envycontrol "${headers[@]}"
     fi
 
     local sys_dir="$REPO_DIR/system/msi-cooling"

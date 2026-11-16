@@ -22,14 +22,13 @@ Inerium Shell includes optional system modules that can be selected during insta
 
 ## 2. MSI Cooling & Fan Regulator (`--with-msi-ec`)
 
-- **Description:** Patched `msi-ec` DKMS kernel driver and background software fan regulator daemon (`msi-fan-regulator`).
+- **Description:** Upstream `msi-ec` DKMS kernel driver (`msi-ec-dkms-git` package from AUR) and background software fan regulator daemon (`msi-fan-regulator`).
 - **Hardware Compatibility & Notice:**
-  - The bundled `msi-ec` DKMS module is explicitly patched to support **MSI Bravo 15 C7VE (MS-158N)** with EC firmware **`158NIMS1.10F`** (see `hardware/msi-ec/PATCH-158NIMS1.10F.txt`).
+  - Starting with version 0.18 (PR #773), `msi-ec` natively supports the Bravo 15 C7VE / C7V / C7UCX family out of the box via EC firmware prefix matching (`158NIMS1.1`).
   - The fan regulator daemon monitors CPU/GPU temperatures and dynamically regulates fan speed curves via `msi-ec` sysfs registers.
   - Designed for MSI laptops where standard Linux fan curves either fail to cool or let fans run at excessive noise levels.
-  - *Note:* While the regulator uses standard `msi-ec` registers, users on different MSI models should check if their EC firmware string is supported in `msi-ec` or add their BIOS string to `hardware/msi-ec/msi-ec.c`.
 - **Components:**
-  - `hardware/msi-ec/` (DKMS module installed to `/usr/src/msi-ec-*/`)
+  - `msi-ec-dkms-git` package (AUR)
   - `msi-fan-regulator` binary (built from `crates/inerium-tools` with `--features msi-ec`)
   - `/etc/systemd/system/msi-fan-regulator.service`
   - `/etc/udev/rules.d/99-msi-ec.rules`
