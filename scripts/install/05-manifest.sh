@@ -1,56 +1,80 @@
 #!/usr/bin/env bash
 # ============================================================================
-# scripts/install/05-manifest.sh — Installation State Tracking & Manifest
+# scripts/install/05-manifest.sh — Pure Bash Installation State & Uninstaller
 # ============================================================================
 
 MANIFEST_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/inerium"
-MANIFEST_FILE="$MANIFEST_DIR/install-manifest.json"
-MANIFEST_TMP_DIR=""
+MANIFEST_FILE="$MANIFEST_DIR/install-manifest"
+NEW_MANIFEST_FILE=""
 
 init_manifest() {
-    MANIFEST_TMP_DIR="$(mktemp -d /tmp/inerium-manifest-XXXXXX)"
-    : > "$MANIFEST_TMP_DIR/binaries"
-    : > "$MANIFEST_TMP_DIR/symlinks"
-    : > "$MANIFEST_TMP_DIR/templates"
-    : > "$MANIFEST_TMP_DIR/system_files"
-    : > "$MANIFEST_TMP_DIR/user_units"
-    : > "$MANIFEST_TMP_DIR/system_units"
-    : > "$MANIFEST_TMP_DIR/addons"
+    NEW_MANIFEST_FILE="$(mktemp /tmp/inerium-manifest-XXXXXX)"
 }
 
 cleanup_manifest_tmp() {
-    if [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]]; then
-        rm -rf "$MANIFEST_TMP_DIR"
+    if [[ -n "${NEW_MANIFEST_FILE:-}" && -f "$NEW_MANIFEST_FILE" ]]; then
+        rm -f "$NEW_MANIFEST_FILE"
     fi
 }
 trap cleanup_manifest_tmp EXIT
 
-manifest_record_binary() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/binaries"
+manifest_record() {
+    local type="$1" target="$2" extra="${3:-}"
+    [[ -n "${NEW_MANIFEST_FILE:-}" && -f "$NEW_MANIFEST_FILE" ]] || return 0
+    printf '%s\t%s\t%s\n' "$type" "$target" "$extra" >> "$NEW_MANIFEST_FILE"
 }
 
-manifest_record_symlink() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\t%s\n' "$1" "$2" >> "$MANIFEST_TMP_DIR/symlinks"
-}
+manifest_record_binary()      { manifest_record "BIN" "$1"; }
+manifest_record_symlink()     { manifest_record "LINK" "$1" "$2"; }
+manifest_record_template()    { manifest_record "RENDER" "$1"; }
+manifest_record_system_file() { manifest_record "SYS_FILE" "$1"; }
+manifest_record_user_unit()   { manifest_record "USER_UNIT" "$1"; }
+manifest_record_system_unit() { manifest_record "SYS_UNIT" "$1"; }
+manifest_record_addon()       { manifest_record "ADDON" "$1"; }
 
-manifest_record_template() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/templates"
-}
+manifest_clean_orphans() {
+    log "Checking for broken symlinks and legacy artifacts..."
+    local dir
+    for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/kio/servicemenus" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r -d '' link; do
+            local raw
+            raw="$(readlink "$link" 2>/dev/null || true)"
+            if [[ "$raw" == *inerium* || "$raw" == *kanagawa* ]]; then
+                log "Removing broken inerium symlink: $link"
+                rm -f "$link"
+            fi
+        done < <(find "$dir" -maxdepth 1 -xtype l -print0 2>/dev/null)
+    done
 
-manifest_record_system_file() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/system_files"
-}
-
-manifest_record_user_unit() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/user_units"
-}
-
-manifest_record_system_unit() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/system_units"
-}
-
-manifest_record_addon() {
-    [[ -n "${MANIFEST_TMP_DIR:-}" && -d "$MANIFEST_TMP_DIR" ]] && printf '%s\n' "$1" >> "$MANIFEST_TMP_DIR/addons"
+    # Known legacy obsolete paths from v0.1.0 and Kanagawa
+    local legacy
+    for legacy in \
+        "$HOME/.config/hypr/AGENTS.md" \
+        "$HOME/.config/hypr/hyprtoolkit.conf" \
+        "$HOME/.config/hypr/config/inputs.lua" \
+        "$HOME/.config/hypr/config/autostart_waybar.lua" \
+        "$HOME/.config/hypr/config/binds_waybar.lua" \
+        "$HOME/.config/hypr/config/binds_common.lua" \
+        "$HOME/.config/hypr/config/theme_settings.json" \
+        "$HOME/.local/bin/hypr-profile" \
+        "$HOME/.local/bin/inerium-hotspot.sh" \
+        "$HOME/.local/bin/inerium-popup-backup" \
+        "$HOME/.local/bin/inerium-switch-bar" \
+        "$HOME/.local/bin/inerium-switch-bar-backup" \
+        "$HOME/.local/bin/rofi-audio-sink" \
+        "$HOME/.local/bin/rofi-bluetooth" \
+        "$HOME/.local/bin/rofi-power-menu" \
+        "$HOME/.local/bin/rofi-power-menu-backup" \
+        "$HOME/.local/bin/rofi-wifi-menu" \
+        "$HOME/.local/bin/inerium-toggle-bluetooth.sh" \
+        "$HOME/.local/bin/inerium-toggle-network.sh"
+    do
+        if [[ -e "$legacy" || -L "$legacy" ]]; then
+            log "Removing legacy file/link: $legacy"
+            rm -rf "$legacy"
+        fi
+    done
 }
 
 prune_obsolete_and_save_manifest() {
@@ -61,30 +85,180 @@ prune_obsolete_and_save_manifest() {
 
     log "Recording installation manifest & pruning obsolete items..."
     mkdir -p "$MANIFEST_DIR"
-    local commit version
-    commit="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+
+    # Prune obsolete items if old manifest exists
+    if [[ -f "$MANIFEST_FILE" && -s "$NEW_MANIFEST_FILE" ]]; then
+        declare -A new_items=()
+        while IFS=$'\t' read -r type target extra; do
+            [[ -z "$type" || "$type" =~ ^# ]] && continue
+            new_items["$type:$target"]=1
+        done < "$NEW_MANIFEST_FILE"
+
+        while IFS=$'\t' read -r type target extra; do
+            [[ -z "$type" || "$type" =~ ^# ]] && continue
+            if [[ -z "${new_items["$type:$target"]:-}" ]]; then
+                case "$type" in
+                    LINK)
+                        if [[ -L "$target" ]]; then
+                            local dest
+                            dest="$(readlink -f "$target" 2>/dev/null || true)"
+                            if [[ "$dest" == *inerium* || "$dest" == *kanagawa* || ! -e "$target" ]]; then
+                                log "Pruning obsolete symlink: $target"
+                                rm -f "$target"
+                            fi
+                        fi
+                        ;;
+                    BIN)
+                        if [[ -f "$target" ]]; then
+                            log "Pruning obsolete binary: $target"
+                            rm -f "$target"
+                        fi
+                        ;;
+                    RENDER)
+                        if [[ -f "$target" ]]; then
+                            log "Pruning obsolete rendered config: $target"
+                            rm -f "$target"
+                        fi
+                        ;;
+                    USER_UNIT)
+                        log "Disabling obsolete user unit: $target"
+                        systemctl --user disable --now "$target" 2>/dev/null || true
+                        rm -f "$HOME/.config/systemd/user/$target"
+                        ;;
+                    SYS_FILE)
+                        if [[ -e "$target" ]]; then
+                            log "Pruning obsolete system file: $target"
+                            sudo rm -rf "$target" 2>/dev/null || true
+                        fi
+                        ;;
+                    SYS_UNIT)
+                        log "Disabling obsolete system unit: $target"
+                        sudo systemctl disable --now "$target" 2>/dev/null || true
+                        sudo rm -f "/etc/systemd/system/$target"
+                        ;;
+                esac
+            fi
+        done < "$MANIFEST_FILE"
+    fi
+
+    # Clean broken symlinks & legacy paths
+    manifest_clean_orphans
+
+    # Save new manifest atomically
+    local commit version now
+    commit="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
     version="$(git -C "$REPO_DIR" describe --tags --always 2>/dev/null || echo "v0.1.1")"
+    now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-    python3 "$SCRIPTS_DIR/manifest.py" save \
-        --temp-dir "$MANIFEST_TMP_DIR" \
-        --manifest "$MANIFEST_FILE" \
-        --repo-dir "$REPO_DIR" \
-        --version "$version" \
-        --commit "$commit" \
-        --install-mode "$INSTALL_MODE"
-
-    # Also clean broken symlinks and known legacy orphans
-    python3 "$SCRIPTS_DIR/manifest.py" clean-orphans \
-        --repo-dir "$REPO_DIR"
+    {
+        printf '# INERIUM_SHELL_MANIFEST %s\n' "$version"
+        printf '# COMMIT %s\n' "$commit"
+        printf '# DATE %s\n' "$now"
+        printf '# MODE %s\n' "$INSTALL_MODE"
+        sort -u "$NEW_MANIFEST_FILE"
+    } > "${MANIFEST_FILE}.tmp"
+    mv -f "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
+    rm -f "$NEW_MANIFEST_FILE"
+    log "Updated installation manifest: $MANIFEST_FILE"
 }
 
 run_uninstall() {
     check_not_root
     init_sudo_keepalive
     log "Initiating Inerium Shell uninstallation..."
-    python3 "$SCRIPTS_DIR/manifest.py" uninstall \
-        --manifest "$MANIFEST_FILE" \
-        --repo-dir "$REPO_DIR" \
-        --dry-run "$DRY_RUN"
-    log "Uninstallation completed successfully."
+
+    if [[ ! -f "$MANIFEST_FILE" ]]; then
+        warn "Manifest not found at $MANIFEST_FILE."
+        warn "Performing fallback orphan cleanup..."
+        manifest_clean_orphans
+        return 0
+    fi
+
+    # 1. Stop and disable system services
+    while IFS=$'\t' read -r type target extra; do
+        if [[ "$type" == "SYS_UNIT" ]]; then
+            log "Stopping and disabling system service: $target"
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] sudo systemctl disable --now %s\n' "$target"
+            else
+                sudo systemctl disable --now "$target" 2>/dev/null || true
+                sudo rm -f "/etc/systemd/system/$target"
+            fi
+        fi
+    done < "$MANIFEST_FILE"
+
+    # 2. Stop and disable user services
+    while IFS=$'\t' read -r type target extra; do
+        if [[ "$type" == "USER_UNIT" ]]; then
+            log "Stopping and disabling user service: $target"
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] systemctl --user disable --now %s\n' "$target"
+            else
+                systemctl --user disable --now "$target" 2>/dev/null || true
+                rm -f "$HOME/.config/systemd/user/$target"
+            fi
+        fi
+    done < "$MANIFEST_FILE"
+
+    # 3. Remove tracked items (symlinks, binaries, templates, system files)
+    while IFS=$'\t' read -r type target extra; do
+        case "$type" in
+            LINK)
+                if [[ -L "$target" || ! -e "$target" ]]; then
+                    log "Removing symlink: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] rm -f %s\n' "$target"
+                    else
+                        rm -f "$target"
+                    fi
+                fi
+                ;;
+            BIN)
+                if [[ -f "$target" ]]; then
+                    log "Removing user binary: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] rm -f %s\n' "$target"
+                    else
+                        rm -f "$target"
+                    fi
+                fi
+                ;;
+            RENDER)
+                if [[ -f "$target" ]]; then
+                    log "Removing rendered configuration: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] rm -f %s\n' "$target"
+                    else
+                        rm -f "$target"
+                    fi
+                fi
+                ;;
+            SYS_FILE)
+                if [[ -e "$target" ]]; then
+                    log "Removing system file: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] sudo rm -rf %s\n' "$target"
+                    else
+                        sudo rm -rf "$target" 2>/dev/null || true
+                    fi
+                fi
+                ;;
+        esac
+    done < "$MANIFEST_FILE"
+
+    # Remove set-wallpaper symlink
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[DRY-RUN] rm -f %s\n' "$HOME/.local/bin/set-wallpaper"
+    else
+        rm -f "$HOME/.local/bin/set-wallpaper"
+    fi
+
+    # 4. Clean orphans
+    manifest_clean_orphans
+
+    # 5. Clean state files
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        rm -f "$MANIFEST_FILE" "$MANIFEST_DIR/setup.done"
+    fi
+    log "Inerium Shell uninstallation complete."
 }
