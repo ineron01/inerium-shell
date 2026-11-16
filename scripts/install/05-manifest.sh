@@ -52,6 +52,9 @@ manifest_clean_orphans() {
     for legacy in \
         "$HOME/.config/hypr/AGENTS.md" \
         "$HOME/.config/hypr/hyprtoolkit.conf" \
+        "$HOME/.config/hypr/profile" \
+        "$HOME/.config/hypr/config/autostart_backup.lua" \
+        "$HOME/.config/hypr/config/binds_backup.lua" \
         "$HOME/.config/hypr/config/inputs.lua" \
         "$HOME/.config/hypr/config/autostart_waybar.lua" \
         "$HOME/.config/hypr/config/binds_waybar.lua" \
