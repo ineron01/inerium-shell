@@ -11,8 +11,8 @@ use gtk4::{
 use crate::i18n::{Lang, tr};
 use crate::model::{
     IdleConfig, InputOverrides, SetupPaths, detect_battery_charge_threshold,
-    ensure_default_wallpapers, parse_active_wallpaper, parse_binds_lua, parse_hypridle_conf,
-    parse_inputs_lua_with_fallback, scan_wallpapers, set_battery_charge_threshold,
+    ensure_default_wallpapers, parse_active_wallpaper, parse_hypridle_conf,
+    parse_inputs_lua_with_fallback, parse_launcher_bind, scan_wallpapers, set_battery_charge_threshold,
 };
 use crate::system::{
     apply_hypridle, apply_wallpaper, query_live_inputs, reset_interface_overrides,
@@ -28,9 +28,12 @@ const KB_TOGGLE_OPTIONS: &[(&str, &str, &str)] = &[
 ];
 
 const LAUNCHER_BIND_OPTIONS: &[(&str, &str, &str)] = &[
-    ("SUPER + R", "Super + R", "Super + R"),
+    ("SUPER + R", "Super + R (Run style)", "Super + R (в стиле Run диалога)"),
     ("ALT + Space", "Alt + Space (Spotlight style)", "Alt + Space (как в macOS / Spotlight)"),
-    ("SUPER + D", "Super + D", "Super + D"),
+    ("SUPER + slash", "Super + / (Search style)", "Super + / (быстрый поиск)"),
+    ("SUPER + grave", "Super + ` (Quick access)", "Super + ` (тильда над Tab)"),
+    ("ALT + F2", "Alt + F2 (Classic Linux)", "Alt + F2 (классический диалог Linux)"),
+    ("SUPER + Z", "Super + Z (Ergonomic)", "Super + Z (быстрая клавиша левой руки)"),
 ];
 
 const IDLE_PRESETS: &[(&str, &str, u32, u32, u32)] = &[
@@ -177,20 +180,26 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     let ovr_sub = Label::new(Some(tr(
         lang,
-        "Saved to inputs_local.lua, binds_local.lua & hypridle_local.conf (gitignored)",
-        "Сохраняется в inputs_local.lua, binds_local.lua и hypridle_local.conf",
+        "Saved to ~/.config/hypr/config/{input,keybinds}.lua & hypridle_local.conf",
+        "Сохраняется в ~/.config/hypr/config/{input,keybinds}.lua и hypridle_local.conf",
     )));
     ovr_sub.add_css_class("card-muted");
     ovr_sub.set_xalign(0.0);
     ovr_card.append(&ovr_sub);
 
     let live_inputs = query_live_inputs();
-    let saved_inputs = std::fs::read_to_string(paths.inputs_local_path())
+    let saved_inputs = std::fs::read_to_string(paths.input_lua_path())
+        .or_else(|_| std::fs::read_to_string(paths.inputs_local_path()))
         .map(|s| parse_inputs_lua_with_fallback(&s, live_inputs.clone()))
         .unwrap_or(live_inputs);
-    let saved_binds_launcher = std::fs::read_to_string(paths.binds_local_path())
-        .map(|s| parse_binds_lua(&s))
-        .unwrap_or_default();
+    let saved_binds_launcher = std::fs::read_to_string(paths.keybinds_lua_path())
+        .ok()
+        .and_then(|s| parse_launcher_bind(&s))
+        .or_else(|| {
+            std::fs::read_to_string(paths.binds_local_path())
+                .ok()
+                .and_then(|s| parse_launcher_bind(&s))
+        });
     let saved_idle = std::fs::read_to_string(paths.hypridle_local_conf_path())
         .map(|s| parse_hypridle_conf(&s))
         .unwrap_or_default();

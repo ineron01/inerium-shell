@@ -4,9 +4,9 @@ use std::process::{Command, Stdio};
 
 use crate::model::{
     FirstLoginStep, HyprMonitor, IdleConfig, InputOverrides, MonitorConfig, SetupPaths, StepStatus,
-    atomic_write, generate_binds_lua, generate_hypridle_conf, generate_hypridle_dropin,
+    atomic_write, generate_hypridle_conf, generate_hypridle_dropin,
     generate_inputs_lua, generate_monitors_lua, list_executable_steps, mark_step_done,
-    parse_hypr_monitors_json, step_done_marker,
+    parse_hypr_monitors_json, replace_launcher_bind, step_done_marker,
 };
 
 pub fn query_hypr_monitors() -> Result<Vec<HyprMonitor>, String> {
@@ -138,16 +138,18 @@ pub fn validate_lua_syntax(content: &str) -> Result<(), String> {
 }
 
 pub fn is_managed_monitors_overlay(paths: &SetupPaths) -> bool {
-    let path = paths.monitors_local_path();
-    let is_symlink = fs::symlink_metadata(&path)
-        .map(|m| m.file_type().is_symlink())
-        .unwrap_or(false);
-    if is_symlink {
-        return true;
-    }
-    fs::read_to_string(&path)
-        .map(|s| s.contains("INERIUM_WORKSPACES_OVERRIDDEN"))
-        .unwrap_or(false)
+    let check_path = |p: std::path::PathBuf| {
+        let is_sym = fs::symlink_metadata(&p)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_sym {
+            return true;
+        }
+        fs::read_to_string(&p)
+            .map(|s| s.contains("INERIUM_WORKSPACES_OVERRIDDEN"))
+            .unwrap_or(false)
+    };
+    check_path(paths.monitors_lua_path()) || check_path(paths.monitors_local_path())
 }
 
 pub fn save_and_reload_monitors(
@@ -156,27 +158,39 @@ pub fn save_and_reload_monitors(
 ) -> Result<(), String> {
     if is_managed_monitors_overlay(paths) {
         return Err(
-            "monitors_local.lua управляется оверлеем (симлинк / правила воркспейсов); правка из GUI отключена"
+            "monitors.lua управляется оверлеем (симлинк / правила воркспейсов); правка из GUI отключена"
                 .to_string(),
         );
     }
     let lua = generate_monitors_lua(monitors);
     validate_lua_syntax(&lua)?;
-    atomic_write(&paths.monitors_local_path(), &lua)?;
+    atomic_write(&paths.monitors_lua_path(), &lua)?;
+
+    // Clean up legacy monitors_local.lua if present
+    let local = paths.monitors_local_path();
+    if fs::symlink_metadata(&local).is_ok() {
+        let _ = fs::remove_file(&local);
+    }
+
     hyprctl_reload()
 }
 
 pub fn reset_monitors_to_auto(paths: &SetupPaths) -> Result<(), String> {
     if is_managed_monitors_overlay(paths) {
         return Err(
-            "monitors_local.lua is managed by an overlay (symlink / workspace rules); GUI reset is disabled"
+            "monitors.lua is managed by an overlay (symlink / workspace rules); GUI reset is disabled"
                 .to_string(),
         );
     }
-    let path = paths.monitors_local_path();
-    if fs::symlink_metadata(&path).is_ok() {
-        fs::remove_file(&path).map_err(|e| format!("Failed removing {}: {e}", path.display()))?;
+    let lua = "-- Universal monitor configuration\n-- Wiki: https://wiki.hypr.land/Configuring/Monitors/\n\nhl.monitor({\n    output   = \"\",\n    mode     = \"preferred\",\n    position = \"auto\",\n    scale    = 1.0,\n})\n";
+    validate_lua_syntax(lua)?;
+    atomic_write(&paths.monitors_lua_path(), lua)?;
+
+    let local = paths.monitors_local_path();
+    if fs::symlink_metadata(&local).is_ok() {
+        let _ = fs::remove_file(&local);
     }
+
     hyprctl_reload()
 }
 
@@ -187,17 +201,31 @@ pub fn apply_wallpaper(path: &Path) -> Result<(), String> {
 pub fn save_inputs_and_reload(paths: &SetupPaths, cfg: &InputOverrides) -> Result<(), String> {
     let lua = generate_inputs_lua(cfg);
     validate_lua_syntax(&lua)?;
-    atomic_write(&paths.inputs_local_path(), &lua)?;
+    atomic_write(&paths.input_lua_path(), &lua)?;
 
-    if cfg.kb_options == "grp:win_space_toggle" {
-        let binds_lua = generate_binds_lua(cfg.launcher_bind.as_deref());
-        validate_lua_syntax(&binds_lua)?;
-        atomic_write(&paths.binds_local_path(), &binds_lua)?;
-    } else {
-        let p = paths.binds_local_path();
-        if fs::symlink_metadata(&p).is_ok() {
-            let _ = fs::remove_file(&p);
-        }
+    // Clean up legacy inputs_local.lua
+    let legacy_in = paths.inputs_local_path();
+    if fs::symlink_metadata(&legacy_in).is_ok() {
+        let _ = fs::remove_file(&legacy_in);
+    }
+
+    // Direct keybinds.lua update
+    let keybinds_path = paths.keybinds_lua_path();
+    if let Ok(content) = fs::read_to_string(&keybinds_path) {
+        let launcher_key = if cfg.kb_options == "grp:win_space_toggle" {
+            cfg.launcher_bind.as_deref().unwrap_or("SUPER + R")
+        } else {
+            cfg.launcher_bind.as_deref().unwrap_or("SUPER + Space")
+        };
+        let updated_keybinds = replace_launcher_bind(&content, launcher_key);
+        validate_lua_syntax(&updated_keybinds)?;
+        atomic_write(&keybinds_path, &updated_keybinds)?;
+    }
+
+    // Clean up legacy binds_local.lua
+    let legacy_binds = paths.binds_local_path();
+    if fs::symlink_metadata(&legacy_binds).is_ok() {
+        let _ = fs::remove_file(&legacy_binds);
     }
 
     hyprctl_reload()
@@ -252,6 +280,18 @@ pub fn reset_interface_overrides(paths: &SetupPaths) -> Result<(), String> {
             fs::remove_file(&p).map_err(|e| format!("Failed removing {}: {e}", p.display()))?;
         }
     }
+
+    // Reset input.lua to defaults if present
+    let in_lua = generate_inputs_lua(&InputOverrides::default());
+    let _ = atomic_write(&paths.input_lua_path(), &in_lua);
+
+    // Reset launcher in keybinds.lua to SUPER + Space
+    let kb_path = paths.keybinds_lua_path();
+    if let Ok(content) = fs::read_to_string(&kb_path) {
+        let reset_kb = replace_launcher_bind(&content, "SUPER + Space");
+        let _ = atomic_write(&kb_path, &reset_kb);
+    }
+
     let _ = run_systemctl_user(&["daemon-reload"]);
     let _ = run_systemctl_user(&["enable", "--now", "hypridle.service"]);
     let _ = run_systemctl_user(&["restart", "hypridle.service"]);

@@ -12,11 +12,8 @@ end
 ---- 1. SYSTEM MENUS & POPUPS ----
 -----------------------------------
 
--- Application launcher (Rofi drun) with local override support
-local binds_local_ok, binds_local = pcall(require, "config.binds_local")
-if not (binds_local_ok and type(binds_local) == "table" and binds_local.launcher_bound) then
-    hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd(launchPrefix .. "rofi -show drun"))
-end
+-- Application launcher (Rofi drun)
+hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd(launchPrefix .. "rofi -show drun"))
 
 -- Window switcher
 hl.bind(mainMod .. " + Tab", hl.dsp.exec_cmd(launchPrefix .. "rofi -show window"))

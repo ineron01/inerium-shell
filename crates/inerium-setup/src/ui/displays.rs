@@ -204,14 +204,14 @@ pub fn build_displays_tab(
     let mon_sub_text = if managed_overlay {
         tr(
             lang,
-            "Managed by overlay (monitors_local.lua is a symlink / workspace rules), overwriting disabled",
-            "Управляется оверлеем (monitors_local.lua — симлинк / правила воркспейсов), перезапись отключена",
+            "Managed by overlay (monitors.lua is a symlink / workspace rules), overwriting disabled",
+            "Управляется оверлеем (monitors.lua — симлинк / правила воркспейсов), перезапись отключена",
         )
     } else {
         tr(
             lang,
-            "Saved to ~/.config/hypr/config/monitors_local.lua with luac -p validation",
-            "Сохраняется в ~/.config/hypr/config/monitors_local.lua с проверкой luac -p",
+            "Saved to ~/.config/hypr/config/monitors.lua with luac -p validation",
+            "Сохраняется в ~/.config/hypr/config/monitors.lua с проверкой luac -p",
         )
     };
     let mon_sub = Label::new(Some(mon_sub_text));
@@ -402,7 +402,8 @@ pub fn build_displays_tab(
             };
             *live_monitors.borrow_mut() = live.clone();
 
-            let saved = std::fs::read_to_string(paths.monitors_local_path())
+            let saved = std::fs::read_to_string(paths.monitors_lua_path())
+                .or_else(|_| std::fs::read_to_string(paths.monitors_local_path()))
                 .map(|s| parse_monitors_lua(&s))
                 .unwrap_or_default();
             let configs = merge_monitors(&live, &saved);
@@ -665,8 +666,8 @@ pub fn build_displays_tab(
                     clamp_window_to_screen(&win_c);
                     status_cb.ok(tr(
                         lang,
-                        "monitors_local.lua verified (luac -p) and applied",
-                        "monitors_local.lua проверен (luac -p) и применён",
+                        "monitors.lua verified (luac -p) and applied",
+                        "monitors.lua проверен (luac -p) и применён",
                     ));
                     populate();
                 }

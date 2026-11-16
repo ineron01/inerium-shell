@@ -35,7 +35,7 @@ manifest_record_addon()       { manifest_record "ADDON" "$1"; }
 manifest_clean_orphans() {
     log "Checking for broken symlinks and legacy artifacts..."
     local dir
-    for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/kio/servicemenus" "$HOME/.config" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"; do
+    for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/color-schemes" "$HOME/.local/share/kio/servicemenus" "$HOME/.config" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r -d '' link; do
             local raw
