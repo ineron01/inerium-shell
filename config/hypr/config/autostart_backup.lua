@@ -29,8 +29,8 @@ hl.on("hyprland.start", function ()
     -- OSD Индикатор
     hl.exec_cmd("swayosd-server")
 
-    -- Панель Waybar: запуск с резервной конфигурацией и стилями
-    hl.exec_cmd("waybar -c " .. home .. "/.config/waybar/config_backup.jsonc -s " .. home .. "/.config/waybar/style_backup.css")
+    -- Панель Waybar: запуск со стандартной конфигурацией и стилями
+    hl.exec_cmd("waybar -c " .. home .. "/.config/waybar/config.jsonc -s " .. home .. "/.config/waybar/style.css")
 
     -- Индексация приложений для поиска в лаунчере на любых раскладках (QWERTY <-> JCUKEN)
     hl.exec_cmd("sudo -n /usr/local/bin/inerium-desktop-indexer")

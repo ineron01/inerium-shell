@@ -22,35 +22,37 @@ jobs:
             pango cairo gdk-pixbuf2 glib2
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Cargo check workspace
         run: cargo check --workspace --all-targets
       - name: Cargo clippy workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Cargo test workspace
         run: cargo test --workspace
-      - name: Standalone polkit check
-        run: |
-          cargo check --manifest-path standalone/inerium-polkit/Cargo.toml
-          cargo clippy --manifest-path standalone/inerium-polkit/Cargo.toml -- -D warnings
 
   syntax-lint:
-    name: Shell & Lua Syntax Lint
+    name: Shell, Python & Lua Syntax Lint
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
       options: --user root
     steps:
-      - name: Install lua
-        run: pacman -Syu --noconfirm --needed git bash lua
+      - name: Install runtime interpreters
+        run: pacman -Syu --noconfirm --needed git bash lua python
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Bash syntax check
+      - name: Script syntax check
         run: |
           bash -n *.sh
           bash -n scripts/install/*.sh
           for f in local/bin/*; do
             [[ -f "$f" ]] || continue
-            bash -n "$f"
+            if head -n 1 "$f" | grep -qE "bash|sh"; then
+              bash -n "$f"
+            elif head -n 1 "$f" | grep -q "python"; then
+              python3 -m py_compile "$f"
+            fi
           done
       - name: Lua syntax check
         run: |

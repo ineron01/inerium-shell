@@ -38,23 +38,22 @@ fn setup_tracing() -> Result<()> {
 
 fn resolve_session_id() -> String {
     // 1. Проверяем переменную окружения XDG_SESSION_ID
-    if let Ok(id) = std::env::var("XDG_SESSION_ID") {
-        if !id.trim().is_empty() {
-            return id.trim().to_string();
-        }
+    if let Ok(id) = std::env::var("XDG_SESSION_ID")
+        && !id.trim().is_empty()
+    {
+        return id.trim().to_string();
     }
 
     // 2. Опрашиваем loginctl для поиска графической сессии пользователя seat0
     if let Ok(output) = std::process::Command::new("loginctl")
         .args(["list-sessions", "--no-legend"])
         .output()
+        && let Ok(text) = String::from_utf8(output.stdout)
     {
-        if let Ok(text) = String::from_utf8(output.stdout) {
-            for line in text.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 4 && parts[3] == "seat0" {
-                    return parts[0].to_string();
-                }
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 && parts[3] == "seat0" {
+                return parts[0].to_string();
             }
         }
     }

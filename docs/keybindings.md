@@ -141,13 +141,13 @@ The top Inerium Waybar status panel is fully interactive. Most modules respond t
   - *Scroll Wheel:* Fine-tune volume in 2% steps with SwayOSD feedback.
 - **Network / Wi-Fi Module:**
   - *Left Click:* Open Wi-Fi networks and connection menu (`inerium-popup network`).
-  - *Right Click:* Fast toggle Wi-Fi radio on / off (`inerium-toggle-network.sh`).
+  - *Right Click:* Fast toggle Wi-Fi radio on / off (`inerium-toggle-network`).
   - *Middle Click:* Open Network Connections editor (`nm-connection-editor`).
 - **Wi-Fi Hotspot Module:**
   - *Left Click:* Fast toggle Wi-Fi hotspot on / off (`inerium-hotspot toggle`).
 - **Bluetooth Module:**
   - *Left Click:* Open list of paired Bluetooth devices for 1-click connection (`inerium-popup bluetooth`).
-  - *Right Click:* Fast toggle Bluetooth radio on / off (`inerium-toggle-bluetooth.sh`).
+  - *Right Click:* Fast toggle Bluetooth radio on / off (`inerium-toggle-bluetooth`).
   - *Middle Click:* Open Bluetooth device manager (`blueman-manager`).
 - **Battery Module:**
   - *Left Click:* Toggle display between charge percentage (%) and estimated remaining battery runtime.

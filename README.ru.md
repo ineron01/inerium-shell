@@ -1,8 +1,18 @@
 # Inerium Shell
 
+<p align="center">
+  <a href="https://github.com/ineron01/inerium-shell/actions/workflows/ci.yml"><img src="https://github.com/ineron01/inerium-shell/actions/workflows/ci.yml/badge.svg" alt="CI Quality Gate"></a>
+  <a href="https://github.com/ineron01/inerium-shell/releases/latest"><img src="https://img.shields.io/github/v/release/ineron01/inerium-shell?color=blue&label=Release" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-green.svg" alt="Лицензия: GPL-3.0"></a>
+  <a href="https://archlinux.org"><img src="https://img.shields.io/badge/Arch%20Linux%20%2F%20CachyOS-Поддерживается-1793d1?logo=archlinux" alt="Arch Linux / CachyOS"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2024%20Edition-dea584?logo=rust" alt="Rust 2024 Edition"></a>
+</p>
+
 [English](README.md) | [Русский](README.ru.md)
 
 Универсальное окружение рабочего стола для CachyOS / Arch Linux, построенное вокруг **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO** и нативного набора утилит на **Rust / GTK4** в фирменной цветовой палитре **Inerium Dragon**.
+
+![Витрина Inerium Desktop](assets/preview/desktop.png)
 
 ---
 
@@ -10,7 +20,7 @@
 
 ```
 inerium-shell/
-├── assets/                  # Обои по умолчанию и фоны экрана входа
+├── assets/                  # Обои по умолчанию, снимки витрины и фоны экрана входа
 ├── config/                  # Конфигурации для создания симлинков в ~/.config/*
 ├── crates/                  # Единый воркспейс утилит на Rust
 │   ├── dolphin-converter/   # Конвертер медиа и документов для Dolphin с AI-удалением фона
@@ -18,6 +28,7 @@ inerium-shell/
 │   ├── inerium-greeter/     # Экран входа greetd на GTK4 с выбором сессий
 │   ├── inerium-hw/          # Модуль автоопределения железа и телеметрии sysfs
 │   ├── inerium-i18n/        # Каталог двуязычной локализации (RU / EN)
+│   ├── inerium-polkit/      # Нативный Polkit-агент аутентификации на GTK4/Relm4
 │   ├── inerium-setup/       # Графический мастер настройки экранов и авторизаций
 │   ├── inerium-shell/       # Центр управления и интерактивные Relm4-попапы
 │   └── inerium-tools/       # Демоны телеметрии Waybar, IPC-мосты и контроль кулеров
@@ -26,7 +37,6 @@ inerium-shell/
 ├── hardware/                # Пропатченный DKMS-драйвер ядра msi-ec (Bravo 15 C7VE)
 ├── local/                   # Пользовательские скрипты (~/.local/bin/) и меню Dolphin KIO
 ├── scripts/install/         # Модульные стадии установки (00-helpers .. 70-summary)
-├── standalone/              # Автономный Polkit-агент (inerium-polkit)
 ├── system/                  # Системные udev-правила, greetd и юниты systemd
 ├── bootstrap.sh             # Однострочный TTY-бутстраппер
 └── install.sh               # Универсальный оркестратор установки (--bin, --from-source)

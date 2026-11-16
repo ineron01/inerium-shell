@@ -35,6 +35,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Verify universal Cargo features
         run: |
           if grep -q '^default = \["msi-ec"\]' crates/inerium-tools/Cargo.toml; then
@@ -44,9 +47,6 @@ jobs:
       - name: Build Rust workspace (release)
         run: cargo build --manifest-path Cargo.toml --workspace --release
 
-      - name: Build standalone inerium-polkit (release)
-        run: cargo build --manifest-path standalone/inerium-polkit/Cargo.toml --release
-
       - name: Package and checksum binaries
         run: |
           mkdir -p dist
@@ -55,10 +55,9 @@ jobs:
             inerium-clock inerium-dnd inerium-hotspot inerium-hwmon \
             inerium-layout inerium-network inerium-osd-watcher inerium-popup \
             inerium-updates inerium-shell inerium-setup dolphin-convert \
-            inerium-greeter inerium-camera; do
+            inerium-greeter inerium-camera inerium-polkit; do
             install -m 755 "target/release/$bin" "dist/$bin"
           done
-          install -m 755 standalone/inerium-polkit/target/release/inerium-polkit dist/inerium-polkit
           strip --strip-unneeded dist/* || true
           tar -C dist -czf inerium-binaries-linux-x86_64.tar.gz .
           sha256sum inerium-binaries-linux-x86_64.tar.gz > inerium-binaries-linux-x86_64.tar.gz.sha256

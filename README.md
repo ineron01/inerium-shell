@@ -1,8 +1,18 @@
 # Inerium Shell
 
+<p align="center">
+  <a href="https://github.com/ineron01/inerium-shell/actions/workflows/ci.yml"><img src="https://github.com/ineron01/inerium-shell/actions/workflows/ci.yml/badge.svg" alt="CI Quality Gate"></a>
+  <a href="https://github.com/ineron01/inerium-shell/releases/latest"><img src="https://img.shields.io/github/v/release/ineron01/inerium-shell?color=blue&label=Release" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-green.svg" alt="License: GPL-3.0"></a>
+  <a href="https://archlinux.org"><img src="https://img.shields.io/badge/Arch%20Linux%20%2F%20CachyOS-Supported-1793d1?logo=archlinux" alt="Arch Linux / CachyOS"></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-2024%20Edition-dea584?logo=rust" alt="Rust 2024 Edition"></a>
+</p>
+
 [English](README.md) | [Русский](README.ru.md)
 
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
+
+![Inerium Desktop Preview](assets/preview/desktop.png)
 
 ---
 
@@ -10,7 +20,7 @@ Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua 
 
 ```
 inerium-shell/
-├── assets/                  # Default wallpapers and greeter background images
+├── assets/                  # Default wallpapers, preview showcases, and greeter background
 ├── config/                  # Symlinkable desktop configurations (~/.config/*)
 ├── crates/                  # Unified Rust workspace suite
 │   ├── dolphin-converter/   # Fast document/media converter CLI with ONNX background removal
@@ -18,6 +28,7 @@ inerium-shell/
 │   ├── inerium-greeter/     # Lightweight GTK4 login screen and session picker for greetd
 │   ├── inerium-hw/          # Dynamic sysfs hardware discovery & battery/thermal telemetry
 │   ├── inerium-i18n/        # Bilingual localization catalog (Russian / English)
+│   ├── inerium-polkit/      # Native GTK4/Relm4 Polkit authentication agent
 │   ├── inerium-setup/       # GTK4 onboarding wizard, display calibration & sign-ins
 │   ├── inerium-shell/       # GTK4 / Layer Shell control center and Relm4 popups
 │   └── inerium-tools/       # Waybar telemetry daemons, IPC bridges & cooling regulator
@@ -26,7 +37,6 @@ inerium-shell/
 ├── hardware/                # Patched MSI EC DKMS kernel driver supporting Bravo 15 C7VE
 ├── local/                   # User executables (~/.local/bin/) and Dolphin KIO servicemenus
 ├── scripts/install/         # Modular installation phases (00-helpers through 70-summary)
-├── standalone/              # Standalone Polkit agent (inerium-polkit)
 ├── system/                  # System-wide udev rules, greetd configs, and systemd units
 ├── bootstrap.sh             # One-command TTY bootstrap installer
 └── install.sh               # Universal idempotent orchestrator (--bin, --from-source)

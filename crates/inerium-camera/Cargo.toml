@@ -4,6 +4,8 @@ description = "High-performance virtual webcam manager and streamer (Android ADB
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
 gtk4 = { workspace = true }

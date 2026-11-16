@@ -4,6 +4,8 @@ description = "Fast multi-format document and media converter CLI with AI backgr
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
 rayon = "1.10"

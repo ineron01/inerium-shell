@@ -408,37 +408,37 @@ impl AsyncComponent for App {
                     }
                 }
                 AuthenticationAgentEvent::Canceled { cookie } => {
-                    if let Some(c) = &self.cookie {
-                        if c == cookie {
-                            self.cookie = None;
-                            self.message.clear();
-                            self.identities.clear();
-                            self.retry_message = None;
-                            self.authenticating = false;
-                        }
+                    if let Some(c) = &self.cookie
+                        && c == cookie
+                    {
+                        self.cookie = None;
+                        self.message.clear();
+                        self.identities.clear();
+                        self.retry_message = None;
+                        self.authenticating = false;
                     }
                 }
                 AuthenticationAgentEvent::AuthorizationSucceeded { cookie } => {
-                    if let Some(c) = &self.cookie {
-                        if c == cookie {
-                            tracing::debug!("Authorization succeeded, closing dialog.");
-                            self.cookie = None;
-                            self.message.clear();
-                            self.identities.clear();
-                            self.retry_message = None;
-                            self.authenticating = false;
-                        }
+                    if let Some(c) = &self.cookie
+                        && c == cookie
+                    {
+                        tracing::debug!("Authorization succeeded, closing dialog.");
+                        self.cookie = None;
+                        self.message.clear();
+                        self.identities.clear();
+                        self.retry_message = None;
+                        self.authenticating = false;
                     }
                 }
                 AuthenticationAgentEvent::AuthorizationRetry {
                     cookie,
                     retry_message,
                 } => {
-                    if let Some(c) = &self.cookie {
-                        if c == cookie {
-                            self.retry_message = retry_message.clone().or_else(|| Some("Неверный пароль. Повторите попытку.".to_string()));
-                            self.authenticating = false;
-                        }
+                    if let Some(c) = &self.cookie
+                        && c == cookie
+                    {
+                        self.retry_message = retry_message.clone().or_else(|| Some("Неверный пароль. Повторите попытку.".to_string()));
+                        self.authenticating = false;
                     }
                 }
             },

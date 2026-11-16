@@ -168,7 +168,7 @@
         "exec": "$HOME/.local/bin/inerium-network --waybar",
         "return-type": "json",
         "on-click": "$HOME/.local/bin/inerium-popup network",
-        "on-click-right": "$HOME/.local/bin/inerium-toggle-network.sh",
+        "on-click-right": "$HOME/.local/bin/inerium-toggle-network",
         "on-click-middle": "uwsm app -- nm-connection-editor",
         "tooltip": true
     },
@@ -187,7 +187,7 @@
         "exec": "$HOME/.local/bin/inerium-bluetooth --waybar",
         "return-type": "json",
         "on-click": "$HOME/.local/bin/inerium-popup bluetooth",
-        "on-click-right": "$HOME/.local/bin/inerium-toggle-bluetooth.sh",
+        "on-click-right": "$HOME/.local/bin/inerium-toggle-bluetooth",
         "on-click-middle": "uwsm app -- blueman-manager",
         "tooltip": true
     },

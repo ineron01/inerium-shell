@@ -4,6 +4,8 @@ description = "Fast GTK4 login screen and session selector for greetd"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
 gtk4 = { workspace = true }

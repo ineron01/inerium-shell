@@ -4,6 +4,8 @@ description = "GTK4 first-login onboarding, monitor calibration, and account sig
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
 inerium-i18n = { path = "../inerium-i18n" }

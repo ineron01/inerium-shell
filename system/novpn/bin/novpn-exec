@@ -6,7 +6,7 @@ if ! ip netns list | grep -qw "novpn"; then
     systemctl start novpn.service
 fi
 
-TARGET_USER="${SUDO_USER:-ineron}"
+TARGET_USER="${SUDO_USER:-$(id -un)}"
 TARGET_UID=$(id -u "$TARGET_USER")
 TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 TARGET_RUNTIME="/run/user/$TARGET_UID"

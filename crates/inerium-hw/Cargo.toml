@@ -4,6 +4,8 @@ description = "Hardware discovery, sysfs abstraction, and telemetry primitives"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [features]
 default = ["msi-ec"]

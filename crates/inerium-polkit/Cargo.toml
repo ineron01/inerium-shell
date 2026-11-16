@@ -1,0 +1,23 @@
+[package]
+name = "inerium-polkit"
+description = "Polkit authentication agent for Hyprland in Inerium Dragon aesthetic"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+etc-passwd = "0.2"
+eyre = "0.6"
+figment = { version = "0.10", features = ["toml"] }
+gtk4 = { workspace = true }
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+relm4 = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["std", "fmt", "env-filter", "ansi"] }
+zbus = { version = "5.7", default-features = false, features = ["tokio"] }
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+futures-lite = "2.6"

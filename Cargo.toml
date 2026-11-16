@@ -9,15 +9,14 @@ members = [
     "crates/inerium-setup",
     "crates/dolphin-converter",
     "crates/inerium-camera",
-]
-exclude = [
-    "standalone/inerium-polkit",
+    "crates/inerium-polkit",
 ]
 
 [workspace.package]
 version = "0.1.2"
 edition = "2024"
 authors = ["Ineron"]
+license = "GPL-3.0-or-later"
 repository = "https://github.com/ineron01/inerium-shell"
 homepage = "https://ineron01.github.io/inerium-shell"
 

@@ -3,7 +3,7 @@
 # scripts/install/40-binaries.sh — Prebuilt binary delivery & Cargo build
 # ============================================================================
 
-USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert"
+USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-polkit"
 
 install_from_binaries() {
     local tmp_dir bin missing_libs
@@ -31,7 +31,7 @@ install_from_binaries() {
     tar -xzf "${tmp_dir}/${BIN_ARCHIVE}" -C "${tmp_dir}/dist"
 
     # Smoke-test shared library dependencies via ldd
-    for bin in "${user_bins[@]}" inerium-polkit inerium-greeter; do
+    for bin in "${user_bins[@]}" inerium-greeter; do
         if [[ ! -x "${tmp_dir}/dist/${bin}" ]]; then
             warn "Missing binary in release archive: ${bin}"
             rm -rf "$tmp_dir"
@@ -47,7 +47,7 @@ install_from_binaries() {
     done
 
     mkdir -p "$HOME/.local/bin"
-    for bin in "${user_bins[@]}" inerium-polkit; do
+    for bin in "${user_bins[@]}"; do
         install -m 755 "${tmp_dir}/dist/${bin}" "$HOME/.local/bin/${bin}"
     done
     install_root_if_changed 755 "${tmp_dir}/dist/inerium-greeter" /usr/local/bin/inerium-greeter
@@ -64,15 +64,12 @@ build_from_source() {
     fi
     run_step "Compiling universal Rust workspace (this may take 10-15 min)..." \
         cargo build --manifest-path "$REPO_DIR/Cargo.toml" --workspace --release
-    run_step "Compiling standalone inerium-polkit..." \
-        cargo build --manifest-path "$REPO_DIR/standalone/inerium-polkit/Cargo.toml" --release
 
     log "Installing compiled binaries atomically..."
     mkdir -p "$HOME/.local/bin"
     for bin in "${user_bins[@]}"; do
         install -m 755 "$REPO_DIR/target/release/$bin" "$HOME/.local/bin/$bin"
     done
-    install -m 755 "$REPO_DIR/standalone/inerium-polkit/target/release/inerium-polkit" "$HOME/.local/bin/inerium-polkit"
     install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
 }
 
@@ -88,7 +85,6 @@ deliver_binaries() {
                 "$RELEASE_BASE_URL" "$BIN_ARCHIVE" "$BIN_SHA"
         else
             printf '[DRY-RUN] cargo build --manifest-path %s/Cargo.toml --workspace --release\n' "$REPO_DIR"
-            printf '[DRY-RUN] cargo build --manifest-path %s/standalone/inerium-polkit/Cargo.toml --release\n' "$REPO_DIR"
             printf '[DRY-RUN] install 17 binaries -> ~/.local/bin/ and inerium-greeter -> /usr/local/bin/\n'
         fi
         return 0

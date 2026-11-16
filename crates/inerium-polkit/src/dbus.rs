@@ -66,10 +66,10 @@ impl AuthenticationAgent {
                 let Value::U32(uid) = details["uid"] else {
                     continue;
                 };
-                if let Ok(Some(u)) = etc_passwd::Passwd::from_uid(uid) {
-                    if let Ok(n) = u.name.into_string() {
-                        names.push(n);
-                    }
+                if let Ok(Some(u)) = etc_passwd::Passwd::from_uid(uid)
+                    && let Ok(n) = u.name.into_string()
+                {
+                    names.push(n);
                 }
             }
         }

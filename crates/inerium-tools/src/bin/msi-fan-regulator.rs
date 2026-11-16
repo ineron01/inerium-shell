@@ -784,10 +784,11 @@ impl HardwareController {
         } else {
             cpu_t
         };
-        let gpu_driving_temp = if cpu_assist_gpu > 0 {
-            tg.unwrap_or(0).max(cpu_t)
-        } else {
-            tg.unwrap_or(0)
+        let gpu_driving_temp = match (cpu_assist_gpu > 0, tg) {
+            (true, Some(t)) => t.max(cpu_t),
+            (true, None) => cpu_t,
+            (false, Some(t)) => t,
+            (false, None) => 0,
         };
         self.cpu_pct = smooth_pct(self.cpu_pct, target_cpu, cpu_driving_temp);
         self.gpu_pct = smooth_pct(self.gpu_pct, target_gpu, gpu_driving_temp);
@@ -1115,10 +1116,11 @@ mod tests {
         let tg: Option<i32> = None;
         let cpu_assist_gpu = 75;
 
-        let gpu_driving_temp = if cpu_assist_gpu > 0 {
-            tg.unwrap_or(0).max(cpu_t)
-        } else {
-            tg.unwrap_or(0)
+        let gpu_driving_temp = match (cpu_assist_gpu > 0, tg) {
+            (true, Some(t)) => t.max(cpu_t),
+            (true, None) => cpu_t,
+            (false, Some(t)) => t,
+            (false, None) => 0,
         };
         assert_eq!(gpu_driving_temp, 80);
         // Starting cold at 0 with 80°C >= IMMEDIATE_TEMP jumps straight to target

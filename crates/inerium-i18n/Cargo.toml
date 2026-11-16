@@ -4,5 +4,7 @@ description = "Bilingual i18n localization catalog for Inerium Desktop"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
