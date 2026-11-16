@@ -10,10 +10,9 @@ use gtk4::{
 
 use crate::i18n::{Lang, tr};
 use crate::model::{
-    HyprProfile, IdleConfig, InputOverrides, SetupPaths, detect_battery_charge_threshold,
+    IdleConfig, InputOverrides, SetupPaths, detect_battery_charge_threshold,
     ensure_default_wallpapers, parse_active_wallpaper, parse_binds_lua, parse_hypridle_conf,
-    parse_inputs_lua_with_fallback, read_profile, scan_wallpapers, set_battery_charge_threshold,
-    write_profile,
+    parse_inputs_lua_with_fallback, scan_wallpapers, set_battery_charge_threshold,
 };
 use crate::system::{
     apply_hypridle, apply_wallpaper, query_live_inputs, reset_interface_overrides,
@@ -54,86 +53,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     let content = Box::new(Orientation::Vertical, 12);
     content.set_margin_end(4);
 
-    // 1. Hyprland Profile Card
-    let prof_card = Box::new(Orientation::Horizontal, 12);
-    prof_card.add_css_class("setup-card");
-
-    let prof_info = Box::new(Orientation::Vertical, 2);
-    prof_info.set_hexpand(true);
-    let prof_title = Label::new(Some(tr(
-        lang,
-        "Default Hyprland profile",
-        "Профиль Hyprland по умолчанию",
-    )));
-    prof_title.add_css_class("card-title");
-    prof_title.set_xalign(0.0);
-    prof_info.append(&prof_title);
-
-    let prof_sub = Label::new(Some(tr(
-        lang,
-        "Stored in ~/.config/hypr/profile (gitignored)",
-        "Хранится в ~/.config/hypr/profile (не отслеживается Git)",
-    )));
-    prof_sub.add_css_class("card-muted");
-    prof_sub.set_xalign(0.0);
-    prof_info.append(&prof_sub);
-    prof_card.append(&prof_info);
-
-    let current_prof = Rc::new(RefCell::new(read_profile(&paths.profile_path())));
-    let prof_seg = Box::new(Orientation::Horizontal, 2);
-    prof_seg.add_css_class("seg-group");
-    prof_seg.set_valign(Align::Center);
-
-    let btn_waybar = Button::with_label(tr(lang, "Waybar (main)", "Waybar (основной)"));
-    let btn_backup = Button::with_label(tr(lang, "Backup (fallback)", "Backup (резервный)"));
-    btn_waybar.add_css_class("seg-btn");
-    btn_backup.add_css_class("seg-btn");
-    if *current_prof.borrow() == HyprProfile::Waybar {
-        btn_waybar.add_css_class("active");
-    } else {
-        btn_backup.add_css_class("active");
-    }
-    prof_seg.append(&btn_waybar);
-    prof_seg.append(&btn_backup);
-    prof_card.append(&prof_seg);
-    content.append(&prof_card);
-
-    for (btn, target_prof) in [
-        (&btn_waybar, HyprProfile::Waybar),
-        (&btn_backup, HyprProfile::Backup),
-    ] {
-        let btn_w = btn_waybar.clone();
-        let btn_b = btn_backup.clone();
-        let current_prof = current_prof.clone();
-        let paths = paths.clone();
-        let status_cb = status_cb.clone();
-        btn.connect_clicked(move |_| {
-            if let Err(e) = write_profile(&paths.profile_path(), target_prof) {
-                status_cb.error(&e);
-                return;
-            }
-            *current_prof.borrow_mut() = target_prof;
-            if target_prof == HyprProfile::Waybar {
-                btn_w.add_css_class("active");
-                btn_b.remove_css_class("active");
-            } else {
-                btn_b.add_css_class("active");
-                btn_w.remove_css_class("active");
-            }
-            status_cb.ok(&match lang {
-                Lang::En => format!(
-                    "Profile '{}' saved (applies on next login)",
-                    target_prof.as_str()
-                ),
-                Lang::Ru => format!(
-                    "Профиль '{}' сохранён (применится при следующем входе)",
-                    target_prof.as_str()
-                ),
-            });
-        });
-    }
-
-    // 2. Quick Wallpaper Picker Card
+    // 1. Quick Wallpaper Picker Card
     let wall_card = Box::new(Orientation::Vertical, 8);
     wall_card.add_css_class("setup-card");
 

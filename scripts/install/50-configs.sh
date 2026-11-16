@@ -66,16 +66,9 @@ deploy_desktop_configs() {
     for f in "$REPO_DIR"/config/hypr/config/*.lua; do
         [[ -f "$f" ]] || continue
         base="$(basename "$f")"
-        if [[ "$base" == "autostart_backup.lua" || "$base" == "binds_backup.lua" ]]; then
-            if [[ ! -e "$HOME/.config/hypr/config/$base" ]]; then
-                run "install -m 644 '$f' '$HOME/.config/hypr/config/$base'"
-            fi
-            continue
-        fi
         link_item "$f" "$HOME/.config/hypr/config/$base"
     done
     render_template "$REPO_DIR/config/hypr/hyprpaper.conf.template" "$HOME/.config/hypr/hyprpaper.conf" 1
-    render_template "$REPO_DIR/config/hypr/profile.default" "$HOME/.config/hypr/profile" 1
 
     local ws_count_file="$HOME/.config/hypr/config/workspaces_count"
     if [[ -n "$WORKSPACES_PER_MON" && "$WORKSPACES_PER_MON" =~ ^[1-9]$ ]]; then

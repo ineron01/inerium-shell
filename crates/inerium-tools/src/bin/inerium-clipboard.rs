@@ -2,7 +2,6 @@
 //! - Instant startup, zero Python runtime overhead
 //! - Reads cliphist history and generates 56x56 thumbnails via ImageMagick streaming pipe
 //! - Integrates with screenshot metadata (~/.cache/cliphist/image-meta.json)
-//! - Supports --backup flag for backup session styling
 
 use std::collections::{BTreeMap, HashSet};
 use std::env;
@@ -312,10 +311,9 @@ fn process_text_item(content: &str) -> (String, &'static str) {
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("inerium-clipboard — Native Rust Clipboard Manager for Rofi & cliphist\n\nUsage: inerium-clipboard [--backup]");
+        println!("inerium-clipboard — Native Rust Clipboard Manager for Rofi & cliphist\n\nUsage: inerium-clipboard");
         return;
     }
-    let is_backup = args.iter().any(|a| a == "--backup" || a == "-b");
 
     let items = get_cliphist_items();
     if items.is_empty() {
@@ -346,17 +344,8 @@ fn main() {
         save_metadata(meta_registry);
     }
 
-    let prompt = if is_backup {
-        "󰅍  Буфер обмена (Резерв)"
-    } else {
-        "󰅍  Буфер обмена"
-    };
-
-    let theme_file = if is_backup {
-        home_dir().join(".config/rofi/clipboard_backup.rasi")
-    } else {
-        home_dir().join(".config/rofi/clipboard.rasi")
-    };
+    let prompt = "󰅍  Буфер обмена";
+    let theme_file = home_dir().join(".config/rofi/clipboard.rasi");
 
     let mut rofi_cmd = Command::new("rofi");
     rofi_cmd.args([

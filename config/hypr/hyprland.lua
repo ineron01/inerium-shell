@@ -1,23 +1,4 @@
--- CachyOS Hyprland Configuration with Profile Support
-
-local function get_profile()
-    local env_p = os.getenv("HYPR_PROFILE")
-    if env_p and env_p ~= "" then
-        return env_p
-    end
-    local home = os.getenv("HOME") or ""
-    local f = io.open(home .. "/.config/hypr/profile", "r")
-    if f then
-        local p = f:read("*l")
-        f:close()
-        if p and p:match("%S") then
-            return p:gsub("%s+", "")
-        end
-    end
-    return "waybar"
-end
-
-local profile = get_profile()
+-- CachyOS Hyprland Configuration
 
 local function safe_require(mod)
     local ok, err = pcall(require, mod)
@@ -27,7 +8,7 @@ local function safe_require(mod)
     return ok
 end
 
--- Common configs (безопасная загрузка: ошибка в одном модуле не роняет сессию)
+-- Core configuration modules (safe require: error in one module does not crash the session)
 safe_require("config.animations")
 safe_require("config.colors")
 safe_require("config.decorations")
@@ -38,12 +19,5 @@ safe_require("config.misc")
 safe_require("config.monitors")
 safe_require("config.windowrules")
 safe_require("config.workspaces")
-
--- Profile-dependent configs: 'backup' (резервная сессия) или основная сессия
-if profile == "backup" then
-    safe_require("config.autostart_backup")
-    safe_require("config.binds_backup")
-else
-    safe_require("config.autostart")
-    safe_require("config.keybinds")
-end
+safe_require("config.autostart")
+safe_require("config.keybinds")

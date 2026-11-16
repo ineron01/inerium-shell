@@ -4,7 +4,6 @@
 - Entry point: `hyprland.lua`
 - Modules: `config/variables.lua`, `config/windowrules.lua`, `config/keybinds.lua`, `config/autostart.lua`, `config/input.lua`
 - Theme: `config/colors.lua` (Inerium Dragon palette)
-- Immutable Fallback: NEVER modify or delete the fallback session files `config/autostart_backup.lua` and `config/binds_backup.lua`.
 
 ## Mandatory Engineering Rules
 1. **Pre-flight Syntax Validation:** Always run `luac -p <file>` before reloading.
