@@ -13,4 +13,5 @@ hl.gesture({ fingers = 3, direction = "down",       action = "close" })
 hl.gesture({ fingers = 3, direction = "up",         action = "fullscreen" })
 hl.gesture({ fingers = 3, direction = "left",       action = "float" })
 
+pcall(require, "config.input_local")
 pcall(require, "config.inputs_local")

@@ -60,18 +60,6 @@ hl.window_rule({ match = { class = "^(.*[Cc]alc.*)$" }, float = true, size = { "
 hl.window_rule({ match = { class = "^(org\\.kde\\.keditfiletype)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.kde\\.ark)$" }, size = { "max(monitor_w, monitor_h)*0.40", "min(monitor_w, monitor_h)*0.40" } })
 hl.window_rule({ match = { class = "^(.*swash)$", title = "^(Swash)$" }, min_size = { "max(monitor_w, monitor_h)*0.35", "min(monitor_w, monitor_h)*0.35" }, float = true })
--- hl.window_rule({
---    match = {
---        class = "^(org\\.kde\\.dolphin)$",
---        title = "negative:^(Moving.*|Create New.*|Extract.*|Compress.*|Copying.*|Progress.*|Configure.*|Properties.*|Choose\\sApplication.*)$",
---    },
---    float = true,
---    size = { "max(monitor_w, monitor_h)*0.50", "min(monitor_w, monitor_h)*0.55" },
---    move = {
---        "max(20, min(cursor_x - (window_w*0.50), monitor_w - window_w + 20))", -- X axis clamping
---        "max(20, min(cursor_y - 50, monitor_h - window_h + 20))" -- Y axis clamping
---    },
--- })
 
 -- Opacity Overrides
 local terminals = "^(kitty|ghostty|[Kk]onsole|Alacritty|gnome-terminal|xfce[0-9]?-terminal)$"
@@ -114,7 +102,6 @@ local modalMatches = {
     { title = "^(Open|Authentication Required|Add Folder to Workspace|Choose Files|Save As|Confirm to replace files|File Operation Progress)$" },
     { initial_title = "^(Open File)$" },
     { class = "^([Xx]dg-desktop-portal-gtk)$" },
-    { class = "^(org\\.freedesktop\\.impl\\.portal\\.desktop\\.kde|[Xx]dg-desktop-portal-kde)$" },
     { title = "^(File Upload|Choose wallpaper|Library)(.*)$" },
     { class = "^(.*dialog.*)$" },
     { title = "^(.*dialog.*)$" },

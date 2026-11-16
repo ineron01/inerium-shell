@@ -33,18 +33,17 @@ safe_require("config.colors")
 safe_require("config.decorations")
 safe_require("config.variables")
 safe_require("config.environment")
-safe_require("config.inputs")
+safe_require("config.input")
 safe_require("config.misc")
 safe_require("config.monitors")
 safe_require("config.windowrules")
 safe_require("config.workspaces")
-safe_require("config.binds_common")
 
--- Profile-dependent configs: 'backup' (резервная сессия) или 'waybar' (основная)
+-- Profile-dependent configs: 'backup' (резервная сессия) или основная сессия
 if profile == "backup" then
     safe_require("config.autostart_backup")
     safe_require("config.binds_backup")
 else
-    safe_require("config.autostart_waybar")
-    safe_require("config.binds_waybar")
+    safe_require("config.autostart")
+    safe_require("config.keybinds")
 end
