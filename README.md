@@ -71,16 +71,24 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)" -- -y
 ```
 
-### 3. Developer / Source Compilation
+### 3. Source Compilation & Developer Mode
+
+Clones directly into `~/inerium-shell` (visible in your home directory) and compiles via Cargo:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)" -- --from-source
 ```
 
+> **Target Paths & Overrides:**
+> - Standard prebuilt bootstrap installs to `$XDG_DATA_HOME/inerium-shell` (default: `~/.local/share/inerium-shell`, hidden to keep `$HOME` clean).
+> - Source compilation installs to `~/inerium-shell` (visible for easy access to source code).
+> - You can override the clone path anytime with `INERIUM_SHELL_DIR=/custom/path`.
+
 ### 4. Local Run from Cloned Repo
 
 ```bash
-./install.sh --dry-run
+git clone https://github.com/ineron01/inerium-shell.git ~/inerium-shell
+cd ~/inerium-shell
 ./install.sh --bin --with-greeter --with-gdrive
 ```
 
@@ -104,7 +112,7 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
 - `--all-addons`: Installs all optional add-ons together.
-- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`).
+- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium-shell` (leaving any custom paths untouched).
 - `--prune`: **Prune Obsolete Files** — Scans and removes obsolete files from previous versions against the installation manifest.
 
 ---

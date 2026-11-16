@@ -619,6 +619,8 @@ pub fn ensure_default_wallpapers(paths: &SetupPaths) {
 
     if !has_any {
         let sources = [
+            paths.home.join(".local/share/inerium-shell/assets/wallpapers"),
+            paths.home.join("inerium-shell/assets/wallpapers"),
             paths.home.join("Repos/inerium-shell/assets/wallpapers"),
             paths.home.join("Repos/inerium-desktop/assets/wallpapers"),
             PathBuf::from("/usr/share/inerium/wallpapers"),

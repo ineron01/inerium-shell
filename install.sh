@@ -4,7 +4,7 @@
 # ============================================================================
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${INERIUM_SHELL_DIR:-${INERIUM_DESKTOP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}"
 SCRIPTS_DIR="$REPO_DIR/scripts/install"
 
 # Installation state & flags

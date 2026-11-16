@@ -71,16 +71,24 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)" -- -y
 ```
 
-### 3. Сборка из исходников (для разработчиков)
+### 3. Сборка из исходников
+
+Клонирует репозиторий в `~/inerium-shell` (видимая папка в домашней директории) и компилирует крейты через Cargo:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)" -- --from-source
 ```
 
+> **Расположение репозитория и переопределение путей:**
+> - Стандартная установка бинарников выполняется в `$XDG_DATA_HOME/inerium-shell` (по умолчанию `~/.local/share/inerium-shell`, скрытая папка — не захламляет `$HOME` и защищена от случайного удаления).
+> - Сборка из исходников размещает репозиторий в `~/inerium-shell` (видимая директория в `$HOME` для удобного просмотра и редактирования кода).
+> - Путь можно переопределить переменной: `INERIUM_SHELL_DIR=/любой/путь`.
+
 ### 4. Локальный запуск из клонированного репозитория
 
 ```bash
-./install.sh --dry-run
+git clone https://github.com/ineron01/inerium-shell.git ~/inerium-shell
+cd ~/inerium-shell
 ./install.sh --bin --with-greeter --with-gdrive
 ```
 
@@ -104,7 +112,7 @@ Inerium Shell включает опциональные расширения, к
 - `--with-msi-ec`: **Охлаждение MSI** — Драйвер ядра `msi-ec-dkms-git` + системный демон автоматической регулировки кулеров CPU/GPU (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Прямой запуск выбранных приложений через физический сетевой шлюз в обход активного VPN.
 - `--all-addons`: Установка всех доступных дополнительных модулей одновременно.
-- `--uninstall`: **Чистое удаление** — Отключает зарегистрированные службы, удаляет все разложенные симлинки, бинарники и шаблоны по манифесту установки (`~/.local/state/inerium/install-manifest`).
+- `--uninstall`: **Чистое удаление** — Отключает зарегистрированные службы, удаляет все разложенные симлинки, бинарники и шаблоны по манифесту установки (`~/.local/state/inerium/install-manifest`), а также удаляет `~/.local/share/inerium-shell` (не затрагивая кастомные пути).
 - `--prune`: **Очистка сирот** — Сверяет установку со старым манифестом и удаляет устаревшие файлы прошлых версий.
 
 ---

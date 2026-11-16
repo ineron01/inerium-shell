@@ -5,17 +5,35 @@
 set -euo pipefail
 
 REPO_URL="${INERIUM_SHELL_REPO:-${INERIUM_DESKTOP_REPO:-https://github.com/ineron01/inerium-shell.git}}"
-TARGET_DIR="${INERIUM_SHELL_DIR:-${INERIUM_DESKTOP_DIR:-$HOME/Repos/inerium-shell}}"
 LOG_FILE="/tmp/inerium-install.log"
 DRY_RUN=0
 SKIP_PKGS=0
+FROM_SOURCE=0
 
 for arg in "$@"; do
     case "$arg" in
-        --dry-run)   DRY_RUN=1 ;;
-        --skip-pkgs) SKIP_PKGS=1 ;;
+        --dry-run)     DRY_RUN=1 ;;
+        --skip-pkgs)   SKIP_PKGS=1 ;;
+        --from-source) FROM_SOURCE=1 ;;
     esac
 done
+
+# Target directory resolution:
+# 1. Environment override (INERIUM_SHELL_DIR / INERIUM_DESKTOP_DIR)
+# 2. Local execution check (if run from an existing local clone)
+# 3. Visible home directory for source builds (~/inerium-shell)
+# 4. Standard XDG data directory for prebuilt binaries (~/.local/share/inerium-shell)
+if [[ -n "${INERIUM_SHELL_DIR:-}" ]]; then
+    TARGET_DIR="$INERIUM_SHELL_DIR"
+elif [[ -n "${INERIUM_DESKTOP_DIR:-}" ]]; then
+    TARGET_DIR="$INERIUM_DESKTOP_DIR"
+elif [[ -f "${BASH_SOURCE[0]:-}" && -f "$(dirname "${BASH_SOURCE[0]}")/install.sh" ]]; then
+    TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+elif [[ "$FROM_SOURCE" -eq 1 ]]; then
+    TARGET_DIR="$HOME/inerium-shell"
+else
+    TARGET_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
+fi
 
 has_gum() {
     command -v gum >/dev/null 2>&1 && [[ -t 1 ]]

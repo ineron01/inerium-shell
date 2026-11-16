@@ -35,7 +35,7 @@ manifest_record_addon()       { manifest_record "ADDON" "$1"; }
 manifest_clean_orphans() {
     log "Checking for broken symlinks and legacy artifacts..."
     local dir
-    for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/kio/servicemenus" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user"; do
+    for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/kio/servicemenus" "$HOME/.config" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r -d '' link; do
             local raw
@@ -155,6 +155,7 @@ prune_obsolete_and_save_manifest() {
         printf '# COMMIT %s\n' "$commit"
         printf '# DATE %s\n' "$now"
         printf '# MODE %s\n' "$INSTALL_MODE"
+        printf '# REPO %s\n' "$REPO_DIR"
         sort -u "$NEW_MANIFEST_FILE"
     } > "${MANIFEST_FILE}.tmp"
     mv -f "${MANIFEST_FILE}.tmp" "$MANIFEST_FILE"
@@ -259,6 +260,30 @@ run_uninstall() {
     # 5. Clean state files
     if [[ "$DRY_RUN" -eq 0 ]]; then
         rm -f "$MANIFEST_FILE" "$MANIFEST_DIR/setup.done"
+        rmdir "$MANIFEST_DIR" 2>/dev/null || true
+    fi
+
+    # 6. Clean cloned repository if installed in user data directory (~/.local/share/inerium-shell)
+    local user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
+    local installed_repo="${REPO_DIR:-}"
+    if [[ -z "$installed_repo" && -f "$MANIFEST_FILE" ]]; then
+        installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" | head -n 1 | cut -d' ' -f3- || true)"
+    fi
+
+    if [[ -n "$installed_repo" && -d "$user_shell_dir" ]]; then
+        local can_installed can_user
+        can_installed="$(realpath "$installed_repo" 2>/dev/null || true)"
+        can_user="$(realpath "$user_shell_dir" 2>/dev/null || true)"
+        if [[ -n "$can_installed" && "$can_installed" == "$can_user" ]]; then
+            log "Removing cloned repository in user data directory: $user_shell_dir"
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] rm -rf %s\n' "$user_shell_dir"
+            else
+                rm -rf "$user_shell_dir"
+            fi
+        else
+            log "Preserving custom repository path: $installed_repo"
+        fi
     fi
     log "Inerium Shell uninstallation complete."
 }
