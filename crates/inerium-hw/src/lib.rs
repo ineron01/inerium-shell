@@ -5,6 +5,7 @@ pub mod sysfs;
 pub mod battery;
 pub mod cooling;
 pub mod power;
+pub mod wallpaper;
 
 pub use sysfs::*;
 pub use battery::{discover_power_supplies, BatteryBackend};

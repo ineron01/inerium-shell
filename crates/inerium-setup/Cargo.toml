@@ -8,6 +8,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+inerium-hw = { workspace = true }
 inerium-i18n = { workspace = true }
 gtk4 = { workspace = true }
 gdk4 = { workspace = true }

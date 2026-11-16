@@ -214,18 +214,9 @@ pub fn list_available_wallpapers() -> Vec<WallpaperItem> {
 
 pub fn set_wallpaper_async(path: String, monitor: Option<String>) {
     thread::spawn(move || {
-        let bin_path = home_dir().join(".local/bin/set-wallpaper");
-        let mut cmd = if bin_path.exists() {
-            Command::new(bin_path)
-        } else {
-            Command::new("set-wallpaper")
-        };
-        cmd.arg(&path);
-        if let Some(ref m) = monitor
-            && m != "all" {
-                cmd.arg(m);
-            }
-        let _ = cmd.status();
+        let p = Path::new(&path);
+        let mon = monitor.as_deref().filter(|m| *m != "all");
+        let _ = inerium_hw::wallpaper::apply_wallpaper(p, mon, true);
     });
 }
 

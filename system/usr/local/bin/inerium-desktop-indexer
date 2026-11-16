@@ -377,7 +377,29 @@ def run_as_owner(user_dir: str, func) -> None:
             os._exit(code)
     os.waitpid(pid, 0)
 
+def is_cyrillic_needed() -> bool:
+    lang = (os.environ.get("LANG") or "").lower()
+    lc_all = (os.environ.get("LC_ALL") or "").lower()
+    if lang.startswith("ru") or lc_all.startswith("ru"):
+        return True
+    try:
+        res = subprocess.run(["hyprctl", "getoption", "input:kb_layout", "-j"],
+                             capture_output=True, text=True, check=False)
+        if res.returncode == 0:
+            import json
+            data = json.loads(res.stdout)
+            layout = data.get("str", "").lower()
+            if any(l in layout for l in ["ru", "by", "ua"]):
+                return True
+    except Exception:
+        pass
+    return False
+
 def index_all():
+    if not is_cyrillic_needed():
+        print("inerium-desktop-indexer: Cyrillic layout/locale not active, skipping index.")
+        return
+
     os.makedirs(TARGET_DIR, exist_ok=True)
     count = 0
 

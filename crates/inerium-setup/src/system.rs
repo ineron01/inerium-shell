@@ -181,28 +181,7 @@ pub fn reset_monitors_to_auto(paths: &SetupPaths) -> Result<(), String> {
 }
 
 pub fn apply_wallpaper(path: &Path) -> Result<(), String> {
-    let bin = if let Some(home_bin) = std::env::var_os("HOME")
-        .map(|h| Path::new(&h).join(".local/bin/set-wallpaper"))
-        .filter(|p| p.exists())
-    {
-        home_bin
-    } else {
-        Path::new("set-wallpaper").to_path_buf()
-    };
-
-    let output = Command::new(bin)
-        .arg(path)
-        .arg("all")
-        .output()
-        .map_err(|e| format!("Failed executing set-wallpaper: {e}"))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "set-wallpaper failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    Ok(())
+    inerium_hw::wallpaper::apply_wallpaper(path, None, false)
 }
 
 pub fn save_inputs_and_reload(paths: &SetupPaths, cfg: &InputOverrides) -> Result<(), String> {

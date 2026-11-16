@@ -3,7 +3,7 @@
 # scripts/install/40-binaries.sh — Prebuilt binary delivery & Cargo build
 # ============================================================================
 
-USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-camera inerium-polkit"
+USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-camera inerium-polkit inerium-wallpaper"
 
 install_from_binaries() {
     local tmp_dir bin missing_libs
@@ -50,6 +50,7 @@ install_from_binaries() {
     for bin in "${user_bins[@]}"; do
         install -m 755 "${tmp_dir}/dist/${bin}" "$HOME/.local/bin/${bin}"
     done
+    ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
     install_root_if_changed 755 "${tmp_dir}/dist/inerium-greeter" /usr/local/bin/inerium-greeter
 
     rm -rf "$tmp_dir"
@@ -70,6 +71,7 @@ build_from_source() {
     for bin in "${user_bins[@]}"; do
         install -m 755 "$REPO_DIR/target/release/$bin" "$HOME/.local/bin/$bin"
     done
+    ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
     install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
 }
 
@@ -85,8 +87,9 @@ deliver_binaries() {
                 "$RELEASE_BASE_URL" "$BIN_ARCHIVE" "$BIN_SHA"
         else
             printf '[DRY-RUN] cargo build --manifest-path %s/Cargo.toml --workspace --release\n' "$REPO_DIR"
-            printf '[DRY-RUN] install 17 binaries -> ~/.local/bin/ and inerium-greeter -> /usr/local/bin/\n'
+            printf '[DRY-RUN] install 19 binaries -> ~/.local/bin/ and inerium-greeter -> /usr/local/bin/\n'
         fi
+        printf '[DRY-RUN] ln -sfn inerium-wallpaper -> ~/.local/bin/set-wallpaper\n'
         return 0
     fi
 

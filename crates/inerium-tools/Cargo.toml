@@ -16,6 +16,10 @@ name = "msi-fan-regulator"
 path = "src/bin/msi-fan-regulator.rs"
 required-features = ["msi-ec"]
 
+[[bin]]
+name = "inerium-wallpaper"
+path = "src/bin/inerium-wallpaper.rs"
+
 [dependencies]
 inerium-hw = { workspace = true }
 inerium-i18n = { workspace = true }

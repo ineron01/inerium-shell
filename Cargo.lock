@@ -1059,6 +1059,7 @@ version = "0.1.2"
 dependencies = [
  "inerium-i18n",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1092,6 +1093,7 @@ dependencies = [
  "gio",
  "glib",
  "gtk4",
+ "inerium-hw",
  "inerium-i18n",
  "serde",
  "serde_json",
