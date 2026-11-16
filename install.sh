@@ -13,6 +13,7 @@ SKIP_PKGS=0
 SKIP_BUILD=0
 FETCH_MODEL=0
 WITH_GREETER=0
+DO_UNINSTALL=0
 NON_INTERACTIVE="${INERIUM_NON_INTERACTIVE:-0}"
 INSTALL_MODE="bin"
 MODE_EXPLICIT=0
@@ -54,6 +55,8 @@ Options:
   --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-msi-ec, --with-novpn)
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
+  --uninstall        Uninstall Inerium Shell and remove tracked files/services
+  --prune            Prune obsolete files against previous install manifest
   --non-interactive  Run without interactive TUI prompts (also -y)
   -h, --help         Show this help
 EOF
@@ -72,6 +75,8 @@ while [[ $# -gt 0 ]]; do
             fi
             INSTALL_MODE="source"; MODE_EXPLICIT=1; shift ;;
         --dry-run)         DRY_RUN=1; NON_INTERACTIVE=1; shift ;;
+        --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
+        --prune|--clean)   shift ;;
         --skip-pkgs)       SKIP_PKGS=1; shift ;;
         --skip-build)      SKIP_BUILD=1; shift ;;
         --fetch-model)     FETCH_MODEL=1; shift ;;
@@ -99,6 +104,7 @@ fi
 # Source modular stages
 # ============================================================================
 source "$SCRIPTS_DIR/00-helpers.sh"
+source "$SCRIPTS_DIR/05-manifest.sh"
 source "$SCRIPTS_DIR/10-detect.sh"
 source "$SCRIPTS_DIR/20-tui.sh"
 source "$SCRIPTS_DIR/30-packages.sh"
@@ -115,7 +121,14 @@ export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE S
 # ============================================================================
 check_not_root
 init_log_file
+
+if [[ "$DO_UNINSTALL" -eq 1 ]]; then
+    run_uninstall
+    exit 0
+fi
+
 init_sudo_keepalive
+init_manifest
 
 ensure_gum_installed
 if use_tui; then
@@ -144,6 +157,9 @@ enable_user_services_and_defaults
 
 # 7. Optional add-ons (Google Drive, Dolphin Converter, MSI Cooling, Camera, noVPN)
 deploy_selected_addons
+
+# 8. Record installation manifest and prune obsolete files
+prune_obsolete_and_save_manifest
 
 # 9. Summary & completion
 if [[ "$DRY_RUN" -eq 0 ]]; then

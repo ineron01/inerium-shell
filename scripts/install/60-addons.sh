@@ -5,6 +5,8 @@
 
 install_msi_ec_addon() {
     log "Setting up MSI Cooling module (msi-ec DKMS & msi-fan-regulator)..."
+    manifest_record_addon "msi-ec"
+    manifest_record_system_unit "msi-fan-regulator.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         local -a headers=()
         local f
@@ -48,6 +50,11 @@ install_msi_ec_addon() {
 
 install_camera_addon() {
     log "Setting up Inerium Camera module (v4l2loopback & inerium-camera)..."
+    manifest_record_addon "camera"
+    manifest_record_user_unit "inerium-camera-bridge.service"
+    manifest_record_binary "$HOME/.local/bin/inerium-camera"
+    manifest_record_symlink "$HOME/.local/bin/phone-webcam" "inerium-camera"
+    manifest_record_symlink "$HOME/.local/bin/phone-webcam-gui" "inerium-camera"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         install_pkgs v4l2loopback-dkms v4l2loopback-utils android-tools scrcpy gstreamer gst-plugins-base-libs gst-plugins-good
     fi
@@ -93,6 +100,8 @@ install_camera_addon() {
 
 install_novpn_addon() {
     log "Setting up noVPN Split-Tunneling module..."
+    manifest_record_addon "novpn"
+    manifest_record_system_unit "novpn.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         install_pkgs iptables iproute2
     fi
@@ -114,6 +123,8 @@ install_novpn_addon() {
 
 install_gdrive_addon() {
     log "Setting up Google Drive Dolphin integration (rclone)..."
+    manifest_record_addon "gdrive"
+    manifest_record_user_unit "gdrive.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         install_pkgs rclone
     fi
@@ -136,6 +147,7 @@ install_gdrive_addon() {
 
 install_converter_addon() {
     log "Setting up Dolphin Converter addon (media/doc conversion & ONNX background removal)..."
+    manifest_record_addon "converter"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         install_pkgs ffmpeg imagemagick poppler pandoc-cli typst libreoffice-fresh onnxruntime-cpu
     fi

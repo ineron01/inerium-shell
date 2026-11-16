@@ -6,6 +6,15 @@
 log()  { printf '[inerium-shell] %s\n' "$*"; }
 warn() { printf '[inerium-shell] WARNING: %s\n' "$*" >&2; }
 
+# Manifest recording fallbacks (overridden when 05-manifest.sh is loaded)
+manifest_record_binary() { :; }
+manifest_record_symlink() { :; }
+manifest_record_template() { :; }
+manifest_record_system_file() { :; }
+manifest_record_user_unit() { :; }
+manifest_record_system_unit() { :; }
+manifest_record_addon() { :; }
+
 has_gum() {
     command -v gum >/dev/null 2>&1 && [[ -t 0 && -t 1 ]]
 }
@@ -71,6 +80,7 @@ run_step() {
 link_item() {
     local src="$1"
     local dst="$2"
+    manifest_record_symlink "$dst" "$src"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         if [[ -e "$dst" && ! -L "$dst" ]]; then
             printf '[DRY-RUN] mv %s -> %s.bak.%s\n' "$dst" "$dst" "$BACKUP_STAMP"
@@ -95,6 +105,7 @@ render_template() {
     local tpl="$1"
     local dst="$2"
     local only_if_missing="${3:-0}"
+    manifest_record_template "$dst"
     if [[ "$only_if_missing" -eq 1 && -e "$dst" ]]; then
         log "Keeping existing mutable file: $dst"
         return 0
@@ -112,6 +123,7 @@ install_root_if_changed() {
     local mode="$1"
     local src="$2"
     local dst="$3"
+    manifest_record_system_file "$dst"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         if ! cmp -s "$src" "$dst" 2>/dev/null; then
             printf '[DRY-RUN] sudo install -m %s %s -> %s\n' "$mode" "$src" "$dst"
@@ -127,6 +139,7 @@ install_root_if_changed() {
 install_sudoers_template() {
     local tpl="$1"
     local dst="$2"
+    manifest_record_system_file "$dst"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '[DRY-RUN] render sudoers %s -> %s (visudo -cf)\n' "$tpl" "$dst"
         return 0

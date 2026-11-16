@@ -104,6 +104,8 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
 - `--all-addons`: Installs all optional add-ons together.
+- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest.json`).
+- `--prune`: **Prune Obsolete Files** — Scans and removes obsolete files from previous versions against the installation manifest.
 
 ---
 

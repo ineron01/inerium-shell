@@ -60,7 +60,7 @@ deploy_desktop_configs() {
 
     # Hyprland
     run "mkdir -p '$HOME/.config/hypr/config'"
-    for f in AGENTS.md hypridle.conf hyprland.lua hyprlock.conf xdph.conf; do
+    for f in hypridle.conf hyprland.lua hyprlock.conf xdph.conf; do
         [[ -f "$REPO_DIR/config/hypr/$f" ]] && link_item "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f"
     done
     for f in "$REPO_DIR"/config/hypr/config/*.lua; do
@@ -361,6 +361,9 @@ enable_user_services_and_defaults() {
     if [[ "$INSTALL_LANG" == "ru" ]]; then
         USER_UNITS="$USER_UNITS inerium-desktop-indexer.path"
     fi
+    for u in $USER_UNITS; do
+        manifest_record_user_unit "$u"
+    done
     local MASK_UNITS="hyprpolkitagent.service at-spi2-registryd.service at-spi-dbus-bus.service"
 
     if systemctl --user show-environment >/dev/null 2>&1; then

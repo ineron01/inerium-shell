@@ -49,8 +49,10 @@ install_from_binaries() {
     mkdir -p "$HOME/.local/bin"
     for bin in "${user_bins[@]}"; do
         install -m 755 "${tmp_dir}/dist/${bin}" "$HOME/.local/bin/${bin}"
+        manifest_record_binary "$HOME/.local/bin/${bin}"
     done
     ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
+    manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
     install_root_if_changed 755 "${tmp_dir}/dist/inerium-greeter" /usr/local/bin/inerium-greeter
 
     rm -rf "$tmp_dir"
@@ -70,14 +72,23 @@ build_from_source() {
     mkdir -p "$HOME/.local/bin"
     for bin in "${user_bins[@]}"; do
         install -m 755 "$REPO_DIR/target/release/$bin" "$HOME/.local/bin/$bin"
+        manifest_record_binary "$HOME/.local/bin/$bin"
     done
     ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
+    manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
     install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
 }
 
 deliver_binaries() {
     if [[ "$SKIP_BUILD" -eq 1 ]]; then
         log "Skipping binary delivery (--skip-build)."
+        local -a user_bins
+        read -ra user_bins <<< "$USER_BINS_STR"
+        for bin in "${user_bins[@]}"; do
+            [[ -x "$HOME/.local/bin/$bin" ]] && manifest_record_binary "$HOME/.local/bin/$bin"
+        done
+        [[ -e "$HOME/.local/bin/set-wallpaper" ]] && manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
+        [[ -e "/usr/local/bin/inerium-greeter" ]] && manifest_record_system_file "/usr/local/bin/inerium-greeter"
         return 0
     fi
 
