@@ -104,12 +104,7 @@ impl SetupPaths {
     }
 
     pub fn wallpaper_dirs(&self) -> Vec<PathBuf> {
-        vec![
-            self.inerium_wallpapers_dir(),
-            self.home.join("Pictures/Wallpapers"),
-            self.home.join("Обои"),
-            self.home.join("Wallpapers"),
-        ]
+        vec![self.inerium_wallpapers_dir()]
     }
 }
 
@@ -651,7 +646,7 @@ pub fn ensure_default_wallpapers(paths: &SetupPaths) {
                 let p = e.path();
                 p.is_file()
                     && matches!(
-                        p.extension().and_then(|x| x.to_str()).unwrap_or(""),
+                        p.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase().as_str(),
                         "jpg" | "jpeg" | "png" | "webp"
                     )
             })
@@ -660,25 +655,32 @@ pub fn ensure_default_wallpapers(paths: &SetupPaths) {
 
     if !has_any {
         let sources = [
-            paths.home.join("Pictures/Wallpapers"),
             paths.home.join("Repos/inerium-shell/assets/wallpapers"),
             paths.home.join("Repos/inerium-desktop/assets/wallpapers"),
-            PathBuf::from("/usr/share/backgrounds"),
+            PathBuf::from("/usr/share/inerium/wallpapers"),
         ];
         for src_dir in &sources {
             if let Ok(entries) = fs::read_dir(src_dir) {
+                let mut copied = false;
                 for entry in entries.flatten() {
                     let sp = entry.path();
-                    let ext = sp.extension().and_then(|x| x.to_str()).unwrap_or("");
+                    let ext = sp
+                        .extension()
+                        .and_then(|x| x.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
                     if sp.is_file()
-                        && matches!(ext, "jpg" | "jpeg" | "png" | "webp")
+                        && matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp")
                         && let Some(file_name) = sp.file_name()
                     {
                         let target = dest_dir.join(file_name);
-                        if !target.exists() {
-                            let _ = fs::copy(&sp, &target);
+                        if !target.exists() && fs::copy(&sp, &target).is_ok() {
+                            copied = true;
                         }
                     }
+                }
+                if copied {
+                    break;
                 }
             }
         }
@@ -1301,6 +1303,16 @@ wallpaper {
         let (title, mode) = parse_step_metadata(Path::new("10-github"), script);
         assert_eq!(title, "GitHub — вход");
         assert_eq!(mode, StepMode::Gui);
+
+        let test_paths = SetupPaths {
+            home: PathBuf::from("/home/testuser"),
+            config_home: PathBuf::from("/home/testuser/.config"),
+            state_home: PathBuf::from("/home/testuser/.local/state"),
+        };
+        assert_eq!(
+            test_paths.wallpaper_dirs(),
+            vec![PathBuf::from("/home/testuser/.local/share/inerium/wallpapers")]
+        );
     }
 
     #[test]

@@ -137,14 +137,14 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
 
     if !has_files {
         let home = home_dir();
-        let fallback_sources = [
-            home.join("Pictures/Wallpapers"),
+        let brand_sources = [
             home.join("Repos/inerium-shell/assets/wallpapers"),
             home.join("Repos/inerium-desktop/assets/wallpapers"),
-            PathBuf::from("/usr/share/backgrounds"),
+            PathBuf::from("/usr/share/inerium/wallpapers"),
         ];
-        for src in &fallback_sources {
+        for src in &brand_sources {
             if let Ok(entries) = fs::read_dir(src) {
+                let mut copied = false;
                 for entry in entries.flatten() {
                     let sp = entry.path();
                     let ext = sp.extension().and_then(|x| x.to_str()).unwrap_or("").to_lowercase();
@@ -153,10 +153,13 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
                         && let Some(name) = sp.file_name()
                     {
                         let target = dir.join(name);
-                        if !target.exists() {
-                            let _ = fs::copy(&sp, &target);
+                        if !target.exists() && fs::copy(&sp, &target).is_ok() {
+                            copied = true;
                         }
                     }
+                }
+                if copied {
+                    break;
                 }
             }
         }
@@ -165,50 +168,42 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
 
 pub fn list_available_wallpapers() -> Vec<WallpaperItem> {
     let mut items = Vec::new();
-    let home = home_dir();
     let inerium_dir = inerium_wallpapers_dir();
     ensure_wallpapers_dir_populated(&inerium_dir);
 
-    let dirs = [
-        inerium_dir,
-        home.join("Pictures/Wallpapers"),
-        home.join("Обои"),
-        home.join("Wallpapers"),
-    ];
     let thumb_base = cache_dir().join("inerium-wall-thumbs");
     let mut seen_names = std::collections::HashSet::new();
 
-    for d in &dirs {
-        if let Ok(entries) = fs::read_dir(d) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_file() {
-                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    if ["jpg", "jpeg", "png", "webp"].contains(&ext.as_str()) {
-                        let filename = p.file_name().and_then(|f| f.to_str()).unwrap_or("").to_string();
-                        if !seen_names.insert(filename.clone()) {
-                            continue;
-                        }
-                        let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                        let path_str = p.to_string_lossy().to_string();
-
-                        let thumb_candidate = thumb_base.join(format!("{}.84x48.png", filename));
-                        let thumb_path = if thumb_candidate.exists() {
-                            Some(thumb_candidate.to_string_lossy().into_owned())
-                        } else {
-                            None
-                        };
-
-                        items.push(WallpaperItem {
-                            path: path_str,
-                            name,
-                            thumb_path,
-                        });
+    if let Ok(entries) = fs::read_dir(&inerium_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                if ["jpg", "jpeg", "png", "webp"].contains(&ext.as_str()) {
+                    let filename = p.file_name().and_then(|f| f.to_str()).unwrap_or("").to_string();
+                    if !seen_names.insert(filename.clone()) {
+                        continue;
                     }
+                    let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                    let path_str = p.to_string_lossy().to_string();
+
+                    let thumb_candidate = thumb_base.join(format!("{}.84x48.png", filename));
+                    let thumb_path = if thumb_candidate.exists() {
+                        Some(thumb_candidate.to_string_lossy().into_owned())
+                    } else {
+                        None
+                    };
+
+                    items.push(WallpaperItem {
+                        path: path_str,
+                        name,
+                        thumb_path,
+                    });
                 }
             }
         }
     }
+    items.sort_by(|a, b| a.name.cmp(&b.name));
     items
 }
 

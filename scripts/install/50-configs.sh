@@ -274,15 +274,13 @@ PYEOF
 }
 
 deploy_wallpapers() {
-    if command -v xdg-user-dirs-update >/dev/null 2>&1 && [[ ! -d "$HOME/Pictures" ]]; then
-        run "xdg-user-dirs-update"
-    fi
-    run "mkdir -p '$HOME/Pictures/Wallpapers'"
+    local target_dir="$HOME/.local/share/inerium/wallpapers"
+    run "mkdir -p '$target_dir'"
     for wall in "$REPO_DIR"/assets/wallpapers/*; do
         [[ -f "$wall" ]] || continue
         wname="$(basename "$wall")"
-        if [[ ! -e "$HOME/Pictures/Wallpapers/$wname" ]]; then
-            run "install -m 644 '$wall' '$HOME/Pictures/Wallpapers/$wname'"
+        if [[ ! -e "$target_dir/$wname" ]]; then
+            run "install -m 644 '$wall' '$target_dir/$wname'"
         fi
     done
 }

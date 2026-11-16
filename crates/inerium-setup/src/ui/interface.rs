@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use gtk4::prelude::*;
 use gtk4::{
-    Align, Box, Button, ContentFit, DropDown, Entry, Label, Orientation, Picture, PolicyType,
-    Scale, ScrolledWindow, StringList, Switch, glib,
+    Align, Box, Button, ContentFit, DropDown, Entry, FileDialog, FileFilter, Label, Orientation,
+    Picture, PolicyType, Scale, ScrolledWindow, StringList, Switch, glib,
 };
 
 use crate::i18n::{Lang, tr};
@@ -151,13 +151,20 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     let wall_sub = Label::new(Some(tr(
         lang,
-        "Sources: ~/Pictures/Wallpapers & ~/Обои (applied via set-wallpaper)",
-        "Источники: ~/Pictures/Wallpapers и ~/Обои (применяется через set-wallpaper)",
+        "Source: ~/.local/share/inerium/wallpapers (applied via set-wallpaper)",
+        "Источник: ~/.local/share/inerium/wallpapers (применяется через set-wallpaper)",
     )));
     wall_sub.add_css_class("card-muted");
     wall_sub.set_xalign(0.0);
     wall_info.append(&wall_sub);
     wall_head.append(&wall_info);
+
+    let add_btn = Button::builder()
+        .label(tr(lang, "+ Add", "+ Добавить"))
+        .tooltip_text(tr(lang, "Add wallpapers from files", "Добавить свои обои из файлов"))
+        .build();
+    add_btn.add_css_class("flat-btn");
+    wall_head.append(&add_btn);
     wall_card.append(&wall_head);
 
     let wall_scroll = ScrolledWindow::builder()
@@ -168,87 +175,68 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     wall_scroll.set_size_request(-1, 134);
 
     let wall_strip = Box::new(Orientation::Horizontal, 10);
-    let wallpapers = scan_wallpapers(&paths.wallpaper_dirs());
-    let active_wall = std::fs::read_to_string(paths.hyprpaper_conf_path())
-        .ok()
-        .and_then(|s| parse_active_wallpaper(&s));
+    populate_wallpaper_strip(&wall_strip, &paths, &status_cb, lang);
 
-    let wall_buttons: Rc<RefCell<Vec<(PathBuf, Button)>>> = Rc::new(RefCell::new(Vec::new()));
-
-    if wallpapers.is_empty() {
-        let empty = Label::new(Some(tr(
+    let paths_add = paths.clone();
+    let status_cb_add = status_cb.clone();
+    let wall_strip_add = wall_strip.clone();
+    add_btn.connect_clicked(move |_| {
+        let filter = FileFilter::new();
+        filter.set_name(Some(tr(
             lang,
-            "No images found in ~/Pictures/Wallpapers or ~/Обои",
-            "Изображения не найдены в ~/Pictures/Wallpapers или ~/Обои",
+            "Images (*.png, *.jpg, *.jpeg, *.webp)",
+            "Изображения (*.png, *.jpg, *.jpeg, *.webp)",
         )));
-        empty.add_css_class("card-muted");
-        empty.set_margin_top(30);
-        wall_strip.append(&empty);
-    } else {
-        for wpath in wallpapers {
-            let btn = Button::new();
-            btn.add_css_class("wall-card");
-            if active_wall.as_ref().is_some_and(|a| a == &wpath) {
-                btn.add_css_class("active");
-            }
+        filter.add_mime_type("image/png");
+        filter.add_mime_type("image/jpeg");
+        filter.add_mime_type("image/webp");
 
-            let inner = Box::new(Orientation::Vertical, 4);
-            let pic = Picture::for_filename(&wpath);
-            pic.set_content_fit(ContentFit::Cover);
-            pic.set_can_shrink(true);
-            pic.set_size_request(144, 82);
-            pic.add_css_class("wall-thumb");
-            inner.append(&pic);
+        let filters = gio::ListStore::new::<FileFilter>();
+        filters.append(&filter);
 
-            let fname = wpath
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("wallpaper");
-            let short = truncate_label(fname, 18);
-            let lbl = Label::new(Some(&short));
-            lbl.add_css_class("wall-name");
-            inner.append(&lbl);
+        let dialog = FileDialog::builder()
+            .title(tr(lang, "Add Wallpapers", "Добавить обои"))
+            .accept_label(tr(lang, "Add", "Добавить"))
+            .filters(&filters)
+            .modal(true)
+            .build();
 
-            btn.set_child(Some(&inner));
-            wall_buttons.borrow_mut().push((wpath.clone(), btn.clone()));
-            wall_strip.append(&btn);
-        }
-    }
+        let dest_dir = paths_add.inerium_wallpapers_dir();
+        let status_cb_dlg = status_cb_add.clone();
+        let strip = wall_strip_add.clone();
+        let paths_dlg = paths_add.clone();
 
-    for (wpath, btn) in wall_buttons.borrow().iter() {
-        let wpath = wpath.clone();
-        let wall_buttons = wall_buttons.clone();
-        let status_cb = status_cb.clone();
-        btn.connect_clicked(move |_| {
-            for (p, b) in wall_buttons.borrow().iter() {
-                if p == &wpath {
-                    b.add_css_class("active");
-                } else {
-                    b.remove_css_class("active");
+        dialog.open_multiple(
+            Option::<&gtk4::Window>::None,
+            gio::Cancellable::NONE,
+            move |res| {
+                if let Ok(files) = res {
+                    let _ = std::fs::create_dir_all(&dest_dir);
+                    let n = files.n_items();
+                    let mut copied = 0;
+                    for i in 0..n {
+                        if let Some(item) = files.item(i)
+                            && let Ok(file) = item.downcast::<gio::File>()
+                            && let Some(src_path) = file.path()
+                            && let Some(filename) = src_path.file_name()
+                        {
+                            let target = dest_dir.join(filename);
+                            if std::fs::copy(&src_path, &target).is_ok() {
+                                copied += 1;
+                            }
+                        }
+                    }
+                    if copied > 0 {
+                        status_cb_dlg.ok(&match lang {
+                            Lang::En => format!("Added {copied} wallpaper(s)"),
+                            Lang::Ru => format!("Добавлено обоев: {copied}"),
+                        });
+                        populate_wallpaper_strip(&strip, &paths_dlg, &status_cb_dlg, lang);
+                    }
                 }
-            }
-            let wpath_bg = wpath.clone();
-            let status_cb = status_cb.clone();
-            status_cb.warn(tr(lang, "Applying wallpaper...", "Применение обоев..."));
-            glib::MainContext::default().spawn_local(async move {
-                let fname = wpath_bg
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("wallpaper")
-                    .to_string();
-                let res = gio::spawn_blocking(move || apply_wallpaper(&wpath_bg))
-                    .await
-                    .unwrap_or_else(|e| Err(format!("Task panicked: {e:?}")));
-                match res {
-                    Ok(()) => status_cb.ok(&match lang {
-                        Lang::En => format!("Wallpaper '{fname}' applied"),
-                        Lang::Ru => format!("Обои '{fname}' применены"),
-                    }),
-                    Err(e) => status_cb.error(&e),
-                }
-            });
-        });
-    }
+            },
+        );
+    });
 
     wall_scroll.set_child(Some(&wall_strip));
     wall_card.append(&wall_scroll);
@@ -763,6 +751,99 @@ fn make_switch_row(parent: &Box, label: &str, active: bool) -> Switch {
     row.append(&sw);
     parent.append(&row);
     sw
+}
+
+fn populate_wallpaper_strip(
+    wall_strip: &Box,
+    paths: &SetupPaths,
+    status_cb: &StatusCallback,
+    lang: Lang,
+) {
+    while let Some(child) = wall_strip.first_child() {
+        wall_strip.remove(&child);
+    }
+
+    let wallpapers = scan_wallpapers(&paths.wallpaper_dirs());
+    let active_wall = std::fs::read_to_string(paths.hyprpaper_conf_path())
+        .ok()
+        .and_then(|s| parse_active_wallpaper(&s));
+
+    let wall_buttons: Rc<RefCell<Vec<(PathBuf, Button)>>> = Rc::new(RefCell::new(Vec::new()));
+
+    if wallpapers.is_empty() {
+        let empty = Label::new(Some(tr(
+            lang,
+            "No images found in ~/.local/share/inerium/wallpapers",
+            "Изображения не найдены в ~/.local/share/inerium/wallpapers",
+        )));
+        empty.add_css_class("card-muted");
+        empty.set_margin_top(30);
+        wall_strip.append(&empty);
+    } else {
+        for wpath in wallpapers {
+            let btn = Button::new();
+            btn.add_css_class("wall-card");
+            if active_wall.as_ref().is_some_and(|a| a == &wpath) {
+                btn.add_css_class("active");
+            }
+
+            let inner = Box::new(Orientation::Vertical, 4);
+            let pic = Picture::for_filename(&wpath);
+            pic.set_content_fit(ContentFit::Cover);
+            pic.set_can_shrink(true);
+            pic.set_size_request(144, 82);
+            pic.add_css_class("wall-thumb");
+            inner.append(&pic);
+
+            let fname = wpath
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("wallpaper");
+            let short = truncate_label(fname, 18);
+            let lbl = Label::new(Some(&short));
+            lbl.add_css_class("wall-name");
+            inner.append(&lbl);
+
+            btn.set_child(Some(&inner));
+            wall_buttons.borrow_mut().push((wpath.clone(), btn.clone()));
+            wall_strip.append(&btn);
+        }
+    }
+
+    for (wpath, btn) in wall_buttons.borrow().iter() {
+        let wpath = wpath.clone();
+        let wall_buttons = wall_buttons.clone();
+        let status_cb = status_cb.clone();
+        btn.connect_clicked(move |_| {
+            for (p, b) in wall_buttons.borrow().iter() {
+                if p == &wpath {
+                    b.add_css_class("active");
+                } else {
+                    b.remove_css_class("active");
+                }
+            }
+            let wpath_bg = wpath.clone();
+            let status_cb = status_cb.clone();
+            status_cb.warn(tr(lang, "Applying wallpaper...", "Применение обоев..."));
+            glib::MainContext::default().spawn_local(async move {
+                let fname = wpath_bg
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("wallpaper")
+                    .to_string();
+                let res = gio::spawn_blocking(move || apply_wallpaper(&wpath_bg))
+                    .await
+                    .unwrap_or_else(|e| Err(format!("Task panicked: {e:?}")));
+                match res {
+                    Ok(()) => status_cb.ok(&match lang {
+                        Lang::En => format!("Wallpaper '{fname}' applied"),
+                        Lang::Ru => format!("Обои '{fname}' применены"),
+                    }),
+                    Err(e) => status_cb.error(&e),
+                }
+            });
+        });
+    }
 }
 
 fn truncate_label(s: &str, max_chars: usize) -> String {

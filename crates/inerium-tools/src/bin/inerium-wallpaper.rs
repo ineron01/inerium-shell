@@ -9,9 +9,9 @@ fn print_usage() {
     eprintln!("    inerium-wallpaper <IMAGE_PATH> [MONITOR_NAME|all] [--no-notify]");
     eprintln!();
     eprintln!("EXAMPLES:");
-    eprintln!("    inerium-wallpaper ~/Pictures/Wallpapers/wall3.png");
-    eprintln!("    inerium-wallpaper ~/Pictures/Wallpapers/wall4.png DP-1");
-    eprintln!("    inerium-wallpaper ~/Pictures/Wallpapers/wall3.png all --no-notify");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall3_minimal_wave.png");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall4_dark_geometry.png DP-1");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall3_minimal_wave.png all --no-notify");
 }
 
 fn main() {
