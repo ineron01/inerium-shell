@@ -103,12 +103,36 @@ pub fn write_hyprpaper_conf(path: &Path, mon_map: &BTreeMap<String, String>, fal
     Ok(())
 }
 
+pub fn sync_greeter_wallpaper(source_image: &Path) {
+    if let Ok(img) = image::open(source_image) {
+        // Fast downscale to max 1280x720 for silky smooth blur and tiny footprint
+        let small = img.resize(1280, 720, image::imageops::FilterType::Triangle);
+        let blurred = small.blur(14.0);
+
+        let target_paths = [
+            PathBuf::from("/var/cache/inerium/greeter-wallpaper.jpg"),
+            PathBuf::from("/var/tmp/inerium/greeter-wallpaper.jpg"),
+        ];
+        for target in &target_paths {
+            if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            if blurred.save(target).is_ok() {
+                break;
+            }
+        }
+    }
+}
+
 pub fn apply_wallpaper(image_path: &Path, target_monitor: Option<&str>, notify: bool) -> Result<(), String> {
     if !image_path.exists() {
         return Err(format!("Wallpaper image not found: {}", image_path.display()));
     }
     let abs_path = image_path.canonicalize().map_err(|e| e.to_string())?;
     let path_str = abs_path.to_str().ok_or_else(|| "Invalid UTF-8 in image path".to_string())?;
+
+    // Asynchronously sync single blurred copy for inerium-greeter
+    sync_greeter_wallpaper(&abs_path);
 
     let conf_path = get_hyprpaper_conf_path();
     let existing_content = fs::read_to_string(&conf_path).unwrap_or_default();

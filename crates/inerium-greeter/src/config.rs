@@ -35,7 +35,7 @@ fn default_user() -> String {
 }
 
 fn default_background() -> String {
-    "/usr/share/backgrounds/inerium-greeter.jpg".to_string()
+    "/var/cache/inerium/greeter-wallpaper.jpg".to_string()
 }
 
 fn default_session() -> String {

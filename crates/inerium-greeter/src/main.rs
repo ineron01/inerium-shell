@@ -4,8 +4,10 @@ mod selector;
 mod sessions;
 
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 
 use gdk4::prelude::*;
 use gtk4::prelude::*;
@@ -17,7 +19,10 @@ use sessions::{read_sessions_filtered, Session};
 
 const CSS: &str = r#"
 * { font-family: "JetBrainsMono Nerd Font", monospace; color: #c5c9c5; }
-window { background-color: #181616; }
+window {
+    background-color: #1a1918;
+    background-image: radial-gradient(ellipse at center, #262423 0%, #161515 100%);
+}
 
 .clock { font-size: 76px; font-weight: 800; color: #e6e2cc; }
 .date  { font-size: 15px; font-weight: 700; color: #c4b28a; }
@@ -243,10 +248,44 @@ fn system_action(cmd: &[&str], demo: bool) {
     }
 }
 
+fn load_theme_css() -> String {
+    let candidate_paths = [
+        Path::new("/var/cache/inerium/greeter-theme.css"),
+        Path::new("/var/tmp/inerium/greeter-theme.css"),
+        Path::new("/etc/greetd/inerium-greeter.css"),
+    ];
+    for p in &candidate_paths {
+        if let Ok(content) = fs::read_to_string(p) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    CSS.to_string()
+}
+
+fn resolve_background_path(configured: &str) -> Option<PathBuf> {
+    let p = Path::new(configured);
+    if p.is_file() {
+        return Some(p.to_path_buf());
+    }
+    let cache = Path::new("/var/cache/inerium/greeter-wallpaper.jpg");
+    if cache.is_file() {
+        return Some(cache.to_path_buf());
+    }
+    let var_tmp = Path::new("/var/tmp/inerium/greeter-wallpaper.jpg");
+    if var_tmp.is_file() {
+        return Some(var_tmp.to_path_buf());
+    }
+    None
+}
+
 fn build_ui(app: &gtk4::Application, demo: bool) {
-    // 1. Применяем глобальный CSS
+    // 1. Применяем глобальный CSS (с подтягиванием темы)
     let provider = gtk4::CssProvider::new();
-    provider.load_from_data(CSS);
+    let theme_css = load_theme_css();
+    provider.load_from_data(&theme_css);
     if let Some(disp) = gdk4::Display::default() {
         gtk4::style_context_add_provider_for_display(
             &disp,
@@ -316,6 +355,7 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
     }));
 
     let num_panels = if monitors.is_empty() { 1 } else { monitors.len() };
+    let resolved_bg = resolve_background_path(&cfg.background);
 
     for i in 0..num_panels {
         let overlay = gtk4::Overlay::new();
@@ -332,11 +372,15 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         }
         overlay.set_vexpand(true);
 
-        // Фоновое изображение
-        let bg = gtk4::Picture::for_filename(&cfg.background);
-        bg.set_content_fit(gtk4::ContentFit::Cover);
-        bg.set_can_shrink(true);
-        overlay.set_child(Some(&bg));
+        // Фоновое изображение (или мягкий процедурный fallback окна)
+        if let Some(ref bg_path) = resolved_bg {
+            let bg = gtk4::Picture::for_filename(bg_path);
+            bg.set_content_fit(gtk4::ContentFit::Cover);
+            bg.set_can_shrink(true);
+            overlay.set_child(Some(&bg));
+        } else {
+            overlay.set_child(None::<&gtk4::Widget>);
+        }
 
         // Центральный блок
         let center = gtk4::Box::new(gtk4::Orientation::Vertical, 6);

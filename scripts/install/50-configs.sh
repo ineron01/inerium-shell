@@ -344,7 +344,11 @@ configure_greeter() {
                 run_step "Installing greetd & cage..." install_pkgs greetd cage
             fi
         fi
-        install_root_if_changed 644 "$REPO_DIR/assets/backgrounds/inerium-greeter.jpg" /usr/share/backgrounds/inerium-greeter.jpg
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] install -d -m 1777 /var/cache/inerium\n'
+        else
+            run "sudo install -d -m 1777 /var/cache/inerium"
+        fi
         if [[ -f /etc/greetd/config.toml ]] && ! cmp -s "$REPO_DIR/system/etc/greetd/config.toml" /etc/greetd/config.toml 2>/dev/null; then
             log "Backing up existing /etc/greetd/config.toml -> /etc/greetd/config.toml.bak.${BACKUP_STAMP}"
             run "sudo cp -a /etc/greetd/config.toml '/etc/greetd/config.toml.bak.${BACKUP_STAMP}'"
