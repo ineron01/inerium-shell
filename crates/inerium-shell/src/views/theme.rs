@@ -161,7 +161,7 @@ impl SimpleComponent for ThemeModel {
                 self.themes = query_themes();
             }
             ThemeMsg::Back => {
-                (self.nav_cb)("control_center");
+                (self.nav_cb)("control");
             }
         }
     }

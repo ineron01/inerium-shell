@@ -305,7 +305,7 @@ fn handle_command(cmd: &str) {
             return;
         }
 
-        if target == "theme" {
+        if target == "theme" && parts.len() > 1 {
             let mode = if parts.get(1).map(|s| *s == "light").unwrap_or(false) {
                 theme::ThemeMode::Light
             } else if parts.get(1).map(|s| *s == "dark").unwrap_or(false) {
@@ -422,7 +422,7 @@ fn show_view(state: &mut AppState, view_name: &str) {
         "media" => views::media::build_media_view(nav_cb, close_cb),
         "power" => views::power::build_power_menu(close_cb),
         "wallpaper" => views::wallpaper::build_wallpaper_view(nav_cb, close_cb, Some(m_name)),
-        "theme" => views::theme::build_theme_view(nav_cb, close_cb),
+        "themes" | "theme" => views::theme::build_theme_view(nav_cb, close_cb),
         _ => views::control_center::build_control_center(nav_cb, close_cb),
     };
 

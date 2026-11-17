@@ -200,6 +200,7 @@ pub enum ControlCenterMsg {
     LockScreen,
     PowerMenu,
     WallpaperGallery,
+    NavThemes,
 
     // Quick Tiles
     ToggleWifi,
@@ -695,7 +696,13 @@ impl SimpleComponent for ControlCenterModel {
                                             add_css_class: "cc-tile-ico",
                                             set_xalign: 0.5,
                                             #[watch]
-                                            set_label: if model.is_dark_theme { "󰔎" } else { "󰔏" },
+                                            set_label: if model.available_themes_count > 2 {
+                                                "󰏘"
+                                            } else if model.is_dark_theme {
+                                                "󰔎"
+                                            } else {
+                                                "󰔏"
+                                            },
                                         },
 
                                         gtk4::Box {
@@ -715,10 +722,23 @@ impl SimpleComponent for ControlCenterModel {
                                                 set_ellipsize: gtk4::pango::EllipsizeMode::End,
                                                 set_max_width_chars: 20,
                                                 #[watch]
-                                                set_label: &model.theme_name,
+                                                set_label: &if model.available_themes_count <= 2 {
+                                                    model.theme_name.clone()
+                                                } else {
+                                                    format!("{} ({})", model.theme_name, model.available_themes_count)
+                                                },
                                             },
                                         },
                                     },
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-more",
+                                    set_label: "›",
+                                    set_tooltip_text: Some(tr("Choose theme", "Выбрать тему")),
+                                    #[watch]
+                                    set_visible: model.available_themes_count > 2,
+                                    connect_clicked => ControlCenterMsg::NavThemes,
                                 },
                             },
 
@@ -1341,8 +1361,11 @@ impl SimpleComponent for ControlCenterModel {
                     self.theme_author = author;
                     self.available_themes_count = count;
                 } else {
-                    (self.nav_cb)("theme");
+                    (self.nav_cb)("themes");
                 }
+            }
+            ControlCenterMsg::NavThemes => {
+                (self.nav_cb)("themes");
             }
             ControlCenterMsg::QuickToggleTheme => {
                 let _ = Command::new("inerium-theme").arg("toggle").status();
