@@ -639,6 +639,31 @@ fn apply_display_temperature(temp_kelvin: u32) {
     }
 }
 
+fn run_theme_hooks(theme: &ThemeConfig) {
+    let home = get_home();
+    let hooks_dir = home.join(".config/inerium/hooks.d");
+    if let Ok(entries) = fs::read_dir(&hooks_dir) {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.path());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_file() {
+                let _ = Command::new(&path)
+                    .args([
+                        &theme.theme.variant,
+                        &theme.theme.id,
+                        &theme.theme.name,
+                        &theme.theme.author,
+                    ])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
+            }
+        }
+    }
+}
+
 fn emit_kde_colors(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
     let bg_canvas = Rgba::parse(&p.bg_canvas).to_kde_rgb();
@@ -800,6 +825,7 @@ pub fn apply_theme(theme: &ThemeConfig) {
     // 0. Ensure target directories exist
     let inerium_cfg_dir = home.join(".config/inerium");
     let _ = fs::create_dir_all(&inerium_cfg_dir);
+    let _ = fs::create_dir_all(inerium_cfg_dir.join("hooks.d"));
     let _ = fs::create_dir_all(home.join(".config/hypr/config"));
     let _ = fs::create_dir_all(home.join(".config/waybar"));
     let _ = fs::create_dir_all(home.join(".config/rofi"));
@@ -962,26 +988,8 @@ pub fn apply_theme(theme: &ThemeConfig) {
         .unwrap_or(6500);
     apply_display_temperature(temp);
 
-    // 11. VSCodium / VS Code
-    let vscodium_settings = home.join(".config/VSCodium/User/settings.json");
-    if let Some(parent) = vscodium_settings.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let mut vsc_data: serde_json::Value = if let Ok(content) = fs::read_to_string(&vscodium_settings) {
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-    if let Some(obj) = vsc_data.as_object_mut() {
-        obj.insert("window.autoDetectColorScheme".to_string(), serde_json::json!(true));
-        obj.insert("workbench.preferredDarkColorTheme".to_string(), serde_json::json!("Dark Modern"));
-        obj.insert("workbench.preferredLightColorTheme".to_string(), serde_json::json!("Light Modern"));
-        let target_theme = if is_dark { "Dark Modern" } else { "Light Modern" };
-        obj.insert("workbench.colorTheme".to_string(), serde_json::json!(target_theme));
-    }
-    if let Ok(serialized) = serde_json::to_string_pretty(&vsc_data) {
-        let _ = fs::write(&vscodium_settings, serialized + "\n");
-    }
+    // 11. Custom User & App Hooks (~/.config/inerium/hooks.d/*)
+    run_theme_hooks(theme);
 
     // 12. Inerium Shell Daemon Hot-Reload via UNIX domain socket
     let uid = inerium_tools::sys::posix::posix_getuid();
