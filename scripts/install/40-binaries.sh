@@ -98,7 +98,7 @@ deliver_binaries() {
                 "$RELEASE_BASE_URL" "$BIN_ARCHIVE" "$BIN_SHA"
         else
             printf '[DRY-RUN] cargo build --manifest-path %s/Cargo.toml --workspace --release\n' "$REPO_DIR"
-            printf '[DRY-RUN] install 19 binaries -> ~/.local/bin/ and inerium-greeter -> /usr/local/bin/\n'
+            printf '[DRY-RUN] install 20 binaries -> ~/.local/bin/ and inerium-greeter -> /usr/local/bin/\n'
         fi
         printf '[DRY-RUN] ln -sfn inerium-wallpaper -> ~/.local/bin/set-wallpaper\n'
         return 0

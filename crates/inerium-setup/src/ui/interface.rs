@@ -87,8 +87,12 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
         .build();
     open_theme_btn.add_css_class("flat-btn");
     open_theme_btn.connect_clicked(|_| {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/home/ineron"));
-        let _ = std::process::Command::new("xdg-open").arg(home.join(".config/inerium/themes")).spawn();
+        let path = inerium_hw::sysfs::home_dir().join(".config/inerium/themes");
+        std::thread::spawn(move || {
+            if let Ok(mut child) = std::process::Command::new("xdg-open").arg(path).spawn() {
+                let _ = child.wait();
+            }
+        });
     });
     theme_head.append(&theme_info);
     theme_head.append(&open_theme_btn);
@@ -131,8 +135,12 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
         .build();
     open_wall_btn.add_css_class("flat-btn");
     open_wall_btn.connect_clicked(|_| {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/home/ineron"));
-        let _ = std::process::Command::new("xdg-open").arg(home.join(".local/share/inerium/wallpapers")).spawn();
+        let path = inerium_hw::sysfs::home_dir().join(".local/share/inerium/wallpapers");
+        std::thread::spawn(move || {
+            if let Ok(mut child) = std::process::Command::new("xdg-open").arg(path).spawn() {
+                let _ = child.wait();
+            }
+        });
     });
     wall_head.append(&open_wall_btn);
 
@@ -895,7 +903,6 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
         let btns_ref = buttons.clone();
 
         btn.connect_clicked(move |_| {
-            let _ = std::process::Command::new("inerium-theme").arg("set").arg(&id_click).status();
             for (bid, b) in btns_ref.borrow().iter() {
                 if bid == &id_click {
                     b.add_css_class("active");
@@ -906,6 +913,11 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
             status_cb_click.ok(&match lang {
                 Lang::En => format!("Theme '{name_click}' applied"),
                 Lang::Ru => format!("Тема '{name_click}' успешно применена"),
+            });
+
+            let id_cmd = id_click.clone();
+            std::thread::spawn(move || {
+                let _ = std::process::Command::new("inerium-theme").arg("set").arg(&id_cmd).status();
             });
         });
 

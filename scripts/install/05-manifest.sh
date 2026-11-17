@@ -32,6 +32,20 @@ manifest_record_user_unit()   { manifest_record "USER_UNIT" "$1"; }
 manifest_record_system_unit() { manifest_record "SYS_UNIT" "$1"; }
 manifest_record_addon()       { manifest_record "ADDON" "$1"; }
 
+is_safe_removal_target() {
+    local t="$1"
+    [[ -n "$t" ]] || return 1
+    case "$t" in
+        /|/etc|/etc/|/usr|/usr/|/usr/local|/usr/local/|/var|/var/|/home|/home/|/root|/root/)
+            return 1
+            ;;
+    esac
+    local slashes
+    slashes=$(tr -cd '/' <<< "$t" | wc -c)
+    (( slashes >= 2 && ${#t} >= 6 )) || return 1
+    return 0
+}
+
 manifest_clean_orphans() {
     log "Checking for broken symlinks and legacy artifacts..."
     local dir
@@ -129,7 +143,7 @@ prune_obsolete_and_save_manifest() {
                         rm -f "$HOME/.config/systemd/user/$target"
                         ;;
                     SYS_FILE)
-                        if [[ -e "$target" ]]; then
+                        if is_safe_removal_target "$target" && [[ -e "$target" ]]; then
                             log "Pruning obsolete system file: $target"
                             sudo rm -rf "$target" 2>/dev/null || true
                         fi
@@ -142,6 +156,8 @@ prune_obsolete_and_save_manifest() {
                 esac
             fi
         done < "$MANIFEST_FILE"
+        systemctl --user daemon-reload 2>/dev/null || true
+        sudo systemctl daemon-reload 2>/dev/null || true
     fi
 
     # Clean broken symlinks & legacy paths
@@ -150,7 +166,7 @@ prune_obsolete_and_save_manifest() {
     # Save new manifest atomically
     local commit version now
     commit="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    version="$(git -C "$REPO_DIR" describe --tags --always 2>/dev/null || echo "v0.1.1")"
+    version="$(git -C "$REPO_DIR" describe --tags --always 2>/dev/null || echo "v0.2.0")"
     now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
     {
@@ -238,7 +254,7 @@ run_uninstall() {
                 fi
                 ;;
             SYS_FILE)
-                if [[ -e "$target" ]]; then
+                if is_safe_removal_target "$target" && [[ -e "$target" ]]; then
                     log "Removing system file: $target"
                     if [[ "$DRY_RUN" -eq 1 ]]; then
                         printf '[DRY-RUN] sudo rm -rf %s\n' "$target"

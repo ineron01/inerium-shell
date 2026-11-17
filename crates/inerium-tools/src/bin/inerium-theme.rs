@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
@@ -137,7 +138,36 @@ impl Rgba {
 fn get_home() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/home/ineron"))
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+fn scan_dir_for_themes(dir: &Path, map: &mut BTreeMap<String, ThemeConfig>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().is_some_and(|e| e == "toml")
+                    && let Ok(content) = fs::read_to_string(&path)
+                    && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
+                {
+                    map.insert(c.theme.id.clone(), c);
+                }
+            } else if path.is_dir()
+                && let Ok(sub_entries) = fs::read_dir(&path)
+            {
+                for sub in sub_entries.flatten() {
+                    let sub_p = sub.path();
+                    if sub_p.is_file()
+                        && sub_p.extension().is_some_and(|e| e == "toml")
+                        && let Ok(content) = fs::read_to_string(&sub_p)
+                        && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
+                    {
+                        map.insert(c.theme.id.clone(), c);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
@@ -151,33 +181,15 @@ pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
         map.insert(c.theme.id.clone(), c);
     }
 
-    // 2. Repository themes
     let home = get_home();
-    let repo_themes = home.join("Repos/inerium-shell/themes");
-    if let Ok(entries) = fs::read_dir(&repo_themes) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "toml")
-                && let Ok(content) = fs::read_to_string(&path)
-                && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
-            {
-                map.insert(c.theme.id.clone(), c);
-            }
-        }
-    }
+    let theme_roots = [
+        home.join("Repos/inerium-shell/themes"),
+        home.join(".local/share/inerium-shell/themes"),
+        home.join(".config/inerium/themes"),
+    ];
 
-    // 3. User config themes (~/.config/inerium/themes/)
-    let user_themes = home.join(".config/inerium/themes");
-    if let Ok(entries) = fs::read_dir(&user_themes) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "toml")
-                && let Ok(content) = fs::read_to_string(&path)
-                && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
-            {
-                map.insert(c.theme.id.clone(), c);
-            }
-        }
+    for root in &theme_roots {
+        scan_dir_for_themes(root, &mut map);
     }
 
     map
@@ -644,6 +656,23 @@ fn run_theme_hooks(theme: &ThemeConfig) {
         for entry in entries {
             let path = entry.path();
             if path.is_file() {
+                // Ignore backup/disabled files and markdown
+                if let Some(ext) = path.extension().and_then(|x| x.to_str())
+                    && matches!(ext, "bak" | "old" | "disabled" | "md" | "txt")
+                {
+                    continue;
+                }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && (name.starts_with('.') || name.ends_with('~'))
+                {
+                    continue;
+                }
+                // Check executable bit (owner, group, or other)
+                if let Ok(meta) = fs::metadata(&path)
+                    && meta.permissions().mode() & 0o111 == 0
+                {
+                    continue;
+                }
                 let _ = Command::new(&path)
                     .args([
                         &theme.theme.variant,

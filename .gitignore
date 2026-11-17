@@ -4,6 +4,8 @@ target/
 **/*.rs.bk
 
 # Local/generated machine state
+*_local.lua
+*.token
 config/hypr/hyprpaper.conf
 config/hypr/profile
 config/hypr/config/monitors_local.lua

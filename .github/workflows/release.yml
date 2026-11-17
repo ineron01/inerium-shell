@@ -49,7 +49,8 @@ jobs:
             inerium-clock inerium-dnd inerium-hotspot inerium-hwmon \
             inerium-layout inerium-network inerium-osd-watcher inerium-popup \
             inerium-updates inerium-shell inerium-setup dolphin-convert \
-            inerium-greeter inerium-camera inerium-polkit inerium-wallpaper; do
+            inerium-greeter inerium-camera inerium-polkit inerium-wallpaper \
+            inerium-theme; do
             install -m 755 "target/release/$bin" "dist/$bin"
           done
           strip --strip-unneeded dist/* || true

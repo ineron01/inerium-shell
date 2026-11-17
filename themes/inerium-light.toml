@@ -2,7 +2,7 @@
 id = "inerium-light"
 name = "Inerium Light"
 author = "Inerium Core"
-upstream = "https://github.com/ineron-desktop/inerium-shell"
+upstream = "https://github.com/ineron01/inerium-shell"
 variant = "light"
 license = "MIT"
 description = "Modern neutral light theme with crisp contrast, clean surfaces, and slate accents"

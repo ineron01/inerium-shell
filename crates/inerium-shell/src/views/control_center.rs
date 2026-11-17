@@ -37,9 +37,7 @@ fn get_wifi_sub(wifi_on: bool) -> String {
 }
 
 fn get_theme_info() -> (bool, String, String, usize) {
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("/home/ineron"));
+    let home = hw::home_dir();
 
     let mut theme_ids = std::collections::HashSet::new();
     let repo_themes = home.join("Repos/inerium-shell/themes");

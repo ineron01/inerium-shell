@@ -52,7 +52,9 @@ pub fn list_connected_monitors() -> Vec<MonitorTarget> {
             && let Some(arr) = val.as_array() {
                 for item in arr {
                     if let Some(name) = item["name"].as_str() {
-                        let is_laptop = name.starts_with("eDP") || name.starts_with("LVDS");
+                        let is_laptop = name.starts_with("eDP")
+                            || name.starts_with("LVDS")
+                            || name.starts_with("DSI");
                         let label = if is_laptop {
                             format!("󰌢 {}", name)
                         } else {

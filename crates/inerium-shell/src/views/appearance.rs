@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use gtk4::gio;
@@ -76,6 +76,7 @@ pub struct AppearanceModel {
 #[derive(Debug)]
 pub enum AppearanceMsg {
     ApplyTheme(String),
+    RefreshThemes,
     OpenThemesFolder,
     SelectMonitor(String),
     ApplyWallpaper(String),
@@ -274,15 +275,26 @@ impl SimpleComponent for AppearanceModel {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             AppearanceMsg::ApplyTheme(id) => {
-                let _ = Command::new("inerium-theme").arg("set").arg(&id).status();
+                let id_clone = id.clone();
+                let sender_clone = sender.clone();
+                std::thread::spawn(move || {
+                    let _ = Command::new("inerium-theme").arg("set").arg(&id_clone).status();
+                    glib::idle_add_local_once(move || {
+                        sender_clone.input(AppearanceMsg::RefreshThemes);
+                    });
+                });
+            }
+            AppearanceMsg::RefreshThemes => {
                 self.themes = query_themes();
             }
             AppearanceMsg::OpenThemesFolder => {
-                let home = std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from("/home/ineron"));
+                let home = hw::home_dir();
                 let path = home.join(".config/inerium/themes");
-                let _ = Command::new("xdg-open").arg(path).spawn();
+                std::thread::spawn(move || {
+                    if let Ok(mut child) = Command::new("xdg-open").arg(path).spawn() {
+                        let _ = child.wait();
+                    }
+                });
             }
             AppearanceMsg::SelectMonitor(target) => {
                 self.selected_monitor = target;
@@ -315,7 +327,11 @@ impl SimpleComponent for AppearanceModel {
             }
             AppearanceMsg::OpenWallpapersFolder => {
                 let dir = hw::inerium_wallpapers_dir();
-                let _ = Command::new("xdg-open").arg(dir).spawn();
+                std::thread::spawn(move || {
+                    if let Ok(mut child) = Command::new("xdg-open").arg(dir).spawn() {
+                        let _ = child.wait();
+                    }
+                });
             }
             AppearanceMsg::AddWallpapersDialog => {
                 let filter = FileFilter::new();
@@ -454,7 +470,7 @@ fn populate_monitor_pills(box_widget: &GtkBox, model: &AppearanceModel, sender: 
 
     for m in &model.connected_monitors {
         let name = m.name.clone();
-        let btn = Button::with_label(&name);
+        let btn = Button::with_label(&m.label);
         btn.add_css_class("filter-pill");
         if model.selected_monitor == name {
             btn.add_css_class("active");

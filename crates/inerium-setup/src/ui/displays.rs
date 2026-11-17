@@ -47,7 +47,19 @@ fn group_available_modes(modes: &[String]) -> Vec<ModeMapping> {
         resolution: "preferred".to_string(),
         refresh_rates: vec!["Auto".to_string()],
     }];
-    for (res, mut hzs) in map.into_iter().rev() {
+    let mut modes: Vec<(String, Vec<String>)> = map.into_iter().collect();
+    modes.sort_by(|(res_a, _), (res_b, _)| {
+        let parse_dim = |s: &str| -> (u64, u64) {
+            let mut parts = s.split('x');
+            let w = parts.next().and_then(|x| x.parse::<u64>().ok()).unwrap_or(0);
+            let h = parts.next().and_then(|x| x.parse::<u64>().ok()).unwrap_or(0);
+            (w, h)
+        };
+        let (wa, ha) = parse_dim(res_a);
+        let (wb, hb) = parse_dim(res_b);
+        (wb * hb, wb, hb).cmp(&(wa * ha, wa, ha))
+    });
+    for (res, mut hzs) in modes {
         hzs.sort_by(|a, b| {
             let num_a = a.trim_end_matches("Hz").parse::<f64>().unwrap_or(0.0);
             let num_b = b.trim_end_matches("Hz").parse::<f64>().unwrap_or(0.0);

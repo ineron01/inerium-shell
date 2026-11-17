@@ -439,17 +439,26 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         let state_for_pw = state.clone();
         let pw_clone = pw.clone();
         pw.connect_changed(move |_| {
-            if state_for_pw.borrow().syncing_pw {
+            let Ok(mut s) = state_for_pw.try_borrow_mut() else {
+                return;
+            };
+            if s.syncing_pw {
                 return;
             }
-            state_for_pw.borrow_mut().syncing_pw = true;
+            s.syncing_pw = true;
             let text = pw_clone.text().to_string();
-            for other in &state_for_pw.borrow().pws {
-                if other != &pw_clone && other.text().as_str() != text {
+            let others: Vec<_> = s.pws.iter().filter(|o| *o != &pw_clone).cloned().collect();
+            drop(s);
+
+            for other in others {
+                if other.text().as_str() != text {
                     other.set_text(&text);
                 }
             }
-            state_for_pw.borrow_mut().syncing_pw = false;
+
+            if let Ok(mut s) = state_for_pw.try_borrow_mut() {
+                s.syncing_pw = false;
+            }
         });
 
         // Нажатие Enter или кнопки "Войти"
@@ -651,10 +660,14 @@ fn on_auth_complete(
                 });
             }
             Err(err_msg) => {
-                state.borrow_mut().set_busy(false);
-                state.borrow_mut().has_error = true;
+                let pws = {
+                    let mut s = state.borrow_mut();
+                    s.set_busy(false);
+                    s.has_error = true;
+                    s.pws.clone()
+                };
 
-                for pw in &state.borrow().pws {
+                for pw in &pws {
                     pw.set_text("");
                     pw.add_css_class("error");
                 }
@@ -679,6 +692,14 @@ fn on_auth_complete(
 
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("inerium-greeter — GTK4 Login Screen for greetd\n\nUsage: inerium-greeter [--demo] [--help] [--version]");
+        return glib::ExitCode::SUCCESS;
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("inerium-greeter {}", env!("CARGO_PKG_VERSION"));
+        return glib::ExitCode::SUCCESS;
+    }
     let demo = args.iter().any(|a| a == "--demo");
 
     let app = gtk4::Application::builder()

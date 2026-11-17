@@ -37,9 +37,7 @@ pub fn detect_theme() -> ThemeMode {
 }
 
 pub fn get_theme_css(mode: ThemeMode) -> String {
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("/home/ineron"));
+    let home = crate::hw::home_dir();
     let vars_path = home.join(".config/inerium/theme-vars.css");
     let vars = if let Ok(s) = std::fs::read_to_string(&vars_path) {
         if !s.trim().is_empty() {
