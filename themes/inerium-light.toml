@@ -1,0 +1,56 @@
+[theme]
+id = "inerium-light"
+name = "Inerium Light"
+author = "Inerium Core"
+upstream = "https://github.com/ineron-desktop/inerium-shell"
+variant = "light"
+license = "MIT"
+description = "Modern neutral light theme with crisp contrast, clean surfaces, and slate accents"
+
+[palette]
+bg_canvas         = "rgba(248, 249, 250, 0.98)"
+bg_surface        = "#ffffff"
+bg_surface_alt    = "#f1f5f9"
+bg_surface_hover  = "#f1f5f9"
+bg_surface_active = "#e2e8f0"
+
+border_subtle     = "rgba(15, 23, 42, 0.10)"
+border_active     = "rgba(15, 23, 42, 0.25)"
+
+text_primary      = "#1e293b"
+text_heading      = "#0f172a"
+text_muted        = "#64748b"
+text_subtle       = "#94a3b8"
+text_inverted     = "#f8f9fa"
+
+accent_green      = "#16a34a"
+accent_green_bg   = "rgba(22, 163, 74, 0.14)"
+accent_green_border = "rgba(22, 163, 74, 0.38)"
+
+accent_blue       = "#2563eb"
+accent_blue_bg    = "rgba(37, 99, 235, 0.14)"
+accent_blue_border = "rgba(37, 99, 235, 0.38)"
+
+accent_amber      = "#d97706"
+accent_amber_bg   = "rgba(217, 119, 6, 0.14)"
+accent_amber_border = "rgba(217, 119, 6, 0.38)"
+
+accent_red        = "#dc2626"
+accent_red_bg     = "rgba(220, 38, 38, 0.14)"
+accent_red_border = "rgba(220, 38, 38, 0.38)"
+
+accent_aqua       = "#0891b2"
+accent_aqua_bg    = "rgba(8, 145, 178, 0.14)"
+accent_aqua_border = "rgba(8, 145, 178, 0.38)"
+
+accent_purple     = "#7c3aed"
+accent_purple_bg  = "rgba(124, 58, 237, 0.14)"
+accent_purple_border = "rgba(124, 58, 237, 0.38)"
+
+shadow            = "rgba(15, 23, 42, 0.12)"
+modal_backdrop    = "rgba(15, 23, 42, 0.35)"
+slider_trough     = "rgba(15, 23, 42, 0.10)"
+slider_thumb      = "#0f172a"
+
+[display]
+temperature = 6500

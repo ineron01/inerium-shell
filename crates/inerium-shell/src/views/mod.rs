@@ -5,3 +5,4 @@ pub mod network;
 pub mod media;
 pub mod power;
 pub mod wallpaper;
+pub mod theme;

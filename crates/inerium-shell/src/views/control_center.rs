@@ -36,10 +36,38 @@ fn get_wifi_sub(wifi_on: bool) -> String {
     }
 }
 
-fn get_theme_info() -> (bool, String, String) {
+fn get_theme_info() -> (bool, String, String, usize) {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from("/home/ineron"));
+
+    let mut theme_ids = std::collections::HashSet::new();
+    let repo_themes = home.join("Repos/inerium-shell/themes");
+    if let Ok(entries) = std::fs::read_dir(&repo_themes) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path.extension().is_some_and(|e| e == "toml")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                theme_ids.insert(stem.to_string());
+            }
+        }
+    }
+    let user_themes = home.join(".config/inerium/themes");
+    if let Ok(entries) = std::fs::read_dir(&user_themes) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path.extension().is_some_and(|e| e == "toml")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                theme_ids.insert(stem.to_string());
+            }
+        }
+    }
+    let count = theme_ids.len().max(2);
+
     let cur_json = home.join(".config/inerium/current.json");
     if let Ok(content) = std::fs::read_to_string(&cur_json)
         && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
@@ -47,13 +75,13 @@ fn get_theme_info() -> (bool, String, String) {
         let variant = val.get("variant").and_then(|v| v.as_str()).unwrap_or("dark");
         let name = val.get("name").and_then(|v| v.as_str()).unwrap_or("Kanagawa Dragon");
         let author = val.get("author").and_then(|v| v.as_str()).unwrap_or("rebelot");
-        return (variant == "dark", name.to_string(), author.to_string());
+        return (variant == "dark", name.to_string(), author.to_string(), count);
     }
     let is_dark = crate::theme::detect_theme() == crate::theme::ThemeMode::Dark;
     if is_dark {
-        (true, "Kanagawa Dragon".to_string(), "rebelot".to_string())
+        (true, "Kanagawa Dragon".to_string(), "rebelot".to_string(), count)
     } else {
-        (false, "Kanagawa Lotus".to_string(), "rebelot".to_string())
+        (false, "Inerium Light".to_string(), "Inerium Core".to_string(), count)
     }
 }
 
@@ -128,6 +156,7 @@ pub struct ControlCenterModel {
     pub is_dark_theme: bool,
     pub theme_name: String,
     pub theme_author: String,
+    pub available_themes_count: usize,
 
     // Sliders
     pub volume: u32,
@@ -167,6 +196,7 @@ pub enum ControlCenterMsg {
     LaunchUpdateTerminal,
     ToggleHypridle,
     ToggleTheme,
+    QuickToggleTheme,
     LockScreen,
     PowerMenu,
     WallpaperGallery,
@@ -639,6 +669,7 @@ impl SimpleComponent for ControlCenterModel {
                                     &["cc-tile", "purple"]
                                 },
 
+                                #[name = "theme_btn"]
                                 gtk4::Button {
                                     add_css_class: "cc-tile-main",
                                     set_hexpand: true,
@@ -648,7 +679,11 @@ impl SimpleComponent for ControlCenterModel {
                                         tr("Theme", "Тема"),
                                         model.theme_name,
                                         model.theme_author,
-                                        tr("Click to toggle", "Нажмите для переключения")
+                                        if model.available_themes_count <= 2 {
+                                            tr("Click to toggle (Dark / Light)", "Нажмите для переключения (Тёмная / Светлая)")
+                                        } else {
+                                            tr("Click to choose theme (RMB to toggle)", "Нажмите для выбора темы (ПКМ для переключения)")
+                                        }
                                     )),
                                     connect_clicked => ControlCenterMsg::ToggleTheme,
 
@@ -1106,7 +1141,7 @@ impl SimpleComponent for ControlCenterModel {
         let is_dnd = hw::is_dnd_active();
         let is_mic_muted = hw::is_mic_muted();
         let is_idle_active = hw::is_hypridle_active();
-        let (is_dark_theme, theme_name, theme_author) = get_theme_info();
+        let (is_dark_theme, theme_name, theme_author, available_themes_count) = get_theme_info();
 
         let volume = hw::get_volume();
         let volume_muted = hw::is_volume_muted();
@@ -1173,6 +1208,7 @@ impl SimpleComponent for ControlCenterModel {
             is_dark_theme,
             theme_name,
             theme_author,
+            available_themes_count,
 
             volume,
             volume_muted,
@@ -1226,6 +1262,15 @@ impl SimpleComponent for ControlCenterModel {
             }
         });
         widgets.upd_btn.add_controller(click_gesture);
+
+        // Theme button RMB gesture for quick toggle
+        let s_thm = sender.clone();
+        let thm_gesture = gtk4::GestureClick::new();
+        thm_gesture.set_button(3);
+        thm_gesture.connect_pressed(move |_, _, _, _| {
+            s_thm.input(ControlCenterMsg::QuickToggleTheme);
+        });
+        widgets.theme_btn.add_controller(thm_gesture);
 
         // Fan telemetry 1-second timer while root widget is mapped
         if has_fan_telem {
@@ -1288,11 +1333,24 @@ impl SimpleComponent for ControlCenterModel {
                 hw::toggle_hypridle(self.is_idle_active);
             }
             ControlCenterMsg::ToggleTheme => {
+                if self.available_themes_count <= 2 {
+                    let _ = Command::new("inerium-theme").arg("toggle").status();
+                    let (is_dark, name, author, count) = get_theme_info();
+                    self.is_dark_theme = is_dark;
+                    self.theme_name = name;
+                    self.theme_author = author;
+                    self.available_themes_count = count;
+                } else {
+                    (self.nav_cb)("theme");
+                }
+            }
+            ControlCenterMsg::QuickToggleTheme => {
                 let _ = Command::new("inerium-theme").arg("toggle").status();
-                let (is_dark, name, author) = get_theme_info();
+                let (is_dark, name, author, count) = get_theme_info();
                 self.is_dark_theme = is_dark;
                 self.theme_name = name;
                 self.theme_author = author;
+                self.available_themes_count = count;
             }
             ControlCenterMsg::LockScreen => {
                 (self.close_cb)();

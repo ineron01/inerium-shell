@@ -9,8 +9,7 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 
 pub const EMBEDDED_DRAGON: &str = include_str!("../../../../themes/kanagawa-dragon.toml");
-pub const EMBEDDED_LOTUS: &str = include_str!("../../../../themes/kanagawa-lotus.toml");
-pub const EMBEDDED_WAVE: &str = include_str!("../../../../themes/kanagawa-wave.toml");
+pub const EMBEDDED_INERIUM_LIGHT: &str = include_str!("../../../../themes/inerium-light.toml");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
@@ -144,14 +143,11 @@ fn get_home() -> PathBuf {
 pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
     let mut map = BTreeMap::new();
 
-    // 1. Embedded fallbacks
+    // 1. Embedded fallbacks (Default Dark & Default Light)
     if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_DRAGON) {
         map.insert(c.theme.id.clone(), c);
     }
-    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_LOTUS) {
-        map.insert(c.theme.id.clone(), c);
-    }
-    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_WAVE) {
+    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_INERIUM_LIGHT) {
         map.insert(c.theme.id.clone(), c);
     }
 
@@ -203,7 +199,7 @@ pub fn get_current_theme_id() -> String {
     {
         let s = String::from_utf8_lossy(&output.stdout);
         if s.contains("prefer-light") {
-            return "kanagawa-lotus".to_string();
+            return "inerium-light".to_string();
         }
     }
 
@@ -1009,7 +1005,7 @@ fn print_help() {
 
 КОМАНДЫ:
     list                  Показать все доступные палитры с указанием авторов
-    set <id>              Применить палитру по ID (например: kanagawa-dragon, kanagawa-lotus, kanagawa-wave)
+    set <id>              Применить палитру по ID (например: inerium-light, kanagawa-dragon, kanagawa-lotus)
     toggle                Быстрое переключение (темный <-> светлый вариант)
     status                Вывести текущую активную тему и авторство в формате JSON
     help, --help          Показать эту справку
@@ -1029,6 +1025,30 @@ fn main() {
     match args[0].as_str() {
         "list" => {
             let cur_id = get_current_theme_id();
+            if args.iter().any(|a| a == "--json") {
+                let list: Vec<_> = themes
+                    .iter()
+                    .map(|(id, t)| {
+                        serde_json::json!({
+                            "id": id,
+                            "name": t.theme.name,
+                            "author": t.theme.author,
+                            "variant": t.theme.variant,
+                            "description": t.theme.description.clone().unwrap_or_default(),
+                            "is_active": id == &cur_id,
+                            "colors": {
+                                "bg": t.palette.bg_canvas,
+                                "surface": t.palette.bg_surface,
+                                "accent": t.palette.accent_blue,
+                                "fg": t.palette.text_primary,
+                            }
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string(&list).unwrap_or_default());
+                return;
+            }
+
             println!("Доступные палитры Inerium Desktop:\n");
             for (id, t) in &themes {
                 let active_mark = if id == &cur_id { "* " } else { "  " };
@@ -1063,7 +1083,11 @@ fn main() {
             let is_dark = cur_theme.map(|t| t.theme.variant == "dark").unwrap_or(true);
 
             let target_id = if is_dark {
-                "kanagawa-lotus"
+                if themes.contains_key("inerium-light") {
+                    "inerium-light"
+                } else {
+                    "kanagawa-lotus"
+                }
             } else {
                 "kanagawa-dragon"
             };
@@ -1088,7 +1112,8 @@ fn main() {
             let input_id = args[1].to_lowercase();
             let target_id = match input_id.as_str() {
                 "dark" | "dragon" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
-                "light" | "lotus" | "белая" | "светлая" => "kanagawa-lotus",
+                "light" | "inerium-light" | "белая" | "светлая" => "inerium-light",
+                "lotus" => "kanagawa-lotus",
                 "wave" => "kanagawa-wave",
                 other => other,
             };

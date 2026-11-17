@@ -125,3 +125,91 @@ Inerium Shell включает опциональные расширения, к
 - Авторизация в GitHub CLI и Google Drive во встроенных терминалах без лишних окон.
 
 Повторный запуск доступен в любое время из лаунчера или командой `inerium-setup`.
+
+
+---
+
+## Темы оформления и кастомизация (Theme Engine)
+
+Inerium Desktop включает декларативный движок и компилятор тем оформления (`inerium-theme`), работающий по принципу Single Source of Truth.
+
+### Базовые темы из коробки
+- **Inerium Light (`inerium-light`)**: Чистая современная нейтральная светлая тема с высокой контрастностью, белыми карточками (`#ffffff`), глубоким слейт-текстом (`#1e293b`) и стандартной дневной температурой дисплея 6500K.
+- **Kanagawa Dragon (`kanagawa-dragon`)**: Тёмная палитра на основе японских чернил суми-э с тёплыми тонами и мягкими акцентами.
+
+### Адаптивный Центр Управления
+- **2 темы (по умолчанию из коробки)**: Клик по плитке **«Тема»** в Центре Управления мгновенно переключает систему между светлым и тёмным оформлением.
+- **>2 тем (при добавлении пользовательских тем)**: Как только в каталог `~/.config/inerium/themes/` добавляется хотя бы один файл, клик по плитке автоматически открывает интерактивную **Галерею тем** с карточками, именами авторов, цветовыми свотчами и индикатором активности. При этом правый клик (ПКМ) сохраняет возможность быстрого тоггла dark ↔ light.
+
+### Создание пользовательской темы
+Создайте TOML-файл темы в каталоге `~/.config/inerium/themes/<id>.toml`:
+
+```toml
+[theme]
+id = "my-custom-theme"
+name = "My Custom Theme"
+author = "Ваше Имя"
+upstream = "https://github.com/your-username/my-theme"
+variant = "dark" # "dark" или "light"
+license = "MIT"
+description = "Краткое описание вашей палитры"
+
+[palette]
+bg_canvas         = "rgba(24, 22, 22, 0.97)"
+bg_surface        = "#221f1f"
+bg_surface_alt    = "#1c1a1a"
+bg_surface_hover  = "#2d2a2a"
+bg_surface_active = "#363434"
+
+border_subtle     = "rgba(197, 201, 197, 0.10)"
+border_active     = "rgba(197, 201, 197, 0.25)"
+
+text_primary      = "#c5c9c5"
+text_heading      = "#e6e2cc"
+text_muted        = "#737c73"
+text_subtle       = "#a6a69c"
+text_inverted     = "#181616"
+
+accent_green      = "#87a987"
+accent_green_bg   = "rgba(135, 169, 135, 0.16)"
+accent_green_border = "rgba(135, 169, 135, 0.35)"
+
+accent_blue       = "#8ba4b0"
+accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
+accent_blue_border = "rgba(139, 164, 176, 0.38)"
+
+accent_amber      = "#c4b28a"
+accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
+accent_amber_border = "rgba(196, 178, 138, 0.38)"
+
+accent_red        = "#c4746e"
+accent_red_bg     = "rgba(196, 116, 110, 0.15)"
+accent_red_border = "rgba(196, 116, 110, 0.38)"
+
+accent_aqua       = "#8ea4a2"
+accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
+accent_aqua_border = "rgba(142, 164, 162, 0.38)"
+
+accent_purple     = "#8992a7"
+accent_purple_bg  = "rgba(137, 146, 167, 0.16)"
+accent_purple_border = "rgba(137, 146, 167, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(18, 16, 16, 0.48)"
+slider_trough     = "rgba(197, 201, 197, 0.10)"
+slider_thumb      = "#e6e2cc"
+
+[display]
+temperature = 6500 # Цветовая температура экрана в Кельвинах (6500 — нейтральный дневной, 5500 — теплая бумага)
+```
+
+Готовые эталонные примеры (например, `kanagawa-lotus.toml` для ценителей японской состаренной бумаги или `kanagawa-wave.toml`) находятся в каталоге `themes/extra/`.
+
+### Команды CLI
+- `inerium-theme list` — Показать все доступные темы (встроенные и пользовательские).
+- `inerium-theme set <id>` — Применить тему по её идентификатору (например: `inerium-theme set inerium-light`).
+- `inerium-theme toggle` — Быстрое переключение между светлой и тёмной темой.
+- `inerium-theme status` — Вывести метаданные текущей активной темы в формате JSON.
+
+### Пользовательские хуки (`~/.config/inerium/hooks.d/`)
+Любой исполняемый файл или скрипт в `~/.config/inerium/hooks.d/` автоматически запускается при смене темы и получает вариант (`dark` или `light`) и идентификатор темы первым и вторым аргументами.

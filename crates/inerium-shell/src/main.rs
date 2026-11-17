@@ -422,6 +422,7 @@ fn show_view(state: &mut AppState, view_name: &str) {
         "media" => views::media::build_media_view(nav_cb, close_cb),
         "power" => views::power::build_power_menu(close_cb),
         "wallpaper" => views::wallpaper::build_wallpaper_view(nav_cb, close_cb, Some(m_name)),
+        "theme" => views::theme::build_theme_view(nav_cb, close_cb),
         _ => views::control_center::build_control_center(nav_cb, close_cb),
     };
 

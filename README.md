@@ -125,3 +125,91 @@ On first login, `inerium-setup` launches an interactive GTK4 wizard allowing you
 - Connect GitHub CLI and Google Drive via integrated terminal widgets.
 
 Re-run anytime from the application launcher or by running `inerium-setup`.
+
+
+---
+
+## Theme Engine & Custom Themes
+
+Inerium Desktop includes a declarative, Single Source of Truth theme compiler and switcher (`inerium-theme`).
+
+### Out-of-the-Box Themes
+- **Inerium Light (`inerium-light`)**: Clean, modern neutral light theme with crisp contrast, white card surfaces (`#ffffff`), deep slate text (`#1e293b`), and standard 6500K daylight display temperature.
+- **Kanagawa Dragon (`kanagawa-dragon`)**: Deep sumi-ink dark theme with warm dragon tones and subdued accents.
+
+### Adaptive Control Center
+- **2 Themes (Default Out-of-the-Box)**: Clicking the **Theme** tile in the Control Center instantly toggles between dark and light modes.
+- **>2 Themes (Custom User Themes)**: As soon as you add custom themes to `~/.config/inerium/themes/`, clicking the tile opens the interactive **Theme Gallery** with theme cards, author attribution, color swatches, and active badges. Right-clicking the tile always performs a quick dark ↔ light toggle.
+
+### Adding Custom Themes
+Save your custom theme as a TOML file in `~/.config/inerium/themes/<id>.toml`:
+
+```toml
+[theme]
+id = "my-custom-theme"
+name = "My Custom Theme"
+author = "Your Name"
+upstream = "https://github.com/your-username/my-theme"
+variant = "dark" # or "light"
+license = "MIT"
+description = "A short description of your theme palette"
+
+[palette]
+bg_canvas         = "rgba(24, 22, 22, 0.97)"
+bg_surface        = "#221f1f"
+bg_surface_alt    = "#1c1a1a"
+bg_surface_hover  = "#2d2a2a"
+bg_surface_active = "#363434"
+
+border_subtle     = "rgba(197, 201, 197, 0.10)"
+border_active     = "rgba(197, 201, 197, 0.25)"
+
+text_primary      = "#c5c9c5"
+text_heading      = "#e6e2cc"
+text_muted        = "#737c73"
+text_subtle       = "#a6a69c"
+text_inverted     = "#181616"
+
+accent_green      = "#87a987"
+accent_green_bg   = "rgba(135, 169, 135, 0.16)"
+accent_green_border = "rgba(135, 169, 135, 0.35)"
+
+accent_blue       = "#8ba4b0"
+accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
+accent_blue_border = "rgba(139, 164, 176, 0.38)"
+
+accent_amber      = "#c4b28a"
+accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
+accent_amber_border = "rgba(196, 178, 138, 0.38)"
+
+accent_red        = "#c4746e"
+accent_red_bg     = "rgba(196, 116, 110, 0.15)"
+accent_red_border = "rgba(196, 116, 110, 0.38)"
+
+accent_aqua       = "#8ea4a2"
+accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
+accent_aqua_border = "rgba(142, 164, 162, 0.38)"
+
+accent_purple     = "#8992a7"
+accent_purple_bg  = "rgba(137, 146, 167, 0.16)"
+accent_purple_border = "rgba(137, 146, 167, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(18, 16, 16, 0.48)"
+slider_trough     = "rgba(197, 201, 197, 0.10)"
+slider_thumb      = "#e6e2cc"
+
+[display]
+temperature = 6500 # Screen temperature in Kelvins (6500 for neutral daylight, 5500 for warm paper)
+```
+
+Additional reference examples (such as `kanagawa-lotus.toml` for warm Japanese paper or `kanagawa-wave.toml`) can be found in `themes/extra/`.
+
+### CLI Commands
+- `inerium-theme list` — List all available themes (built-in and user-installed).
+- `inerium-theme set <id>` — Apply a theme by ID (e.g. `inerium-theme set inerium-light`).
+- `inerium-theme toggle` — Toggle between the primary dark and light themes.
+- `inerium-theme status` — Output active theme metadata in JSON.
+
+### User Hooks (`~/.config/inerium/hooks.d/`)
+Any executable placed in `~/.config/inerium/hooks.d/` runs automatically after a theme switch, receiving the active theme variant (`dark` or `light`) and ID as arguments.
