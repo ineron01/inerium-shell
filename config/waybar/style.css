@@ -132,7 +132,7 @@ window#waybar {
 
 #custom-hw {
     padding: 0 11px;
-    color: @subtle;
+    color: @fg;
 }
 
 #custom-hw:hover {
@@ -238,7 +238,7 @@ window#waybar {
 
 #custom-keyboard,
 #language {
-    color: @subtle;
+    color: @fg;
     font-size: 11px;
     font-weight: 700;
 }
