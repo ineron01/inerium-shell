@@ -1057,7 +1057,6 @@ dependencies = [
 name = "inerium-hw"
 version = "0.1.2"
 dependencies = [
- "image",
  "inerium-i18n",
  "serde",
  "serde_json",

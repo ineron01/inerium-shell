@@ -266,17 +266,13 @@ fn load_theme_css() -> String {
 }
 
 fn resolve_background_path(configured: &str) -> Option<PathBuf> {
-    let p = Path::new(configured);
+    let trimmed = configured.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+        return None;
+    }
+    let p = Path::new(trimmed);
     if p.is_file() {
         return Some(p.to_path_buf());
-    }
-    let cache = Path::new("/var/cache/inerium/greeter-wallpaper.jpg");
-    if cache.is_file() {
-        return Some(cache.to_path_buf());
-    }
-    let var_tmp = Path::new("/var/tmp/inerium/greeter-wallpaper.jpg");
-    if var_tmp.is_file() {
-        return Some(var_tmp.to_path_buf());
     }
     None
 }

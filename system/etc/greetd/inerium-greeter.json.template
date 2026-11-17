@@ -1,6 +1,6 @@
 {
   "user": "__USER__",
-  "background": "/var/cache/inerium/greeter-wallpaper.jpg",
+  "background": "",
   "default_session": "Hyprland (UWSM-Waybar)",
   "hide_sessions": [
     "hyprland.desktop",
