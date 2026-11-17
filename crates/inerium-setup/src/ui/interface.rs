@@ -56,6 +56,49 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     let content = Box::new(Orientation::Vertical, 12);
     content.set_margin_end(4);
 
+    // 0. Theme Selection Card
+    let theme_card = Box::new(Orientation::Vertical, 8);
+    theme_card.add_css_class("setup-card");
+
+    let theme_head = Box::new(Orientation::Horizontal, 8);
+    let theme_info = Box::new(Orientation::Vertical, 2);
+    theme_info.set_hexpand(true);
+    let theme_title = Label::new(Some(tr(
+        lang,
+        "System Theme & Color Palette",
+        "Тема оформления и палитра",
+    )));
+    theme_title.add_css_class("card-title");
+    theme_title.set_xalign(0.0);
+    theme_info.append(&theme_title);
+
+    let theme_sub = Label::new(Some(tr(
+        lang,
+        "Single Source of Truth: synchronized across GTK, Waybar, Kitty, and apps",
+        "Единый источник: синхронизирует GTK, Waybar, Kitty, портал и приложения",
+    )));
+    theme_sub.add_css_class("card-muted");
+    theme_sub.set_xalign(0.0);
+    theme_info.append(&theme_sub);
+
+    let open_theme_btn = Button::builder()
+        .label(tr(lang, "📁 Folder", "📁 Папка тем"))
+        .tooltip_text(tr(lang, "Open ~/.config/inerium/themes", "Открыть папку ~/.config/inerium/themes"))
+        .build();
+    open_theme_btn.add_css_class("flat-btn");
+    open_theme_btn.connect_clicked(|_| {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/home/ineron"));
+        let _ = std::process::Command::new("xdg-open").arg(home.join(".config/inerium/themes")).spawn();
+    });
+    theme_head.append(&theme_info);
+    theme_head.append(&open_theme_btn);
+    theme_card.append(&theme_head);
+
+    let themes_row = Box::new(Orientation::Horizontal, 8);
+    populate_setup_themes(&themes_row, &status_cb, lang);
+    theme_card.append(&themes_row);
+    content.append(&theme_card);
+
     // 1. Quick Wallpaper Picker Card
     let wall_card = Box::new(Orientation::Vertical, 8);
     wall_card.add_css_class("setup-card");
@@ -81,6 +124,17 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     wall_sub.set_xalign(0.0);
     wall_info.append(&wall_sub);
     wall_head.append(&wall_info);
+
+    let open_wall_btn = Button::builder()
+        .label(tr(lang, "📁 Folder", "📁 Папка обоев"))
+        .tooltip_text(tr(lang, "Open wallpapers directory", "Открыть папку с обоями"))
+        .build();
+    open_wall_btn.add_css_class("flat-btn");
+    open_wall_btn.connect_clicked(|_| {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/home/ineron"));
+        let _ = std::process::Command::new("xdg-open").arg(home.join(".local/share/inerium/wallpapers")).spawn();
+    });
+    wall_head.append(&open_wall_btn);
 
     let add_btn = Button::builder()
         .label(tr(lang, "+ Add", "+ Добавить"))
@@ -782,5 +836,80 @@ fn truncate_label(s: &str, max_chars: usize) -> String {
         format!("{collected}…")
     } else {
         collected
+    }
+}
+
+
+fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
+    while let Some(child) = row.first_child() {
+        row.remove(&child);
+    }
+
+    let mut themes = Vec::new();
+    if let Ok(out) = std::process::Command::new("inerium-theme").arg("list").arg("--json").output()
+        && let Ok(val) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout)
+    {
+        for v in val {
+            let id = v.get("id").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let name = v.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let variant = v.get("variant").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            let is_active = v.get("is_active").and_then(|x| x.as_bool()).unwrap_or(false);
+            themes.push((id, name, variant, is_active));
+        }
+    }
+
+    let buttons: std::rc::Rc<std::cell::RefCell<Vec<(String, Button)>>> = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+
+    for (id, name, variant, is_active) in themes {
+        let btn = Button::new();
+        btn.add_css_class("wall-card");
+        btn.set_hexpand(true);
+        if is_active {
+            btn.add_css_class("active");
+        }
+
+        let inner = Box::new(Orientation::Vertical, 4);
+        inner.set_margin_top(8);
+        inner.set_margin_bottom(8);
+        inner.set_margin_start(10);
+        inner.set_margin_end(10);
+
+        let ico_str = if variant == "light" { "󰔏" } else { "󰔎" };
+        let ico = Label::new(Some(ico_str));
+        ico.add_css_class("card-title");
+        inner.append(&ico);
+
+        let title = Label::new(Some(&name));
+        title.add_css_class("card-title");
+        inner.append(&title);
+
+        let badge = Label::new(Some(&format!("[{variant}]")));
+        badge.add_css_class("card-muted");
+        inner.append(&badge);
+
+        btn.set_child(Some(&inner));
+
+        let id_click = id.clone();
+        let name_click = name.clone();
+        let status_cb_click = status_cb.clone();
+        let btns_ref = buttons.clone();
+
+        btn.connect_clicked(move |_| {
+            let _ = std::process::Command::new("inerium-theme").arg("set").arg(&id_click).status();
+            for (bid, b) in btns_ref.borrow().iter() {
+                if bid == &id_click {
+                    b.add_css_class("active");
+                } else {
+                    b.remove_css_class("active");
+                }
+            }
+            status_cb_click.ok(&match lang {
+                Lang::En => format!("Theme '{name_click}' applied"),
+                Lang::Ru => format!("Тема '{name_click}' успешно применена"),
+            });
+        });
+
+        buttons.borrow_mut().push((id, btn.clone()));
+        row.append(&btn);
     }
 }

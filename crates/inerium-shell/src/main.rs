@@ -421,8 +421,7 @@ fn show_view(state: &mut AppState, view_name: &str) {
         "network" => views::network::build_network_view(nav_cb, close_cb),
         "media" => views::media::build_media_view(nav_cb, close_cb),
         "power" => views::power::build_power_menu(close_cb),
-        "wallpaper" => views::wallpaper::build_wallpaper_view(nav_cb, close_cb, Some(m_name)),
-        "themes" | "theme" => views::theme::build_theme_view(nav_cb, close_cb),
+        "appearance" | "wallpaper" | "themes" | "theme" => views::appearance::build_appearance_view(nav_cb, close_cb, Some(m_name)),
         _ => views::control_center::build_control_center(nav_cb, close_cb),
     };
 
@@ -443,10 +442,21 @@ fn show_view(state: &mut AppState, view_name: &str) {
         win.set_child(Some(&child));
 
         win.set_keyboard_mode(KeyboardMode::OnDemand);
-        let rel_x = cx - mx;
         let max_margin_left = (mw - req_w - 8).max(8);
-        let mut margin_left = rel_x - (req_w / 2);
-        margin_left = margin_left.clamp(8, max_margin_left);
+        let margin_left = if state.is_visible {
+            if let Some(sz) = &state.safe_zone {
+                (sz.x - mx).clamp(8, max_margin_left)
+            } else {
+                max_margin_left
+            }
+        } else {
+            let rel_x = cx - mx;
+            if rel_x > (mw * 3 / 4) {
+                max_margin_left
+            } else {
+                (rel_x - (req_w / 2)).clamp(8, max_margin_left)
+            }
+        };
 
         win.set_anchor(Edge::Top, true);
         win.set_anchor(Edge::Left, true);
