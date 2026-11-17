@@ -57,6 +57,7 @@ deploy_desktop_configs() {
         [[ -f "$t" ]] || continue
         link_item "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
     done
+    [[ -d "$REPO_DIR/themes/extra" ]] && link_item "$REPO_DIR/themes/extra" "$HOME/.config/inerium/themes/examples"
     link_item "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
     link_item "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
     link_item "$REPO_DIR/config/kdeglobals" "$HOME/.config/kdeglobals"
