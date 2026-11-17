@@ -15,6 +15,7 @@ High-performance native Rust micro-utilities and telemetry data providers for Wa
 - `inerium-dnd`: Mako DND & WirePlumber mute controller (`--waybar`, `--toggle`).
 - `inerium-updates`: Arch & AUR update checker.
 - `inerium-popup`: IPC client for `inerium-shell` daemon.
+- `inerium-theme`: Single Source of Truth theme compiler & switcher with author attribution, GTK Libadwaita variables, hyprsunset display temperature harmonization, and user hooks (`~/.config/inerium/hooks.d/`).
 - `hypr-ipc-bridge`: Hyprland 0.56+ Lua workspace compatibility bridge.
 - `inerium-osd-watcher`: SwayOSD layout & inotify webcam watcher.
 
