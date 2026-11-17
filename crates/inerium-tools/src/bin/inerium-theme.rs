@@ -962,7 +962,28 @@ pub fn apply_theme(theme: &ThemeConfig) {
         .unwrap_or(6500);
     apply_display_temperature(temp);
 
-    // 11. Inerium Shell Daemon Hot-Reload via UNIX domain socket
+    // 11. VSCodium / VS Code
+    let vscodium_settings = home.join(".config/VSCodium/User/settings.json");
+    if let Some(parent) = vscodium_settings.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let mut vsc_data: serde_json::Value = if let Ok(content) = fs::read_to_string(&vscodium_settings) {
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(obj) = vsc_data.as_object_mut() {
+        obj.insert("window.autoDetectColorScheme".to_string(), serde_json::json!(true));
+        obj.insert("workbench.preferredDarkColorTheme".to_string(), serde_json::json!("Dark Modern"));
+        obj.insert("workbench.preferredLightColorTheme".to_string(), serde_json::json!("Light Modern"));
+        let target_theme = if is_dark { "Dark Modern" } else { "Light Modern" };
+        obj.insert("workbench.colorTheme".to_string(), serde_json::json!(target_theme));
+    }
+    if let Ok(serialized) = serde_json::to_string_pretty(&vsc_data) {
+        let _ = fs::write(&vscodium_settings, serialized + "\n");
+    }
+
+    // 12. Inerium Shell Daemon Hot-Reload via UNIX domain socket
     let uid = inerium_tools::sys::posix::posix_getuid();
     let sock_path = format!("/run/user/{}/inerium-popups.sock", uid);
     if let Ok(mut stream) = UnixStream::connect(&sock_path) {

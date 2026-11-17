@@ -363,7 +363,7 @@ impl SimpleComponent for ControlCenterModel {
 
                 gtk4::Box {
                     set_orientation: Orientation::Vertical,
-                    set_spacing: 10,
+                    set_spacing: 8,
                     set_vexpand: true,
                     set_hexpand: true,
 
@@ -1437,5 +1437,5 @@ where
     let mut controller = ControlCenterModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 384, 540)
+    (root, 384, 630)
 }
