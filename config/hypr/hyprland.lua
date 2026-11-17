@@ -10,6 +10,7 @@ end
 
 -- Core configuration modules (safe require: error in one module does not crash the session)
 safe_require("config.animations")
+package.loaded["config.colors"] = nil
 safe_require("config.colors")
 safe_require("config.decorations")
 safe_require("config.variables")

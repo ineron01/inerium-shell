@@ -678,7 +678,7 @@ impl SimpleComponent for ControlCenterModel {
                                                 add_css_class: "cc-tile-sub",
                                                 set_xalign: 0.0,
                                                 set_ellipsize: gtk4::pango::EllipsizeMode::End,
-                                                set_max_width_chars: 14,
+                                                set_max_width_chars: 20,
                                                 #[watch]
                                                 set_label: &model.theme_name,
                                             },

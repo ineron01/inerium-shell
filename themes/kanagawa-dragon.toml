@@ -51,3 +51,7 @@ shadow            = "rgba(0, 0, 0, 0.85)"
 modal_backdrop    = "rgba(18, 16, 16, 0.48)"
 slider_trough     = "rgba(197, 201, 197, 0.10)"
 slider_thumb      = "#e6e2cc"
+
+[display]
+temperature = 6500
+

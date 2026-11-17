@@ -1,4 +1,10 @@
--- Look and feel configuration - Inerium Dragon aesthetic
+-- Look and feel configuration - Inerium aesthetic
+
+local border_active_1 = INERIUM_DRAGON_GRAY or INERIUM_BORDER or "rgba(727169ff)"
+local border_active_2 = INERIUM_DRAGON_BLUE or INERIUM_BLUE or "rgba(7fb4caff)"
+local border_inactive = INERIUM_BORDER or "rgba(454444cc)"
+local blue = INERIUM_BLUE or "rgba(7fb4caff)"
+local purple = INERIUM_PURPLE or "rgba(938aa9ff)"
 
 hl.config({
     general = {
@@ -9,25 +15,25 @@ hl.config({
         resize_on_border = true,
         col = {
             active_border = {
-                colors = { INERIUM_DRAGON_GRAY, INERIUM_DRAGON_BLUE },
+                colors = { border_active_1, border_active_2 },
                 angle = 45,
             },
-            inactive_border = INERIUM_BORDER,
+            inactive_border = border_inactive,
         },
     },
     group = {
         col = {
-            border_active = INERIUM_BLUE,
-            border_inactive = INERIUM_BORDER,
-            border_locked_active = INERIUM_PURPLE,
-            border_locked_inactive = INERIUM_BORDER,
+            border_active = blue,
+            border_inactive = border_inactive,
+            border_locked_active = purple,
+            border_locked_inactive = border_inactive,
         },
         groupbar = {
             col = {
-                active = INERIUM_DRAGON_BLUE,
-                inactive = INERIUM_BORDER,
-                locked_active = INERIUM_PURPLE,
-                locked_inactive = INERIUM_BORDER,
+                active = border_active_2,
+                inactive = border_inactive,
+                locked_active = purple,
+                locked_inactive = border_inactive,
             },
         },
     },
