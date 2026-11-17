@@ -196,7 +196,6 @@ pub enum ControlCenterMsg {
     LaunchUpdateTerminal,
     ToggleHypridle,
     ToggleTheme,
-    LaunchSetup,
     LockScreen,
     PowerMenu,
     NavAppearance,
@@ -341,6 +340,21 @@ impl SimpleComponent for ControlCenterModel {
                             },
                         },
                     },
+                },
+
+                #[name = "appearance_btn"]
+                gtk4::Button {
+                    add_css_class: "cc-icon-btn",
+                    set_valign: Align::Center,
+                    set_label: "󰏘",
+                    #[watch]
+                    set_tooltip_text: Some(&format!(
+                        "{}: {} — {}",
+                        tr("Appearance", "Оформление"),
+                        model.theme_name,
+                        tr("LMB: themes & wallpapers, RMB: toggle theme", "ЛКМ: темы и обои, ПКМ: быстрая смена")
+                    )),
+                    connect_clicked => ControlCenterMsg::NavAppearance,
                 },
 
                 #[name = "idle_btn"]
@@ -643,132 +657,6 @@ impl SimpleComponent for ControlCenterModel {
                                                 } else {
                                                     tr("Active", "Включен")
                                                 },
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                        },
-
-                        // Row 3: Theme & Wallpapers
-                        gtk4::Box {
-                            set_orientation: Orientation::Horizontal,
-                            set_spacing: 8,
-                            set_homogeneous: true,
-
-                            // Tile 5: Appearance (Themes & Wallpapers)
-                            #[name = "appearance_tile"]
-                            gtk4::Box {
-                                add_css_class: "cc-tile",
-                                add_css_class: "purple",
-                                set_orientation: Orientation::Horizontal,
-                                #[watch]
-                                set_css_classes: if !model.is_dark_theme {
-                                    &["cc-tile", "purple", "on"]
-                                } else {
-                                    &["cc-tile", "purple"]
-                                },
-
-                                #[name = "theme_btn"]
-                                gtk4::Button {
-                                    add_css_class: "cc-tile-main",
-                                    set_hexpand: true,
-                                    #[watch]
-                                    set_tooltip_text: Some(&format!(
-                                        "{}: {} — {}",
-                                        tr("Appearance", "Оформление"),
-                                        model.theme_name,
-                                        if model.available_themes_count <= 2 {
-                                            tr("Click: toggle theme (RMB / Arrow: gallery)", "Клик: переключить тему (ПКМ / Стрелка: меню)")
-                                        } else {
-                                            tr("Click: choose theme", "Клик: выбор темы")
-                                        }
-                                    )),
-                                    connect_clicked => ControlCenterMsg::ToggleTheme,
-
-                                    gtk4::Box {
-                                        set_orientation: Orientation::Horizontal,
-                                        set_spacing: 9,
-
-                                        gtk4::Label {
-                                            add_css_class: "cc-tile-ico",
-                                            set_xalign: 0.5,
-                                            set_label: "󰏘",
-                                        },
-
-                                        gtk4::Box {
-                                            set_orientation: Orientation::Vertical,
-                                            set_spacing: 1,
-                                            set_valign: Align::Center,
-
-                                            gtk4::Label {
-                                                add_css_class: "cc-tile-title",
-                                                set_xalign: 0.0,
-                                                set_label: tr("Appearance", "Оформление"),
-                                            },
-
-                                            gtk4::Label {
-                                                add_css_class: "cc-tile-sub",
-                                                set_xalign: 0.0,
-                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
-                                                set_max_width_chars: 14,
-                                                #[watch]
-                                                set_label: &model.theme_name,
-                                            },
-                                        },
-                                    },
-                                },
-
-                                gtk4::Button {
-                                    add_css_class: "cc-tile-more",
-                                    set_label: "›",
-                                    set_tooltip_text: Some(tr("Appearance settings", "Настройки оформления")),
-                                    connect_clicked => ControlCenterMsg::NavAppearance,
-                                },
-                            },
-
-                            // Tile 6: System Control / Settings (inerium-setup)
-                            #[name = "setup_tile"]
-                            gtk4::Box {
-                                add_css_class: "cc-tile",
-                                set_orientation: Orientation::Horizontal,
-
-                                gtk4::Button {
-                                    add_css_class: "cc-tile-main",
-                                    set_hexpand: true,
-                                    set_tooltip_text: Some(tr(
-                                        "Inerium Settings: displays, workspaces, integrations, themes",
-                                        "Управление Inerium: мониторы, рабочие столы, интеграции, темы"
-                                    )),
-                                    connect_clicked => ControlCenterMsg::LaunchSetup,
-
-                                    gtk4::Box {
-                                        set_orientation: Orientation::Horizontal,
-                                        set_spacing: 9,
-
-                                        gtk4::Label {
-                                            add_css_class: "cc-tile-ico",
-                                            set_xalign: 0.5,
-                                            set_label: "󰒓",
-                                        },
-
-                                        gtk4::Box {
-                                            set_orientation: Orientation::Vertical,
-                                            set_spacing: 1,
-                                            set_valign: Align::Center,
-
-                                            gtk4::Label {
-                                                add_css_class: "cc-tile-title",
-                                                set_xalign: 0.0,
-                                                set_label: tr("Control", "Управление"),
-                                            },
-
-                                            gtk4::Label {
-                                                add_css_class: "cc-tile-sub",
-                                                set_xalign: 0.0,
-                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
-                                                set_max_width_chars: 14,
-                                                set_label: tr("Settings", "Настройки"),
                                             },
                                         },
                                     },
@@ -1272,14 +1160,14 @@ impl SimpleComponent for ControlCenterModel {
         });
         widgets.upd_btn.add_controller(click_gesture);
 
-        // Theme button RMB gesture to open appearance settings
-        let s_thm = sender.clone();
-        let thm_gesture = gtk4::GestureClick::new();
-        thm_gesture.set_button(3);
-        thm_gesture.connect_pressed(move |_, _, _, _| {
-            s_thm.input(ControlCenterMsg::NavAppearance);
+        // Appearance button RMB gesture for quick theme toggle
+        let s_app = sender.clone();
+        let app_gesture = gtk4::GestureClick::new();
+        app_gesture.set_button(3);
+        app_gesture.connect_pressed(move |_, _, _, _| {
+            s_app.input(ControlCenterMsg::ToggleTheme);
         });
-        widgets.theme_btn.add_controller(thm_gesture);
+        widgets.appearance_btn.add_controller(app_gesture);
 
         // Fan telemetry 1-second timer while root widget is mapped
         if has_fan_telem {
@@ -1342,25 +1230,12 @@ impl SimpleComponent for ControlCenterModel {
                 hw::toggle_hypridle(self.is_idle_active);
             }
             ControlCenterMsg::ToggleTheme => {
-                if self.available_themes_count <= 2 {
-                    let _ = Command::new("inerium-theme").arg("toggle").status();
-                    let (is_dark, name, author, count) = get_theme_info();
-                    self.is_dark_theme = is_dark;
-                    self.theme_name = name;
-                    self.theme_author = author;
-                    self.available_themes_count = count;
-                } else {
-                    (self.nav_cb)("appearance");
-                }
-            }
-            ControlCenterMsg::LaunchSetup => {
-                (self.close_cb)();
-                thread::spawn(|| {
-                    let _ = Command::new("uwsm")
-                        .args(["app", "--", "inerium-setup"])
-                        .status()
-                        .or_else(|_| Command::new("inerium-setup").status());
-                });
+                let _ = Command::new("inerium-theme").arg("toggle").status();
+                let (is_dark, name, author, count) = get_theme_info();
+                self.is_dark_theme = is_dark;
+                self.theme_name = name;
+                self.theme_author = author;
+                self.available_themes_count = count;
             }
             ControlCenterMsg::NavAppearance => {
                 (self.nav_cb)("appearance");
@@ -1505,5 +1380,5 @@ where
     let mut controller = ControlCenterModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 384, 630)
+    (root, 384, 540)
 }
