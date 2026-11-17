@@ -1,0 +1,15 @@
+@define-color bg        rgba(24, 22, 22, 0.94);
+@define-color surface   #282727;
+@define-color hover     rgba(197, 201, 197, 0.08);
+@define-color line      rgba(197, 201, 197, 0.09);
+@define-color fg        #c5c9c5;
+@define-color fg-bright #e6e2cc;
+@define-color muted     #737c73;
+@define-color subtle    #a6a69c;
+@define-color green     #87a987;
+@define-color blue      #8ba4b0;
+@define-color aqua      #8ea4a2;
+@define-color yellow    #c4b28a;
+@define-color orange    #b6927b;
+@define-color red       #c4746e;
+@define-color violet    #8992a7;

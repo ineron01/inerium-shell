@@ -1,0 +1,14 @@
+* {
+    bg:           rgba(242, 236, 188, 0.97);
+    surface:      #e7e3c9;
+    surface-hi:   #ded9be;
+    line:         rgba(84, 84, 100, 0.12);
+    line-soft:    rgba(84, 84, 100, 0.08);
+    fg:           #545464;
+    fg-bright:    #43436c;
+    muted:        #8a8980;
+    green:        #6f894e;
+    green-soft:   rgba(111, 137, 78, 0.16);
+    green-line:   rgba(111, 137, 78, 0.45);
+    red:          #c84053;
+}

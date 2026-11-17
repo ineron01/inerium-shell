@@ -104,6 +104,7 @@ pub struct ControlCenterModel {
     pub is_dnd: bool,
     pub is_mic_muted: bool,
     pub is_idle_active: bool,
+    pub is_dark_theme: bool,
 
     // Sliders
     pub volume: u32,
@@ -142,6 +143,7 @@ pub enum ControlCenterMsg {
     UpdatesChecked(hw::SystemUpdates),
     LaunchUpdateTerminal,
     ToggleHypridle,
+    ToggleTheme,
     LockScreen,
     PowerMenu,
     WallpaperGallery,
@@ -286,14 +288,6 @@ impl SimpleComponent for ControlCenterModel {
                             },
                         },
                     },
-                },
-
-                gtk4::Button {
-                    add_css_class: "cc-icon-btn",
-                    set_valign: Align::Center,
-                    set_label: "󰸉",
-                    set_tooltip_text: Some(tr("Desktop Wallpapers", "Обои рабочего стола")),
-                    connect_clicked => ControlCenterMsg::WallpaperGallery,
                 },
 
                 #[name = "idle_btn"]
@@ -596,6 +590,114 @@ impl SimpleComponent for ControlCenterModel {
                                                 } else {
                                                     tr("Active", "Включен")
                                                 },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+
+                        // Row 3: Theme & Wallpapers
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 8,
+                            set_homogeneous: true,
+
+                            // Tile 5: Theme
+                            #[name = "theme_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                add_css_class: "purple",
+                                set_orientation: Orientation::Horizontal,
+                                #[watch]
+                                set_css_classes: if !model.is_dark_theme {
+                                    &["cc-tile", "purple", "on"]
+                                } else {
+                                    &["cc-tile", "purple"]
+                                },
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::ToggleTheme,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            #[watch]
+                                            set_label: if model.is_dark_theme { "󰔎" } else { "󰔏" },
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: tr("Theme", "Тема"),
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                #[watch]
+                                                set_label: if model.is_dark_theme {
+                                                    "Dragon"
+                                                } else {
+                                                    "Lotus"
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+
+                            // Tile 6: Wallpapers
+                            #[name = "wall_tile"]
+                            gtk4::Box {
+                                add_css_class: "cc-tile",
+                                set_orientation: Orientation::Horizontal,
+
+                                gtk4::Button {
+                                    add_css_class: "cc-tile-main",
+                                    set_hexpand: true,
+                                    connect_clicked => ControlCenterMsg::WallpaperGallery,
+
+                                    gtk4::Box {
+                                        set_orientation: Orientation::Horizontal,
+                                        set_spacing: 9,
+
+                                        gtk4::Label {
+                                            add_css_class: "cc-tile-ico",
+                                            set_xalign: 0.5,
+                                            set_label: "󰸉",
+                                        },
+
+                                        gtk4::Box {
+                                            set_orientation: Orientation::Vertical,
+                                            set_spacing: 1,
+                                            set_valign: Align::Center,
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-title",
+                                                set_xalign: 0.0,
+                                                set_label: tr("Wallpaper", "Обои"),
+                                            },
+
+                                            gtk4::Label {
+                                                add_css_class: "cc-tile-sub",
+                                                set_xalign: 0.0,
+                                                set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                                                set_max_width_chars: 14,
+                                                set_label: tr("Gallery", "Галерея"),
                                             },
                                         },
                                     },
@@ -1040,6 +1142,7 @@ impl SimpleComponent for ControlCenterModel {
             is_dnd,
             is_mic_muted,
             is_idle_active,
+            is_dark_theme: crate::theme::detect_theme() == crate::theme::ThemeMode::Dark,
 
             volume,
             volume_muted,
@@ -1153,6 +1256,12 @@ impl SimpleComponent for ControlCenterModel {
             ControlCenterMsg::ToggleHypridle => {
                 self.is_idle_active = !self.is_idle_active;
                 hw::toggle_hypridle(self.is_idle_active);
+            }
+            ControlCenterMsg::ToggleTheme => {
+                self.is_dark_theme = !self.is_dark_theme;
+                thread::spawn(|| {
+                    let _ = Command::new("inerium-theme").arg("toggle").status();
+                });
             }
             ControlCenterMsg::LockScreen => {
                 (self.close_cb)();

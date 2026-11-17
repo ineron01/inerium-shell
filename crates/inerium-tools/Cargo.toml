@@ -20,6 +20,10 @@ required-features = ["msi-ec"]
 name = "inerium-wallpaper"
 path = "src/bin/inerium-wallpaper.rs"
 
+[[bin]]
+name = "inerium-theme"
+path = "src/bin/inerium-theme.rs"
+
 [dependencies]
 inerium-hw = { workspace = true }
 inerium-i18n = { workspace = true }

@@ -1,0 +1,210 @@
+# SPDX-FileCopyrightText: Andrew Lake <jamboarder@gmail.com>
+# SPDX-FileCopyrightText: Marco Martin <notmart@gmail.com>
+# SPDX-FileCopyrightText: Nate Graham <nate@kde.org>
+# SPDX-FileCopyrightText: Noah Davis <noahadvs@gmail.com>
+# SPDX-FileCopyrightText: Neal Gompa <ngompa@kde.org>
+# SPDX-FileCopyrightText: David Redondo <kde@david-redondo.de>
+# SPDX-FileCopyrightText: Thomas Duckworth <tduck973564@gmail.com>
+# SPDX-License-Identifier: LGPL-2.0-or-later
+
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,111,110
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate=31,28,28
+BackgroundNormal=34,31,31
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Complementary]
+BackgroundAlternate=31,28,28
+BackgroundNormal=24,22,22
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Header]
+BackgroundAlternate=31,28,28
+BackgroundNormal=31,28,28
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Header][Inactive]
+BackgroundAlternate=31,28,28
+BackgroundNormal=24,22,22
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Selection]
+BackgroundAlternate=31,28,28
+BackgroundNormal=135,169,135
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=24,22,22
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Tooltip]
+BackgroundAlternate=31,28,28
+BackgroundNormal=34,31,31
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:View]
+BackgroundAlternate=31,28,28
+BackgroundNormal=24,22,22
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[Colors:Window]
+BackgroundAlternate=31,28,28
+BackgroundNormal=24,22,22
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=114,113,105
+ForegroundLink=127,180,202
+ForegroundNegative=196,116,110
+ForegroundNeutral=220,165,97
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=147,138,169
+
+[General]
+ColorScheme=Inerium-Dragon
+Name=Inerium Dragon
+Name[ar]=نسيم داكن
+Name[az]=Breeze - Tünd
+Name[bg]=Breeze Тъмен
+Name[bs]=Breeze tamna
+Name[ca]=Brisa fosca
+Name[ca@valencia]=Brisa fosca
+Name[cs]=Breeze Tmavé
+Name[da]=Breeze Dark
+Name[de]=Breeze Dunkel
+Name[el]=Breeze σκούρο
+Name[en_GB]=Breeze Dark
+Name[eo]=Breeze Dark
+Name[es]=Brisa oscuro
+Name[et]=Breeze tume
+Name[eu]=Breeze iluna
+Name[fi]=Tumma Breeze
+Name[fr]=Brise sombre
+Name[gl]=Brisa escura
+Name[he]=בריזה כהה
+Name[hi]=ब्रीज़ गहरा
+Name[hu]=Breeze Dark
+Name[ia]=Brisa obscure
+Name[id]=Breeze Gelap
+Name[is]=Breeze dökkt
+Name[it]=Brezza scuro
+Name[ja]=Breeze Dark
+Name[ka]=Breeze მუქი
+Name[ko]=어두운 Breeze
+Name[lt]=Breeze tamsus
+Name[lv]=„Breeze“ tumšais
+Name[nb]=Breeze mørk
+Name[nl]=Breeze Dark
+Name[nn]=Breeze mørk
+Name[pa]=ਬਰੀਜ਼ ਗੂੜ੍ਹਾ
+Name[pl]=Ciemna Bryza
+Name[pt]=Brisa Escuro
+Name[pt_BR]=Breeze Dark
+Name[ro]=Briză, întunecat
+Name[ru]=Breeze, тёмный вариант
+Name[sa]=वायुः अन्धकारः
+Name[sk]=Tmavý vánok
+Name[sl]=Sapica, temna
+Name[sr]=Поветарац тамни
+Name[sr@ijekavian]=Поветарац тамни
+Name[sr@ijekavianlatin]=Povetarac tamni
+Name[sr@latin]=Povetarac tamni
+Name[sv]=Breeze mörk
+Name[ta]=கரும் பிரீஸ்
+Name[tg]=Насими торик
+Name[tr]=Esinti Koyu
+Name[ug]=مەيىن شامال قاراڭغۇ
+Name[uk]=Темна Breeze
+Name[zh_CN]=Breeze 微风深色
+Name[zh_TW]=Breeze Dark
+shadeSortColumn=true
+
+[KDE]
+contrast=4
+
+[WM]
+activeBackground=39,44,49
+activeBlend=252,252,252
+activeForeground=252,252,252
+inactiveBackground=32,36,40
+inactiveBlend=161,169,177
+inactiveForeground=161,169,177

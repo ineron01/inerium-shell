@@ -1,0 +1,42 @@
+# Mako — Inerium Lotus
+font=JetBrainsMono Nerd Font 10
+width=360
+background-color=#f2ecbcf7
+text-color=#545464
+border-color=#54546426
+border-size=1
+border-radius=16
+padding=12,14
+margin=8,8,0,8
+outer-margin=4,0,0,0
+icon-border-radius=10
+max-icon-size=40
+icons=1
+actions=1
+progress-color=over #6f894e66
+format=<b>%s</b>\n<span color="#716e61">%b</span>
+default-timeout=5000
+layer=overlay
+anchor=top-right
+
+history=0
+max-history=0
+
+[urgency=low]
+border-color=#54546415
+format=<span color="#716e61"><b>%s</b></span>\n<span color="#8a8980">%b</span>
+default-timeout=3000
+
+[urgency=normal]
+default-timeout=5000
+
+[urgency=high]
+border-color=#c8405399
+format=<span color="#c84053"><b>%s</b></span>\n%b
+default-timeout=0
+
+[mode=dnd]
+invisible=1
+
+[mode=do-not-disturb]
+invisible=1

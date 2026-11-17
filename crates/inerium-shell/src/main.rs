@@ -136,6 +136,7 @@ struct AppState {
     safe_zone: Option<SafeZone>,
     session_id: u64,
     modal_dialog_active: bool,
+    css_provider: Option<CssProvider>,
 }
 
 thread_local! {
@@ -147,6 +148,7 @@ thread_local! {
         safe_zone: None,
         session_id: 0,
         modal_dialog_active: false,
+        css_provider: None,
     }) };
 }
 
@@ -182,12 +184,13 @@ fn main() {
         .build();
 
     app.connect_startup(move |app| {
+        let cur_theme = theme::detect_theme();
         if let Some(settings) = gtk4::Settings::default() {
-            settings.set_gtk_application_prefer_dark_theme(true);
+            settings.set_gtk_application_prefer_dark_theme(cur_theme == theme::ThemeMode::Dark);
         }
-        // Load global Inerium CSS with priority above USER to guarantee pristine Dragon styling
+        // Load global Inerium CSS with priority above USER to guarantee pristine styling
         let provider = CssProvider::new();
-        provider.load_from_data(theme::POPUP_CSS);
+        provider.load_from_data(&theme::get_theme_css(cur_theme));
         if let Some(display) = gdk4::Display::default() {
             gtk4::style_context_add_provider_for_display(
                 &display,
@@ -197,7 +200,9 @@ fn main() {
         }
 
         STATE.with(|s| {
-            s.borrow_mut().app = Some(app.clone());
+            let mut st = s.borrow_mut();
+            st.app = Some(app.clone());
+            st.css_provider = Some(provider);
         });
     });
 
@@ -297,6 +302,27 @@ fn handle_command(cmd: &str) {
 
         if target == "close" {
             hide_window(&mut state);
+            return;
+        }
+
+        if target == "theme" {
+            let mode = if parts.get(1).map(|s| *s == "light").unwrap_or(false) {
+                theme::ThemeMode::Light
+            } else if parts.get(1).map(|s| *s == "dark").unwrap_or(false) {
+                theme::ThemeMode::Dark
+            } else {
+                theme::detect_theme()
+            };
+            if let Some(settings) = gtk4::Settings::default() {
+                settings.set_gtk_application_prefer_dark_theme(mode == theme::ThemeMode::Dark);
+            }
+            if let Some(provider) = &state.css_provider {
+                provider.load_from_data(&theme::get_theme_css(mode));
+            }
+            if is_vis && !cur_view.is_empty() {
+                let cur = cur_view.clone();
+                show_view(&mut state, &cur);
+            }
             return;
         }
 
