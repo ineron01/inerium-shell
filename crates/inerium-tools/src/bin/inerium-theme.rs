@@ -1,51 +1,130 @@
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::symlink;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
-    Dark,
-    Light,
+use serde::{Deserialize, Serialize};
+
+pub const EMBEDDED_DRAGON: &str = include_str!("../../../../themes/kanagawa-dragon.toml");
+pub const EMBEDDED_LOTUS: &str = include_str!("../../../../themes/kanagawa-lotus.toml");
+pub const EMBEDDED_WAVE: &str = include_str!("../../../../themes/kanagawa-wave.toml");
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeConfig {
+    pub theme: ThemeMeta,
+    pub palette: Palette,
 }
 
-impl Theme {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Theme::Dark => "dark",
-            Theme::Light => "light",
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThemeMeta {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub upstream: Option<String>,
+    pub variant: String, // "dark" | "light"
+    pub license: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Palette {
+    pub bg_canvas: String,
+    pub bg_surface: String,
+    pub bg_surface_alt: String,
+    pub bg_surface_hover: String,
+    pub bg_surface_active: String,
+    pub border_subtle: String,
+    pub border_active: String,
+    pub text_primary: String,
+    pub text_heading: String,
+    pub text_muted: String,
+    pub text_subtle: String,
+    pub text_inverted: String,
+    pub accent_green: String,
+    pub accent_green_bg: String,
+    pub accent_green_border: String,
+    pub accent_blue: String,
+    pub accent_blue_bg: String,
+    pub accent_blue_border: String,
+    pub accent_amber: String,
+    pub accent_amber_bg: String,
+    pub accent_amber_border: String,
+    pub accent_red: String,
+    pub accent_red_bg: String,
+    pub accent_red_border: String,
+    pub accent_aqua: String,
+    pub accent_aqua_bg: String,
+    pub accent_aqua_border: String,
+    pub accent_purple: String,
+    pub accent_purple_bg: String,
+    pub accent_purple_border: String,
+    pub shadow: String,
+    pub modal_backdrop: String,
+    pub slider_trough: String,
+    pub slider_thumb: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rgba(pub u8, pub u8, pub u8, pub u8);
+
+impl Rgba {
+    pub fn parse(s: &str) -> Self {
+        let s = s.trim();
+        if let Some(stripped) = s.strip_prefix('#') {
+            if stripped.len() == 6 {
+                let r = u8::from_str_radix(&stripped[0..2], 16).unwrap_or(0);
+                let g = u8::from_str_radix(&stripped[2..4], 16).unwrap_or(0);
+                let b = u8::from_str_radix(&stripped[4..6], 16).unwrap_or(0);
+                return Rgba(r, g, b, 255);
+            } else if stripped.len() == 8 {
+                let r = u8::from_str_radix(&stripped[0..2], 16).unwrap_or(0);
+                let g = u8::from_str_radix(&stripped[2..4], 16).unwrap_or(0);
+                let b = u8::from_str_radix(&stripped[4..6], 16).unwrap_or(0);
+                let a = u8::from_str_radix(&stripped[6..8], 16).unwrap_or(255);
+                return Rgba(r, g, b, a);
+            }
+        } else if s.starts_with("rgba(") || s.starts_with("rgb(") {
+            let inner = s
+                .trim_start_matches("rgba(")
+                .trim_start_matches("rgb(")
+                .trim_end_matches(')');
+            let parts: Vec<&str> = inner.split(',').map(|p| p.trim()).collect();
+            if parts.len() >= 3 {
+                let r = parts[0].parse::<u8>().unwrap_or(0);
+                let g = parts[1].parse::<u8>().unwrap_or(0);
+                let b = parts[2].parse::<u8>().unwrap_or(0);
+                let a = if parts.len() >= 4 {
+                    if let Ok(alpha_float) = parts[3].parse::<f32>() {
+                        (alpha_float.clamp(0.0, 1.0) * 255.0).round() as u8
+                    } else {
+                        parts[3].parse::<u8>().unwrap_or(255)
+                    }
+                } else {
+                    255
+                };
+                return Rgba(r, g, b, a);
+            }
         }
+        Rgba(0, 0, 0, 255)
     }
 
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            Theme::Dark => "Inerium Dragon",
-            Theme::Light => "Inerium Lotus",
-        }
+    pub fn to_hex_rgb(&self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
     }
 
-    pub fn display_name_ru(&self) -> &'static str {
-        match self {
-            Theme::Dark => "Инериум Тёмная (Dragon)",
-            Theme::Light => "Инериум Светлая (Lotus)",
-        }
+    pub fn to_hex_rgba(&self) -> String {
+        format!("#{:02x}{:02x}{:02x}{:02x}", self.0, self.1, self.2, self.3)
     }
 
-    pub fn scheme_name(&self) -> &'static str {
-        match self {
-            Theme::Dark => "Inerium-Dragon",
-            Theme::Light => "Inerium-Lotus",
-        }
+    pub fn to_hypr(&self) -> String {
+        format!("rgba({:02x}{:02x}{:02x}{:02x})", self.0, self.1, self.2, self.3)
     }
 
-    pub fn opposite(&self) -> Self {
-        match self {
-            Theme::Dark => Theme::Light,
-            Theme::Light => Theme::Dark,
-        }
+    pub fn to_kde_rgb(&self) -> String {
+        format!("{},{},{}", self.0, self.1, self.2)
     }
 }
 
@@ -55,58 +134,621 @@ fn get_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/home/ineron"))
 }
 
-fn atomic_symlink<P: AsRef<Path>, Q: AsRef<Path>>(target: P, link_path: Q) {
-    let link = link_path.as_ref();
-    let parent = match link.parent() {
-        Some(p) => p,
-        None => return,
-    };
-    let _ = fs::create_dir_all(parent);
+pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
+    let mut map = BTreeMap::new();
 
-    let tmp = parent.join(format!(".tmp_link_{}", std::process::id()));
-    let _ = fs::remove_file(&tmp);
-
-    if symlink(target.as_ref(), &tmp).is_ok() {
-        let _ = fs::rename(&tmp, link);
+    // 1. Embedded fallbacks
+    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_DRAGON) {
+        map.insert(c.theme.id.clone(), c);
     }
+    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_LOTUS) {
+        map.insert(c.theme.id.clone(), c);
+    }
+    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_WAVE) {
+        map.insert(c.theme.id.clone(), c);
+    }
+
+    // 2. Repository themes
+    let home = get_home();
+    let repo_themes = home.join("Repos/inerium-shell/themes");
+    if let Ok(entries) = fs::read_dir(&repo_themes) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "toml")
+                && let Ok(content) = fs::read_to_string(&path)
+                && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
+            {
+                map.insert(c.theme.id.clone(), c);
+            }
+        }
+    }
+
+    // 3. User config themes (~/.config/inerium/themes/)
+    let user_themes = home.join(".config/inerium/themes");
+    if let Ok(entries) = fs::read_dir(&user_themes) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "toml")
+                && let Ok(content) = fs::read_to_string(&path)
+                && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
+            {
+                map.insert(c.theme.id.clone(), c);
+            }
+        }
+    }
+
+    map
 }
 
-pub fn detect_current_theme() -> Theme {
-    // 1. Try gsettings color-scheme
+pub fn get_current_theme_id() -> String {
+    let home = get_home();
+    let cur_json = home.join(".config/inerium/current.json");
+    if let Ok(content) = fs::read_to_string(&cur_json)
+        && let Ok(meta) = serde_json::from_str::<ThemeMeta>(&content)
+    {
+        return meta.id;
+    }
+
+    // Fallback: gsettings color-scheme
     if let Ok(output) = Command::new("gsettings")
         .args(["get", "org.gnome.desktop.interface", "color-scheme"])
         .output()
     {
         let s = String::from_utf8_lossy(&output.stdout);
         if s.contains("prefer-light") {
-            return Theme::Light;
-        }
-        if s.contains("prefer-dark") {
-            return Theme::Dark;
+            return "kanagawa-lotus".to_string();
         }
     }
 
-    // 2. Try kdeglobals
-    let home = get_home();
-    let kdeglobals = home.join(".config/kdeglobals");
-    if let Ok(content) = fs::read_to_string(&kdeglobals)
-        && content.contains("ColorScheme=Inerium-Lotus") {
-            return Theme::Light;
-        }
-
-    // Default to Dark
-    Theme::Dark
+    "kanagawa-dragon".to_string()
 }
 
-pub fn apply_theme(theme: Theme) {
-    let home = get_home();
-    let scheme = theme.scheme_name();
+// ============================================================================
+// CONFIG EMITTERS
+// ============================================================================
 
-    // 1. GSettings (Portal, Browsers, VS Code, GTK)
-    let (gsettings_scheme, gtk_theme, icon_theme) = match theme {
-        Theme::Dark => ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark"),
-        Theme::Light => ("prefer-light", "adw-gtk3", "Papirus-Light"),
+fn emit_hyprland_lua(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    format!(
+r#"-- Generated by inerium-theme for {} (author: {})
+-- Upstream: {}
+
+INERIUM_BASE        = "{}"
+INERIUM_SURFACE     = "{}"
+INERIUM_BORDER      = "{}"
+INERIUM_TEXT        = "{}"
+INERIUM_MUTED       = "{}"
+
+INERIUM_GREEN       = "{}"
+INERIUM_BLUE        = "{}"
+INERIUM_AMBER       = "{}"
+INERIUM_RED         = "{}"
+INERIUM_PURPLE      = "{}"
+
+INERIUM_DRAGON_GRAY = "{}"
+INERIUM_DRAGON_BLUE = "{}"
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        theme.theme.upstream.as_deref().unwrap_or("N/A"),
+        Rgba::parse(&p.bg_canvas).to_hypr(),
+        Rgba::parse(&p.bg_surface).to_hypr(),
+        Rgba::parse(&p.border_subtle).to_hypr(),
+        Rgba::parse(&p.text_primary).to_hypr(),
+        Rgba::parse(&p.text_muted).to_hypr(),
+        Rgba::parse(&p.accent_green).to_hypr(),
+        Rgba::parse(&p.accent_blue).to_hypr(),
+        Rgba::parse(&p.accent_amber).to_hypr(),
+        Rgba::parse(&p.accent_red).to_hypr(),
+        Rgba::parse(&p.accent_purple).to_hypr(),
+        Rgba::parse(&p.border_subtle).to_hypr(),
+        Rgba::parse(&p.accent_blue).to_hypr(),
+    )
+}
+
+fn emit_waybar_css(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    format!(
+r#"/* Generated by inerium-theme for {} (author: {}) */
+@define-color bg        {};
+@define-color surface   {};
+@define-color hover     {};
+@define-color line      {};
+@define-color fg        {};
+@define-color fg-bright {};
+@define-color muted     {};
+@define-color subtle    {};
+@define-color green     {};
+@define-color blue      {};
+@define-color aqua      {};
+@define-color yellow    {};
+@define-color orange    {};
+@define-color red       {};
+@define-color violet    {};
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        p.bg_canvas,
+        p.bg_surface,
+        p.bg_surface_hover,
+        p.border_subtle,
+        p.text_primary,
+        p.text_heading,
+        p.text_muted,
+        p.text_subtle,
+        p.accent_green,
+        p.accent_blue,
+        p.accent_aqua,
+        p.accent_amber,
+        p.accent_amber,
+        p.accent_red,
+        p.accent_purple,
+    )
+}
+
+fn emit_rofi_rasi(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    format!(
+r#"/* Generated by inerium-theme for {} (author: {}) */
+* {{
+    bg:           {};
+    surface:      {};
+    surface-hi:   {};
+    line:         {};
+    line-soft:    {};
+    fg:           {};
+    fg-bright:    {};
+    muted:        {};
+    green:        {};
+    green-soft:   {};
+    green-line:   {};
+    red:          {};
+}}
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        p.bg_canvas,
+        p.bg_surface,
+        p.bg_surface_hover,
+        p.border_active,
+        p.border_subtle,
+        p.text_primary,
+        p.text_heading,
+        p.text_muted,
+        p.accent_green,
+        p.accent_green_bg,
+        p.accent_green_border,
+        p.accent_red,
+    )
+}
+
+fn emit_kitty_conf(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    let bg = Rgba::parse(&p.bg_canvas).to_hex_rgb();
+    let fg = Rgba::parse(&p.text_primary).to_hex_rgb();
+    let sel_bg = Rgba::parse(&p.bg_surface_hover).to_hex_rgb();
+    let green = Rgba::parse(&p.accent_green).to_hex_rgb();
+    let blue = Rgba::parse(&p.accent_blue).to_hex_rgb();
+    let red = Rgba::parse(&p.accent_red).to_hex_rgb();
+    let amber = Rgba::parse(&p.accent_amber).to_hex_rgb();
+    let aqua = Rgba::parse(&p.accent_aqua).to_hex_rgb();
+    let purple = Rgba::parse(&p.accent_purple).to_hex_rgb();
+    let muted = Rgba::parse(&p.text_muted).to_hex_rgb();
+    let heading = Rgba::parse(&p.text_heading).to_hex_rgb();
+
+    format!(
+r#"# Generated by inerium-theme for {} (author: {})
+
+foreground            {}
+background            {}
+selection_foreground  {}
+selection_background  {}
+
+cursor                {}
+cursor_text_color     {}
+
+url_color             {}
+
+# Tabs
+active_tab_foreground   {}
+active_tab_background   {}
+inactive_tab_foreground {}
+inactive_tab_background {}
+
+# Borders
+active_border_color   {}
+inactive_border_color {}
+
+# Normal colors
+color0 {}
+color1 {}
+color2 {}
+color3 {}
+color4 {}
+color5 {}
+color6 {}
+color7 {}
+
+# Bright colors
+color8 {}
+color9 {}
+color10 {}
+color11 {}
+color12 {}
+color13 {}
+color14 {}
+color15 {}
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        fg,
+        bg,
+        fg,
+        sel_bg,
+        fg,
+        bg,
+        blue,
+        bg,
+        green,
+        muted,
+        sel_bg,
+        green,
+        sel_bg,
+        bg,
+        red,
+        green,
+        amber,
+        blue,
+        purple,
+        aqua,
+        fg,
+        muted,
+        red,
+        green,
+        amber,
+        blue,
+        purple,
+        aqua,
+        heading,
+    )
+}
+
+fn emit_mako_config(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    let bg = Rgba::parse(&p.bg_canvas).to_hex_rgba();
+    let text = Rgba::parse(&p.text_primary).to_hex_rgb();
+    let text_subtle = Rgba::parse(&p.text_subtle).to_hex_rgb();
+    let text_muted = Rgba::parse(&p.text_muted).to_hex_rgb();
+    let border = Rgba::parse(&p.border_subtle).to_hex_rgba();
+    let red = Rgba::parse(&p.accent_red).to_hex_rgb();
+    let green_progress = Rgba::parse(&p.accent_green_bg).to_hex_rgba();
+
+    format!(
+r#"# Generated by inerium-theme for {} (author: {})
+font=JetBrainsMono Nerd Font 10
+width=360
+background-color={}
+text-color={}
+border-color={}
+border-size=1
+border-radius=16
+padding=12,14
+margin=8,8,0,8
+outer-margin=4,0,0,0
+icon-border-radius=10
+max-icon-size=40
+icons=1
+actions=1
+progress-color=over {}
+format=<b>%s</b>\n<span color="{}">%b</span>
+default-timeout=5000
+layer=overlay
+anchor=top-right
+
+history=0
+max-history=0
+
+[urgency=low]
+border-color={}
+format=<span color="{}"><b>%s</b></span>\n<span color="{}">%b</span>
+default-timeout=3000
+
+[urgency=normal]
+default-timeout=5000
+
+[urgency=high]
+border-color={}
+format=<span color="{}"><b>%s</b></span>\n%b
+default-timeout=0
+
+[mode=dnd]
+invisible=1
+
+[mode=do-not-disturb]
+invisible=1
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        bg,
+        text,
+        border,
+        green_progress,
+        text_subtle,
+        border,
+        text_subtle,
+        text_muted,
+        red,
+        red,
+    )
+}
+
+fn emit_gtk_vars(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    format!(
+r#"/* Generated by inerium-theme for {} (author: {}) */
+@define-color cc_bg               {};
+@define-color cc_surface          {};
+@define-color cc_surface_hover    {};
+@define-color cc_surface_active   {};
+@define-color cc_line             {};
+@define-color cc_line_light       {};
+@define-color cc_fg               {};
+@define-color cc_fg_bright        {};
+@define-color cc_fg_muted         {};
+@define-color cc_fg_subtle        {};
+@define-color cc_fg_on_accent     {};
+
+@define-color cc_green            {};
+@define-color cc_green_bg         {};
+@define-color cc_green_border     {};
+
+@define-color cc_blue             {};
+@define-color cc_blue_bg          {};
+@define-color cc_blue_border      {};
+
+@define-color cc_amber            {};
+@define-color cc_amber_bg         {};
+@define-color cc_amber_border     {};
+
+@define-color cc_red              {};
+@define-color cc_red_bg           {};
+@define-color cc_red_border       {};
+
+@define-color cc_aqua             {};
+@define-color cc_aqua_bg          {};
+@define-color cc_aqua_border      {};
+
+@define-color cc_violet           {};
+@define-color cc_violet_bg        {};
+@define-color cc_violet_border    {};
+
+@define-color cc_shadow           {};
+@define-color cc_modal_backdrop   {};
+@define-color cc_slider_trough    {};
+@define-color cc_slider_thumb     {};
+"#,
+        theme.theme.name,
+        theme.theme.author,
+        p.bg_canvas,
+        p.bg_surface,
+        p.bg_surface_hover,
+        p.bg_surface_active,
+        p.border_subtle,
+        p.border_active,
+        p.text_primary,
+        p.text_heading,
+        p.text_muted,
+        p.text_subtle,
+        p.text_inverted,
+        p.accent_green,
+        p.accent_green_bg,
+        p.accent_green_border,
+        p.accent_blue,
+        p.accent_blue_bg,
+        p.accent_blue_border,
+        p.accent_amber,
+        p.accent_amber_bg,
+        p.accent_amber_border,
+        p.accent_red,
+        p.accent_red_bg,
+        p.accent_red_border,
+        p.accent_aqua,
+        p.accent_aqua_bg,
+        p.accent_aqua_border,
+        p.accent_purple,
+        p.accent_purple_bg,
+        p.accent_purple_border,
+        p.shadow,
+        p.modal_backdrop,
+        p.slider_trough,
+        p.slider_thumb,
+    )
+}
+
+fn emit_kde_colors(theme: &ThemeConfig) -> String {
+    let p = &theme.palette;
+    let bg_canvas = Rgba::parse(&p.bg_canvas).to_kde_rgb();
+    let bg_surface = Rgba::parse(&p.bg_surface).to_kde_rgb();
+    let bg_hover = Rgba::parse(&p.bg_surface_hover).to_kde_rgb();
+    let text = Rgba::parse(&p.text_primary).to_kde_rgb();
+    let text_muted = Rgba::parse(&p.text_muted).to_kde_rgb();
+    let green = Rgba::parse(&p.accent_green).to_kde_rgb();
+    let blue = Rgba::parse(&p.accent_blue).to_kde_rgb();
+    let red = Rgba::parse(&p.accent_red).to_kde_rgb();
+    let amber = Rgba::parse(&p.accent_amber).to_kde_rgb();
+    let purple = Rgba::parse(&p.accent_purple).to_kde_rgb();
+
+    format!(
+r#"# Generated by inerium-theme for {} (author: {})
+[ColorEffects:Disabled]
+Color=56,56,56
+ColorAmount=0
+ColorEffect=0
+ContrastAmount=0.65
+ContrastEffect=1
+IntensityAmount=0.1
+IntensityEffect=2
+
+[ColorEffects:Inactive]
+ChangeSelectionColor=true
+Color=112,111,110
+ColorAmount=0.025
+ColorEffect=2
+ContrastAmount=0.1
+ContrastEffect=2
+Enable=false
+IntensityAmount=0
+IntensityEffect=0
+
+[Colors:Button]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:Complementary]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:Header]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:Selection]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:Tooltip]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:View]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[Colors:Window]
+BackgroundAlternate={}
+BackgroundNormal={}
+DecorationFocus={}
+DecorationHover={}
+ForegroundActive={}
+ForegroundInactive={}
+ForegroundLink={}
+ForegroundNegative={}
+ForegroundNeutral={}
+ForegroundNormal={}
+ForegroundPositive={}
+ForegroundVisited={}
+
+[General]
+ColorScheme={}
+Name={}
+"#,
+        theme.theme.name, theme.theme.author,
+        bg_hover, bg_surface, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_hover, bg_canvas, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_hover, bg_surface, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_hover, bg_hover, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_hover, bg_surface, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_surface, bg_canvas, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        bg_hover, bg_surface, green, green, green, text_muted, blue, red, amber, text, green, purple,
+        theme.theme.name, theme.theme.name,
+    )
+}
+
+// ============================================================================
+// ATOMIC APPLICATION OF THEME
+// ============================================================================
+
+pub fn apply_theme(theme: &ThemeConfig) {
+    let home = get_home();
+    let is_dark = theme.theme.variant == "dark";
+    let kde_scheme_name = format!("Inerium-{}", theme.theme.id);
+
+    // 0. Ensure target directories exist
+    let inerium_cfg_dir = home.join(".config/inerium");
+    let _ = fs::create_dir_all(&inerium_cfg_dir);
+    let _ = fs::create_dir_all(home.join(".config/hypr/config"));
+    let _ = fs::create_dir_all(home.join(".config/waybar"));
+    let _ = fs::create_dir_all(home.join(".config/rofi"));
+    let _ = fs::create_dir_all(home.join(".config/kitty/themes"));
+    let _ = fs::create_dir_all(home.join(".config/mako"));
+    let _ = fs::create_dir_all(home.join(".local/share/color-schemes"));
+
+    // 1. Write metadata current.json & theme-vars.css
+    let current_json = inerium_cfg_dir.join("current.json");
+    if let Ok(json_str) = serde_json::to_string_pretty(&theme.theme) {
+        let _ = fs::write(&current_json, json_str + "\n");
+    }
+
+    let theme_vars_css = inerium_cfg_dir.join("theme-vars.css");
+    let _ = fs::write(&theme_vars_css, emit_gtk_vars(theme));
+
+    // 2. GSettings (Portal, Browsers, VS Code, GTK)
+    let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
+        ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark")
+    } else {
+        ("prefer-light", "adw-gtk3", "Papirus-Light")
     };
+
     let _ = Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", "color-scheme", gsettings_scheme])
         .stdout(Stdio::null())
@@ -123,11 +765,8 @@ pub fn apply_theme(theme: Theme) {
         .stderr(Stdio::null())
         .status();
 
-    // 2. GTK 3 & GTK 4 settings.ini
-    let prefer_dark = match theme {
-        Theme::Dark => "1",
-        Theme::Light => "0",
-    };
+    // 3. GTK 3 & GTK 4 settings.ini
+    let prefer_dark_str = if is_dark { "1" } else { "0" };
     for gtk_ver in &["gtk-3.0", "gtk-4.0"] {
         let path = home.join(format!(".config/{}/settings.ini", gtk_ver));
         if let Ok(content) = fs::read_to_string(&path) {
@@ -136,7 +775,7 @@ pub fn apply_theme(theme: Theme) {
                 if line.starts_with("gtk-theme-name=") {
                     lines.push(format!("gtk-theme-name={}", gtk_theme));
                 } else if line.starts_with("gtk-application-prefer-dark-theme=") {
-                    lines.push(format!("gtk-application-prefer-dark-theme={}", prefer_dark));
+                    lines.push(format!("gtk-application-prefer-dark-theme={}", prefer_dark_str));
                 } else if line.starts_with("gtk-icon-theme-name=") {
                     lines.push(format!("gtk-icon-theme-name={}", icon_theme));
                 } else {
@@ -147,7 +786,21 @@ pub fn apply_theme(theme: Theme) {
         }
     }
 
-    // 3. KDE Frameworks 6: dolphinrc & kdeglobals
+    // 4. KDE / Dolphin / Qt
+    let kde_colors_content = emit_kde_colors(theme);
+    let kde_colors_path = home.join(format!(".local/share/color-schemes/{}.colors", kde_scheme_name));
+    let _ = fs::write(&kde_colors_path, &kde_colors_content);
+
+    let kdeglobals_path = home.join(".config/kdeglobals");
+    let mut kdeglobals = format!(
+        "[General]\nColorScheme={}\nName={}\nTerminalApplication=kitty\n\n[Icons]\nTheme={}\n\n[KDE]\ncontrast=4\nwidgetStyle=Fusion\n\n",
+        kde_scheme_name,
+        theme.theme.name,
+        icon_theme,
+    );
+    kdeglobals.push_str(&kde_colors_content);
+    let _ = fs::write(&kdeglobals_path, kdeglobals.trim().to_string() + "\n");
+
     let dolphinrc_path = home.join(".config/dolphinrc");
     if let Ok(content) = fs::read_to_string(&dolphinrc_path) {
         let mut lines = Vec::new();
@@ -164,171 +817,90 @@ pub fn apply_theme(theme: Theme) {
                 in_ui = false;
             }
             if in_ui && line.starts_with("ColorScheme=") {
-                lines.push(format!("ColorScheme={}", scheme));
+                lines.push(format!("ColorScheme={}", kde_scheme_name));
                 continue;
             }
             lines.push(line.to_string());
         }
         if !has_ui {
             lines.push("[UiSettings]".to_string());
-            lines.push(format!("ColorScheme={}", scheme));
+            lines.push(format!("ColorScheme={}", kde_scheme_name));
         }
         let _ = fs::write(&dolphinrc_path, lines.join("\n") + "\n");
     }
 
-    // Read colors from color-schemes/<scheme>.colors
-    let color_scheme_path = home.join(format!(".local/share/color-schemes/{}.colors", scheme));
-    let color_sections = fs::read_to_string(&color_scheme_path).unwrap_or_default();
-
-    let kdeglobals_path = home.join(".config/kdeglobals");
-    let mut kdeglobals_header = format!(
-        "[General]\nColorScheme={}\nName={}\nTerminalApplication=kitty\n\n[Icons]\nTheme={}\n\n[KDE]\ncontrast=4\nwidgetStyle=Fusion\n\n[KFileDialog Settings]\nAllow Expansion=false\nAutomatically select filename extension=true\nBreadcrumb Navigation=true\nDecoration position=2\nShow Full Path=false\nShow Inline Previews=true\nShow Preview=false\nShow Speedbar=true\nShow hidden files=false\nSort by=Name\nSort directories first=true\nSort hidden files last=false\nSort reversed=false\nSpeedbar Width=301\nView Style=DetailTree\n\n",
-        scheme,
-        theme.display_name(),
-        icon_theme,
-    );
-
-    let mut skip = false;
-    for line in color_sections.lines() {
-        if line.starts_with('#') {
-            continue;
-        }
-        if line.starts_with("[General]") {
-            skip = true;
-            continue;
-        }
-        if skip && line.starts_with('[') {
-            skip = false;
-        }
-        if !skip {
-            kdeglobals_header.push_str(line);
-            kdeglobals_header.push('\n');
-        }
-    }
-    let _ = fs::write(&kdeglobals_path, kdeglobals_header.trim().to_string() + "\n");
-
-    // Warm KDE cache
     let _ = Command::new("plasma-apply-colorscheme")
-        .arg(scheme)
+        .arg(&kde_scheme_name)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 
-    // 4. Qt6ct & Qt5ct
-    let suffix = match theme {
-        Theme::Dark => "Dragon",
-        Theme::Light => "Lotus",
-    };
-    for qt_ct in &["qt6ct", "qt5ct"] {
-        let conf_path = home.join(format!(".config/{}/{}.conf", qt_ct, qt_ct));
-        if let Ok(content) = fs::read_to_string(&conf_path) {
-            let mut lines = Vec::new();
-            for line in content.lines() {
-                if line.starts_with("color_scheme_path=") {
-                    lines.push(format!(
-                        "color_scheme_path={}/.config/{}/colors/Inerium-{}.conf",
-                        home.display(),
-                        qt_ct,
-                        suffix
-                    ));
-                } else if line.starts_with("icon_theme=") {
-                    lines.push(format!("icon_theme={}", icon_theme));
-                } else {
-                    lines.push(line.to_string());
-                }
-            }
-            let _ = fs::write(&conf_path, lines.join("\n") + "\n");
-        }
-    }
-
-    // 5. Waybar: colors.css symlink + SIGUSR2
-    let waybar_target = match theme {
-        Theme::Dark => "colors-dragon.css",
-        Theme::Light => "colors-lotus.css",
-    };
-    atomic_symlink(waybar_target, home.join(".config/waybar/colors.css"));
+    // 5. Waybar
+    let waybar_colors = home.join(".config/waybar/colors.css");
+    let _ = fs::remove_file(&waybar_colors);
+    let _ = fs::write(&waybar_colors, emit_waybar_css(theme));
     let _ = Command::new("pkill")
         .args(["-SIGUSR2", "waybar"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 
-    // 6. Rofi: colors.rasi symlink
-    let rofi_target = match theme {
-        Theme::Dark => "colors-dragon.rasi",
-        Theme::Light => "colors-lotus.rasi",
-    };
-    atomic_symlink(rofi_target, home.join(".config/rofi/colors.rasi"));
+    // 6. Rofi
+    let rofi_colors = home.join(".config/rofi/colors.rasi");
+    let _ = fs::remove_file(&rofi_colors);
+    let _ = fs::write(&rofi_colors, emit_rofi_rasi(theme));
 
-    // 7. Kitty: current-theme.conf symlink + SIGUSR1
-    let kitty_target = match theme {
-        Theme::Dark => "inerium-dragon.conf",
-        Theme::Light => "inerium-lotus.conf",
-    };
-    atomic_symlink(kitty_target, home.join(".config/kitty/themes/current-theme.conf"));
+    // 7. Kitty
+    let kitty_theme = home.join(".config/kitty/themes/current-theme.conf");
+    let _ = fs::remove_file(&kitty_theme);
+    let _ = fs::write(&kitty_theme, emit_kitty_conf(theme));
     let _ = Command::new("killall")
         .args(["-SIGUSR1", "kitty"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 
-    // 8. Mako: config symlink + reload
-    let mako_target = match theme {
-        Theme::Dark => "config-dragon",
-        Theme::Light => "config-lotus",
-    };
-    atomic_symlink(mako_target, home.join(".config/mako/config"));
+    // 8. Mako
+    let mako_cfg = home.join(".config/mako/config");
+    let _ = fs::remove_file(&mako_cfg);
+    let _ = fs::write(&mako_cfg, emit_mako_config(theme));
     let _ = Command::new("makoctl")
         .arg("reload")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 
-    // 9. Hyprland: colors.lua symlink + reload
-    let hypr_cfg_dir = home.join(".config/hypr/config");
-    let repo_hypr = home.join("Repos/inerium-shell/config/hypr/config");
-    for f in &["colors-dragon.lua", "colors-lotus.lua"] {
-        let dest = hypr_cfg_dir.join(f);
-        if !dest.exists() {
-            let src = repo_hypr.join(f);
-            if src.exists() {
-                let _ = symlink(&src, &dest);
-            }
-        }
-    }
-
-    let hypr_target = match theme {
-        Theme::Dark => "colors-dragon.lua",
-        Theme::Light => "colors-lotus.lua",
-    };
-    atomic_symlink(hypr_target, hypr_cfg_dir.join("colors.lua"));
+    // 9. Hyprland
+    let hypr_colors = home.join(".config/hypr/config/colors.lua");
+    let _ = fs::remove_file(&hypr_colors);
+    let _ = fs::write(&hypr_colors, emit_hyprland_lua(theme));
     let _ = Command::new("hyprctl")
         .arg("reload")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 
-    // 10. Inerium Shell Daemon Hot-Reload
+    // 10. Inerium Shell Daemon Hot-Reload via UNIX domain socket
     let uid = inerium_tools::sys::posix::posix_getuid();
     let sock_path = format!("/run/user/{}/inerium-popups.sock", uid);
     if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-        let msg = format!("theme {}\n", theme.name());
+        let msg = format!("theme {}\n", theme.theme.variant);
         let _ = stream.write_all(msg.as_bytes());
     }
 }
 
 fn print_help() {
     println!(
-        r#"inerium-theme — Менеджер и переключатель темы оформления Inerium Desktop
+        r#"inerium-theme — Менеджер и компилятор тем оформления Inerium Desktop
 
 ИСПОЛЬЗОВАНИЕ:
     inerium-theme <КОМАНДА>
 
 КОМАНДЫ:
-    set dark | dragon     Включить темную палитру (Inerium Dragon)
-    set light | lotus     Включить светлую палитру (Inerium Lotus)
-    toggle                Переключить тему (тёмная <-> светлая)
-    status                Вывести текущее состояние темы
+    list                  Показать все доступные палитры с указанием авторов
+    set <id>              Применить палитру по ID (например: kanagawa-dragon, kanagawa-lotus, kanagawa-wave)
+    toggle                Быстрое переключение (темный <-> светлый вариант)
+    status                Вывести текущую активную тему и авторство в формате JSON
     help, --help          Показать эту справку
 "#
     );
@@ -341,37 +913,89 @@ fn main() {
         return;
     }
 
+    let themes = load_available_themes();
+
     match args[0].as_str() {
+        "list" => {
+            let cur_id = get_current_theme_id();
+            println!("Доступные палитры Inerium Desktop:\n");
+            for (id, t) in &themes {
+                let active_mark = if id == &cur_id { "* " } else { "  " };
+                let author_str = format!("(автор: {})", t.theme.author);
+                println!(
+                    "{}{:<18} [{:<5}] {:<22} {}",
+                    active_mark, id, t.theme.variant, t.theme.name, author_str
+                );
+                if let Some(desc) = &t.theme.description {
+                    println!("     └─ {}", desc);
+                }
+            }
+            println!("\nПрименить: inerium-theme set <id>");
+        }
         "status" => {
-            let cur = detect_current_theme();
-            println!(
-                "{{\"theme\":\"{}\",\"name\":\"{}\",\"description\":\"{}\"}}",
-                cur.name(),
-                cur.display_name(),
-                cur.display_name_ru()
-            );
+            let cur_id = get_current_theme_id();
+            let theme = themes.get(&cur_id).or_else(|| themes.get("kanagawa-dragon"));
+            if let Some(t) = theme {
+                if let Ok(s) = serde_json::to_string(&t.theme) {
+                    println!("{}", s);
+                }
+            } else {
+                println!(
+                    "{{\"id\":\"{}\",\"name\":\"{}\",\"author\":\"rebelot\",\"variant\":\"dark\"}}",
+                    cur_id, cur_id
+                );
+            }
         }
         "toggle" => {
-            let cur = detect_current_theme();
-            let next = cur.opposite();
-            apply_theme(next);
-            println!("Тема переключена: {}", next.display_name_ru());
+            let cur_id = get_current_theme_id();
+            let cur_theme = themes.get(&cur_id).or_else(|| themes.get("kanagawa-dragon"));
+            let is_dark = cur_theme.map(|t| t.theme.variant == "dark").unwrap_or(true);
+
+            let target_id = if is_dark {
+                "kanagawa-lotus"
+            } else {
+                "kanagawa-dragon"
+            };
+
+            if let Some(target) = themes.get(target_id) {
+                apply_theme(target);
+                println!(
+                    "Тема переключена: {} (автор: {})",
+                    target.theme.name, target.theme.author
+                );
+            } else {
+                eprintln!("Ошибка: целевая палитра '{}' не найдена.", target_id);
+                std::process::exit(1);
+            }
         }
         "set" => {
             if args.len() < 2 {
-                eprintln!("Ошибка: укажите тему (dark / light)");
+                eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list'.");
                 std::process::exit(1);
             }
-            let target = match args[1].to_lowercase().as_str() {
-                "dark" | "dragon" | "черная" | "темная" | "тёмная" => Theme::Dark,
-                "light" | "lotus" | "белая" | "светлая" => Theme::Light,
-                other => {
-                    eprintln!("Неизвестная тема: {}. Допустимы: dark (dragon), light (lotus)", other);
-                    std::process::exit(1);
-                }
+
+            let input_id = args[1].to_lowercase();
+            let target_id = match input_id.as_str() {
+                "dark" | "dragon" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
+                "light" | "lotus" | "белая" | "светлая" => "kanagawa-lotus",
+                "wave" => "kanagawa-wave",
+                other => other,
             };
-            apply_theme(target);
-            println!("Установлена тема: {}", target.display_name_ru());
+
+            if let Some(target) = themes.get(target_id) {
+                apply_theme(target);
+                println!(
+                    "Установлена палитра: {} (автор: {})",
+                    target.theme.name, target.theme.author
+                );
+                if let Some(upstream) = &target.theme.upstream {
+                    println!("Оригинальный репозиторий: {}", upstream);
+                }
+            } else {
+                eprintln!("Ошибка: тема '{}' не найдена.", target_id);
+                println!("Запустите 'inerium-theme list' для просмотра всех доступных палитр.");
+                std::process::exit(1);
+            }
         }
         "help" | "--help" | "-h" => {
             print_help();

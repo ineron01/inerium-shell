@@ -1,0 +1,53 @@
+[theme]
+id = "kanagawa-wave"
+name = "Kanagawa Wave"
+author = "rebelot"
+upstream = "https://github.com/rebelot/kanagawa.nvim"
+variant = "dark"
+license = "MIT"
+description = "Classic dark Kanagawa variant inspired by the famous Great Wave off Kanagawa"
+
+[palette]
+bg_canvas         = "rgba(31, 31, 40, 0.97)"
+bg_surface        = "#2a2a37"
+bg_surface_alt    = "#1f1f28"
+bg_surface_hover  = "#363646"
+bg_surface_active = "#43436c"
+
+border_subtle     = "rgba(114, 113, 105, 0.18)"
+border_active     = "rgba(126, 156, 216, 0.40)"
+
+text_primary      = "#dcd7ba"
+text_heading      = "#e6e2cc"
+text_muted        = "#727169"
+text_subtle       = "#938aa9"
+text_inverted     = "#16161d"
+
+accent_green      = "#98bb6c"
+accent_green_bg   = "rgba(152, 187, 108, 0.16)"
+accent_green_border = "rgba(152, 187, 108, 0.35)"
+
+accent_blue       = "#7e9cd8"
+accent_blue_bg    = "rgba(126, 156, 216, 0.16)"
+accent_blue_border = "rgba(126, 156, 216, 0.38)"
+
+accent_amber      = "#dca561"
+accent_amber_bg   = "rgba(220, 165, 97, 0.15)"
+accent_amber_border = "rgba(220, 165, 97, 0.38)"
+
+accent_red        = "#c34043"
+accent_red_bg     = "rgba(195, 64, 67, 0.15)"
+accent_red_border = "rgba(195, 64, 67, 0.38)"
+
+accent_aqua       = "#7aa89f"
+accent_aqua_bg    = "rgba(122, 168, 159, 0.16)"
+accent_aqua_border = "rgba(122, 168, 159, 0.38)"
+
+accent_purple     = "#957fb8"
+accent_purple_bg  = "rgba(149, 127, 184, 0.16)"
+accent_purple_border = "rgba(149, 127, 184, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(22, 22, 29, 0.55)"
+slider_trough     = "rgba(114, 113, 105, 0.20)"
+slider_thumb      = "#dcd7ba"

@@ -37,9 +37,24 @@ pub fn detect_theme() -> ThemeMode {
 }
 
 pub fn get_theme_css(mode: ThemeMode) -> String {
-    let vars = match mode {
-        ThemeMode::Dark => DRAGON_VARS,
-        ThemeMode::Light => LOTUS_VARS,
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/home/ineron"));
+    let vars_path = home.join(".config/inerium/theme-vars.css");
+    let vars = if let Ok(s) = std::fs::read_to_string(&vars_path) {
+        if !s.trim().is_empty() {
+            s
+        } else {
+            match mode {
+                ThemeMode::Dark => DRAGON_VARS.to_string(),
+                ThemeMode::Light => LOTUS_VARS.to_string(),
+            }
+        }
+    } else {
+        match mode {
+            ThemeMode::Dark => DRAGON_VARS.to_string(),
+            ThemeMode::Light => LOTUS_VARS.to_string(),
+        }
     };
     format!("{}\n{}", vars, POPUP_CSS_RULES)
 }

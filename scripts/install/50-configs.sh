@@ -50,8 +50,13 @@ deploy_desktop_configs() {
         link_item "$func" "$HOME/.config/fish/functions/$(basename "$func")"
     done
 
-    # Qt5/Qt6, KDE & SwayOSD
+    # Themes & Qt5/Qt6, KDE & SwayOSD
     run "mkdir -p '$HOME/.local/share/color-schemes'"
+    run "mkdir -p '$HOME/.config/inerium/themes'"
+    for t in "$REPO_DIR"/themes/*.toml; do
+        [[ -f "$t" ]] || continue
+        link_item "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
+    done
     link_item "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
     link_item "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
     link_item "$REPO_DIR/config/kdeglobals" "$HOME/.config/kdeglobals"
@@ -62,7 +67,9 @@ deploy_desktop_configs() {
     render_template "$REPO_DIR/config/qt5ct/qt5ct.conf.template" "$HOME/.config/qt5ct/qt5ct.conf"
     render_template "$REPO_DIR/config/qt6ct/qt6ct.conf.template" "$HOME/.config/qt6ct/qt6ct.conf"
     render_template "$REPO_DIR/config/swayosd/config.toml.template" "$HOME/.config/swayosd/config.toml"
-    if command -v plasma-apply-colorscheme >/dev/null 2>&1; then
+    if command -v inerium-theme >/dev/null 2>&1; then
+        inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
+    elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
         plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
     fi
 

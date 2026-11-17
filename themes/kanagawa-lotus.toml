@@ -1,0 +1,53 @@
+[theme]
+id = "kanagawa-lotus"
+name = "Kanagawa Lotus"
+author = "rebelot"
+upstream = "https://github.com/rebelot/kanagawa.nvim"
+variant = "light"
+license = "MIT"
+description = "Light Kanagawa variant inspired by delicate lotus flowers on aged paper"
+
+[palette]
+bg_canvas         = "rgba(242, 236, 188, 0.98)"
+bg_surface        = "#e5dfc5"
+bg_surface_alt    = "#ded7bc"
+bg_surface_hover  = "#ded7bc"
+bg_surface_active = "#d5cdb0"
+
+border_subtle     = "rgba(84, 84, 100, 0.14)"
+border_active     = "rgba(84, 84, 100, 0.26)"
+
+text_primary      = "#545464"
+text_heading      = "#43436c"
+text_muted        = "#8a8980"
+text_subtle       = "#716e61"
+text_inverted     = "#f2ecbc"
+
+accent_green      = "#6f894e"
+accent_green_bg   = "rgba(111, 137, 78, 0.18)"
+accent_green_border = "rgba(111, 137, 78, 0.40)"
+
+accent_blue       = "#4d699b"
+accent_blue_bg    = "rgba(77, 105, 155, 0.18)"
+accent_blue_border = "rgba(77, 105, 155, 0.40)"
+
+accent_amber      = "#cc6d00"
+accent_amber_bg   = "rgba(204, 109, 0, 0.18)"
+accent_amber_border = "rgba(204, 109, 0, 0.40)"
+
+accent_red        = "#c84053"
+accent_red_bg     = "rgba(200, 64, 83, 0.18)"
+accent_red_border = "rgba(200, 64, 83, 0.40)"
+
+accent_aqua       = "#597b75"
+accent_aqua_bg    = "rgba(89, 123, 117, 0.18)"
+accent_aqua_border = "rgba(89, 123, 117, 0.40)"
+
+accent_purple     = "#8a7ea8"
+accent_purple_bg  = "rgba(138, 126, 168, 0.18)"
+accent_purple_border = "rgba(138, 126, 168, 0.40)"
+
+shadow            = "rgba(84, 84, 100, 0.18)"
+modal_backdrop    = "rgba(84, 84, 100, 0.35)"
+slider_trough     = "rgba(84, 84, 100, 0.15)"
+slider_thumb      = "#43436c"

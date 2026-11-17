@@ -36,6 +36,27 @@ fn get_wifi_sub(wifi_on: bool) -> String {
     }
 }
 
+fn get_theme_info() -> (bool, String, String) {
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("/home/ineron"));
+    let cur_json = home.join(".config/inerium/current.json");
+    if let Ok(content) = std::fs::read_to_string(&cur_json)
+        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
+    {
+        let variant = val.get("variant").and_then(|v| v.as_str()).unwrap_or("dark");
+        let name = val.get("name").and_then(|v| v.as_str()).unwrap_or("Kanagawa Dragon");
+        let author = val.get("author").and_then(|v| v.as_str()).unwrap_or("rebelot");
+        return (variant == "dark", name.to_string(), author.to_string());
+    }
+    let is_dark = crate::theme::detect_theme() == crate::theme::ThemeMode::Dark;
+    if is_dark {
+        (true, "Kanagawa Dragon".to_string(), "rebelot".to_string())
+    } else {
+        (false, "Kanagawa Lotus".to_string(), "rebelot".to_string())
+    }
+}
+
 fn compute_fan_string(is_cb: bool) -> String {
     let (cpu_rpm, gpu_rpm, cpu_pct, gpu_pct) = hw::get_fan_telemetry();
     let c_pct = cpu_pct.unwrap_or(0);
@@ -105,6 +126,8 @@ pub struct ControlCenterModel {
     pub is_mic_muted: bool,
     pub is_idle_active: bool,
     pub is_dark_theme: bool,
+    pub theme_name: String,
+    pub theme_author: String,
 
     // Sliders
     pub volume: u32,
@@ -619,6 +642,14 @@ impl SimpleComponent for ControlCenterModel {
                                 gtk4::Button {
                                     add_css_class: "cc-tile-main",
                                     set_hexpand: true,
+                                    #[watch]
+                                    set_tooltip_text: Some(&format!(
+                                        "{}: {} ({}) — {}",
+                                        tr("Theme", "Тема"),
+                                        model.theme_name,
+                                        model.theme_author,
+                                        tr("Click to toggle", "Нажмите для переключения")
+                                    )),
                                     connect_clicked => ControlCenterMsg::ToggleTheme,
 
                                     gtk4::Box {
@@ -649,11 +680,7 @@ impl SimpleComponent for ControlCenterModel {
                                                 set_ellipsize: gtk4::pango::EllipsizeMode::End,
                                                 set_max_width_chars: 14,
                                                 #[watch]
-                                                set_label: if model.is_dark_theme {
-                                                    "Dragon"
-                                                } else {
-                                                    "Lotus"
-                                                },
+                                                set_label: &model.theme_name,
                                             },
                                         },
                                     },
@@ -1079,6 +1106,7 @@ impl SimpleComponent for ControlCenterModel {
         let is_dnd = hw::is_dnd_active();
         let is_mic_muted = hw::is_mic_muted();
         let is_idle_active = hw::is_hypridle_active();
+        let (is_dark_theme, theme_name, theme_author) = get_theme_info();
 
         let volume = hw::get_volume();
         let volume_muted = hw::is_volume_muted();
@@ -1142,7 +1170,9 @@ impl SimpleComponent for ControlCenterModel {
             is_dnd,
             is_mic_muted,
             is_idle_active,
-            is_dark_theme: crate::theme::detect_theme() == crate::theme::ThemeMode::Dark,
+            is_dark_theme,
+            theme_name,
+            theme_author,
 
             volume,
             volume_muted,
@@ -1258,10 +1288,11 @@ impl SimpleComponent for ControlCenterModel {
                 hw::toggle_hypridle(self.is_idle_active);
             }
             ControlCenterMsg::ToggleTheme => {
-                self.is_dark_theme = !self.is_dark_theme;
-                thread::spawn(|| {
-                    let _ = Command::new("inerium-theme").arg("toggle").status();
-                });
+                let _ = Command::new("inerium-theme").arg("toggle").status();
+                let (is_dark, name, author) = get_theme_info();
+                self.is_dark_theme = is_dark;
+                self.theme_name = name;
+                self.theme_author = author;
             }
             ControlCenterMsg::LockScreen => {
                 (self.close_cb)();

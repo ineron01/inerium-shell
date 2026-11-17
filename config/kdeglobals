@@ -1,39 +1,11 @@
-[General]
-ColorScheme=Inerium-Dragon
-Name=Inerium Dragon
-TerminalApplication=kitty
-
-[Icons]
-Theme=Papirus-Dark
-
-[KDE]
-contrast=4
-widgetStyle=Fusion
-
-[KFileDialog Settings]
-Allow Expansion=false
-Automatically select filename extension=true
-Breadcrumb Navigation=true
-Decoration position=2
-Show Full Path=false
-Show Inline Previews=true
-Show Preview=false
-Show Speedbar=true
-Show hidden files=false
-Sort by=Name
-Sort directories first=true
-Sort hidden files last=false
-Sort reversed=false
-Speedbar Width=301
-View Style=DetailTree
-
-
 [ColorEffects:Disabled]
+ChangeSelectionColor=
 Color=56,56,56
 ColorAmount=0
 ColorEffect=0
 ContrastAmount=0.65
 ContrastEffect=1
+Enable=
 IntensityAmount=0.1
 IntensityEffect=2
 
@@ -49,124 +21,121 @@ IntensityAmount=0
 IntensityEffect=0
 
 [Colors:Button]
-BackgroundAlternate=31,28,28
+BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
 DecorationFocus=135,169,135
 DecorationHover=135,169,135
 ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
+ForegroundNeutral=196,178,138
 ForegroundNormal=197,201,197
 ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
+ForegroundVisited=137,146,167
 
 [Colors:Complementary]
-BackgroundAlternate=31,28,28
+BackgroundAlternate=45,42,42
 BackgroundNormal=24,22,22
 DecorationFocus=135,169,135
 DecorationHover=135,169,135
 ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
+ForegroundNeutral=196,178,138
 ForegroundNormal=197,201,197
 ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
+ForegroundVisited=137,146,167
 
 [Colors:Header]
-BackgroundAlternate=31,28,28
-BackgroundNormal=31,28,28
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
-ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
-ForegroundNormal=197,201,197
-ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
-
-[Colors:Header][Inactive]
-BackgroundAlternate=31,28,28
-BackgroundNormal=24,22,22
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
-ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
-ForegroundNormal=197,201,197
-ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
-
-[Colors:Selection]
-BackgroundAlternate=31,28,28
-BackgroundNormal=135,169,135
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
-ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
-ForegroundNormal=24,22,22
-ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
-
-[Colors:Tooltip]
-BackgroundAlternate=31,28,28
+BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
 DecorationFocus=135,169,135
 DecorationHover=135,169,135
 ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
+ForegroundNeutral=196,178,138
 ForegroundNormal=197,201,197
 ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
+ForegroundVisited=137,146,167
+
+[Colors:Selection]
+BackgroundAlternate=45,42,42
+BackgroundNormal=45,42,42
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
+ForegroundNegative=196,116,110
+ForegroundNeutral=196,178,138
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=137,146,167
+
+[Colors:Tooltip]
+BackgroundAlternate=45,42,42
+BackgroundNormal=34,31,31
+DecorationFocus=135,169,135
+DecorationHover=135,169,135
+ForegroundActive=135,169,135
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
+ForegroundNegative=196,116,110
+ForegroundNeutral=196,178,138
+ForegroundNormal=197,201,197
+ForegroundPositive=135,169,135
+ForegroundVisited=137,146,167
 
 [Colors:View]
-BackgroundAlternate=31,28,28
+BackgroundAlternate=34,31,31
 BackgroundNormal=24,22,22
 DecorationFocus=135,169,135
 DecorationHover=135,169,135
 ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
+ForegroundNeutral=196,178,138
 ForegroundNormal=197,201,197
 ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
+ForegroundVisited=137,146,167
 
 [Colors:Window]
-BackgroundAlternate=31,28,28
-BackgroundNormal=24,22,22
+BackgroundAlternate=45,42,42
+BackgroundNormal=34,31,31
 DecorationFocus=135,169,135
 DecorationHover=135,169,135
 ForegroundActive=135,169,135
-ForegroundInactive=114,113,105
-ForegroundLink=127,180,202
+ForegroundInactive=115,124,115
+ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
-ForegroundNeutral=220,165,97
+ForegroundNeutral=196,178,138
 ForegroundNormal=197,201,197
 ForegroundPositive=135,169,135
-ForegroundVisited=147,138,169
+ForegroundVisited=137,146,167
+
+[General]
+ColorScheme=Inerium-kanagawa-dragon
+ColorSchemeHash=e89f001b8554da715ab789ec93d9bba5f273af83
+Name=Kanagawa Dragon
+TerminalApplication=kitty
+
+[Icons]
+Theme=Papirus-Dark
 
 [KDE]
-contrast=4
+contrast=7
+frameContrast=0.2
+widgetStyle=Fusion
 
 [WM]
-activeBackground=39,44,49
-activeBlend=252,252,252
-activeForeground=252,252,252
-inactiveBackground=32,36,40
-inactiveBlend=161,169,177
-inactiveForeground=161,169,177
+activeBackground=34,31,31
+activeBlend=34,31,31
+activeForeground=197,201,197
+inactiveBackground=34,31,31
+inactiveBlend=34,31,31
+inactiveForeground=197,201,197
