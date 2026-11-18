@@ -37,7 +37,7 @@ inerium-shell/
 ├── local/                   # User executables (~/.local/bin/) and Dolphin KIO servicemenus
 ├── scripts/install/         # Modular installation phases (00-helpers through 70-summary)
 ├── system/                  # System-wide udev rules, greetd configs, and systemd units
-├── themes/                  # Inerium Dragon, Lotus, and custom desktop color palettes
+├── themes/                  # Base palettes (Kanagawa Dragon, Inerium Light) & themes/extra/ pool
 ├── bootstrap.sh             # One-command TTY bootstrap installer
 └── install.sh               # Universal idempotent orchestrator (--bin, --from-source)
 ```
@@ -82,6 +82,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 > **Target Paths & Overrides:**
 > - Standard prebuilt bootstrap installs to `$XDG_DATA_HOME/inerium-shell` (default: `~/.local/share/inerium-shell`, hidden to keep `$HOME` clean).
 > - Source compilation installs to `~/inerium-shell` (visible for easy access to source code).
+> - Configuration files: Deployed as real files into `$XDG_CONFIG_HOME` (`~/.config/{hypr,waybar,kitty,rofi,mako,uwsm,gtk-3.0,gtk-4.0}`) and tracked via manifest (`~/.local/state/inerium/install-manifest`), eliminating fragile directory symlinks. User customizations are preserved on upgrade; pass `--update-configs` to apply updates with automatic `.bak.<timestamp>` backups.
+> - Themes & Palettes: Shipped base themes reside in `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`); extra themes pool in `~/.local/share/inerium-shell/themes/extra/`.
+> - Binaries: Installed to `~/.local/bin/` (and `/usr/local/bin/inerium-greeter`).
 > - You can override the clone path anytime with `INERIUM_SHELL_DIR=/custom/path`.
 
 ### 4. Local Run from Cloned Repo
@@ -121,6 +124,9 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--lang [en|ru]`: Set installer and system language preference.
 - `--workspaces N`: Workspaces per monitor (1-9, default: 3).
 - `--fetch-model`: Download `silueta.onnx` background removal AI model (~43 MB) if missing.
+- `--update-configs`: Update configuration files while preserving modified user files as `.bak.<timestamp>`.
+- `--check-abi`: Validate runtime dynamic library dependencies (`ldd`) for all installed binaries.
+- `--prune`: Prune obsolete files against previous install manifest.
 - `--dry-run`: Print planned actions without modifying the system.
 - `--non-interactive`, `-y`: Run unattended without interactive TUI prompts.
 - `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium-shell` (leaving any custom developer paths untouched).
@@ -213,7 +219,18 @@ slider_thumb      = "#e6e2cc"
 temperature = 6500 # Screen temperature in Kelvins (6500 for neutral daylight, 5500 for warm paper)
 ```
 
-Additional popular palettes (`catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `nord`, `dracula`, `kanagawa-lotus`, `kanagawa-wave`) reside in `themes/extra/`. You can select any of them in `inerium-setup` or install via `inerium-theme install <id>`, which copies the theme into `~/.config/inerium/themes/` permanently. A template for crafting your own theme is available at `~/.config/inerium/themes/template.toml.example`.
+### Extra Themes Pool (`themes/extra/`)
+In addition to the two primary base themes, Inerium includes a pool of popular community palettes ready for one-click activation in `inerium-setup` or installation via `inerium-theme install <id>` (which permanently promotes the theme into `~/.config/inerium/themes/`):
+- **Kanagawa Lotus (`kanagawa-lotus`)**: Warm unbleached aged-paper aesthetic (by rebelot) with automatic 5500K soft display temperature.
+- **Kanagawa Wave (`kanagawa-wave`)**: Classic oceanic dark palette (by rebelot).
+- **Tokyo Night (`tokyo-night`)**: Clean neon cyberpunk aesthetic (by folke).
+- **Catppuccin Mocha (`catppuccin-mocha`)**: Soothing dark pastel palette.
+- **Catppuccin Latte (`catppuccin-latte`)**: Warm light pastel palette.
+- **Nord (`nord`)**: Arctic, north-bluish clean palette.
+- **Gruvbox Dark (`gruvbox-dark`)**: Retro groove warm dark palette.
+- **Dracula (`dracula`)**: Iconic gothic dark contrast palette.
+
+A template for crafting your own theme is available at `~/.config/inerium/themes/template.toml.example`.
 
 ### CLI Commands
 - `inerium-theme list` — List active themes (`--all` to list all including extra, `--json` for machine output).

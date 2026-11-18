@@ -8,6 +8,7 @@ GTK4 + VTE-4 onboarding and desktop customization wizard for Inerium Shell.
 
 ## Features
 
-- **Displays & Layout:** Graphical monitor resolution, refresh rate, and positioning adjustments.
-- **Visual Theming:** Wallpaper selector and dynamic Inerium Dragon theme controls.
+- **Displays & Layout:** Graphical monitor resolution, refresh rate, and positioning adjustments with direct «📝 Open config» editor button for `monitors.lua`.
+- **Keybindings Quick-Access:** Direct «📝 Keybinds» editor shortcut for `keybinds.lua`.
+- **Visual Theming:** Wallpaper selector and dynamic Theme Gallery with FlowBox preview cards for base themes and the `themes/extra/` pool (promoting extra palettes on selection).
 - **Embedded Sign-in Terminals:** Integrates account sign-in steps (GitHub CLI, Google Drive rclone) directly inside embedded GTK4 terminal widgets (`vte4`) without spawning loose terminal windows.

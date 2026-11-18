@@ -37,7 +37,7 @@ inerium-shell/
 ├── local/                   # Пользовательские скрипты (~/.local/bin/) и меню Dolphin KIO
 ├── scripts/install/         # Модульные стадии установки (00-helpers .. 70-summary)
 ├── system/                  # Системные udev-правила, greetd и юниты systemd
-├── themes/                  # Цветовые палитры рабочего стола Inerium Dragon, Lotus и др.
+├── themes/                  # Базовые цветовые палитры (Kanagawa Dragon, Inerium Light) и пул themes/extra/
 ├── bootstrap.sh             # Однострочный TTY-бутстраппер
 └── install.sh               # Универсальный оркестратор установки (--bin, --from-source)
 ```
@@ -79,10 +79,13 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)" -- --from-source
 ```
 
-> **Расположение репозитория и переопределение путей:**
+> **Расположение репозитория и пути установки:**
 > - Стандартная установка бинарников выполняется в `$XDG_DATA_HOME/inerium-shell` (по умолчанию `~/.local/share/inerium-shell`, скрытая папка — не захламляет `$HOME` и защищена от случайного удаления).
 > - Сборка из исходников размещает репозиторий в `~/inerium-shell` (видимая директория в `$HOME` для удобного просмотра и редактирования кода).
-> - Путь можно переопределить переменной: `INERIUM_SHELL_DIR=/любой/путь`.
+> - Файлы конфигурации: Устанавливаются как реальные файлы прямо в `$XDG_CONFIG_HOME` (`~/.config/{hypr,waybar,kitty,rofi,mako,uwsm,gtk-3.0,gtk-4.0}`) и регистрируются в манифесте (`~/.local/state/inerium/install-manifest`), избавляя систему от хрупких симлинков каталогов. Пользовательские настройки сохраняются при обновлениях; для обновления конфигов используется флаг `--update-configs` с автоматическим созданием бэкапов `.bak.<timestamp>`.
+> - Темы и палитры: Базовые темы размещаются в `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`), а каталог дополнительных тем доступен в `~/.local/share/inerium-shell/themes/extra/`.
+> - Бинарные файлы: Пользовательские утилиты ставятся в `~/.local/bin/`, а экран входа — в `/usr/local/bin/inerium-greeter`.
+> - Путь к репозиторию можно переопределить переменной: `INERIUM_SHELL_DIR=/любой/путь`.
 
 ### 4. Локальный запуск из клонированного репозитория
 
@@ -121,6 +124,9 @@ Inerium Shell включает опциональные расширения, к
 - `--lang [en|ru]`: Выбор языка установщика и базовой локали системы.
 - `--workspaces N`: Число виртуальных рабочих столов на монитор (1-9, по умолчанию: 3).
 - `--fetch-model`: Загрузка ИИ-модели удаления фона `silueta.onnx` (~43 МБ).
+- `--update-configs`: Обновление конфигурационных файлов с сохранением измененных пользователем файлов в бэкапы `.bak.<timestamp>`.
+- `--check-abi`: Проверка корректности зависимостей динамических библиотек (`ldd`) для всех установленных бинарников.
+- `--prune`: Очистка устаревших файлов относительно предыдущего манифеста установки.
 - `--dry-run`: Вывод планируемых действий без модификации системы.
 - `--non-interactive`, `-y`: Автоматическая установка без интерактивных диалогов TUI.
 - `--uninstall`: **Чистое удаление** — Отключает зарегистрированные службы, удаляет все разложенные симлинки, бинарники и шаблоны по манифесту установки (`~/.local/state/inerium/install-manifest`), а также удаляет `~/.local/share/inerium-shell` (не затрагивая рабочие каталоги разработчика).
@@ -213,7 +219,18 @@ slider_thumb      = "#e6e2cc"
 temperature = 6500 # Цветовая температура экрана в Кельвинах (6500 — нейтральный дневной, 5500 — теплая бумага)
 ```
 
-Дополнительные палитры (`catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `nord`, `dracula`, `kanagawa-lotus`, `kanagawa-wave`) находятся в `themes/extra/`. Их можно выбрать в мастере `inerium-setup` или установить через `inerium-theme install <id>`, что перенесёт тему в `~/.config/inerium/themes/` на постоянной основе. Шаблон для создания своей темы доступен в `~/.config/inerium/themes/template.toml.example`.
+### Каталог дополнительных тем (`themes/extra/`)
+Помимо двух основных базовых тем, Inerium содержит коллекцию популярных палитр сообщества, доступных для активации в один клик в мастере `inerium-setup` или через `inerium-theme install <id>` (что навсегда переносит палитру в `~/.config/inerium/themes/`):
+- **Kanagawa Lotus (`kanagawa-lotus`)**: Тёплая палитра состаренной японской бумаги (автор rebelot) с автоматическим переключением дисплея в мягкие 5500K.
+- **Kanagawa Wave (`kanagawa-wave`)**: Классическая тёмная палитра морских глубин (автор rebelot).
+- **Tokyo Night (`tokyo-night`)**: Неоновая тёмная киберпанк-палитра (автор folke).
+- **Catppuccin Mocha (`catppuccin-mocha`)**: Тёмная пастельная палитра.
+- **Catppuccin Latte (`catppuccin-latte`)**: Светлая пастельная палитра.
+- **Nord (`nord`)**: Спокойная арктическая сине-холодная палитра.
+- **Gruvbox Dark (`gruvbox-dark`)**: Тёплая ретро-палитра в земляных тонах.
+- **Dracula (`dracula`)**: Контрастная палитра в фиолетовых тонах.
+
+Шаблон для создания собственной темы доступен в `~/.config/inerium/themes/template.toml.example`.
 
 ### Команды CLI
 - `inerium-theme list` — Показать активные темы (`--all` — показать все включая дополнительные, `--json` — машинный вывод).
