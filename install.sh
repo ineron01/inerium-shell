@@ -25,6 +25,7 @@ BACKUP_STAMP="$(date +%Y%m%d%H%M%S)"
 LOG_FILE="/tmp/inerium-install.log"
 WITH_CAMERA=0
 WITH_MSI_EC=0
+WITH_FAN_REGULATOR=0
 WITH_NOVPN=0
 WITH_CONVERTER=0
 WITH_GDRIVE=0
@@ -94,6 +95,7 @@ while [[ $# -gt 0 ]]; do
         --with-converter)  WITH_CONVERTER=1; shift ;;
         --with-camera)     WITH_CAMERA=1; shift ;;
         --with-msi-ec)     WITH_MSI_EC=1; shift ;;
+        --with-fan-regulator) WITH_FAN_REGULATOR=1; WITH_MSI_EC=1; shift ;;
         --with-novpn)      WITH_NOVPN=1; shift ;;
         --all-addons)      WITH_CONVERTER=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
         --lang)            INSTALL_LANG="${2:-}"; shift 2 ;;

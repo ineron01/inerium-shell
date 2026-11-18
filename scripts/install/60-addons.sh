@@ -4,9 +4,8 @@
 # ============================================================================
 
 install_msi_ec_addon() {
-    log "Setting up MSI Cooling module (msi-ec DKMS & msi-fan-regulator)..."
+    log "Setting up MSI EC kernel module (msi-ec DKMS)..."
     manifest_record_addon "msi-ec"
-    manifest_record_system_unit "msi-fan-regulator.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         local -a headers=()
         local f
@@ -19,31 +18,39 @@ install_msi_ec_addon() {
     local sys_dir="$REPO_DIR/system/msi-cooling"
     if [[ -d "$sys_dir" ]]; then
         install_root_if_changed 644 "$sys_dir/udev/rules.d/99-msi-ec.rules" /etc/udev/rules.d/99-msi-ec.rules
-        install_root_if_changed 644 "$sys_dir/modprobe.d/msi-fan-regulator.conf" /etc/modprobe.d/msi-fan-regulator.conf
-        install_root_if_changed 644 "$sys_dir/modules-load.d/msi-fan-regulator.conf" /etc/modules-load.d/msi-fan-regulator.conf
         install_root_if_changed 644 "$sys_dir/modules-load.d/msi-ec.conf" /etc/modules-load.d/msi-ec.conf
-        if [[ -f "$sys_dir/sudoers.d/inerium-msi.template" ]]; then
-            local sudo_tmp
-            sudo_tmp="$(mktemp)"
-            sed "s/__USER__/$USER/g" "$sys_dir/sudoers.d/inerium-msi.template" > "$sudo_tmp"
-            if visudo -cf "$sudo_tmp" >/dev/null 2>&1; then
-                install_root_if_changed 440 "$sudo_tmp" /etc/sudoers.d/inerium-msi
-            fi
-            rm -f "$sudo_tmp"
-        fi
-        install_root_if_changed 644 "$sys_dir/systemd/system/msi-fan-regulator.service" /etc/systemd/system/msi-fan-regulator.service
     fi
 
-    if [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
-        run_step "Compiling msi-fan-regulator (--features msi-ec)..." \
-            cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator
-        install_root_if_changed 755 "$REPO_DIR/target/release/msi-fan-regulator" /usr/local/bin/msi-fan-regulator
-        sudo udevadm control --reload-rules || true
-        sudo udevadm trigger || true
-        sudo systemctl daemon-reload || true
-        sudo systemctl enable msi-fan-regulator.service || true
-        if systemctl is-active --quiet msi-fan-regulator.service 2>/dev/null; then
-            sudo systemctl restart msi-fan-regulator.service || true
+    if [[ "$WITH_FAN_REGULATOR" -eq 1 ]]; then
+        log "Setting up MSI Fan Regulator daemon (fan curve control)..."
+        manifest_record_addon "fan-regulator"
+        manifest_record_system_unit "msi-fan-regulator.service"
+        if [[ -d "$sys_dir" ]]; then
+            install_root_if_changed 644 "$sys_dir/modprobe.d/msi-fan-regulator.conf" /etc/modprobe.d/msi-fan-regulator.conf
+            install_root_if_changed 644 "$sys_dir/modules-load.d/msi-fan-regulator.conf" /etc/modules-load.d/msi-fan-regulator.conf
+            if [[ -f "$sys_dir/sudoers.d/inerium-msi.template" ]]; then
+                local sudo_tmp
+                sudo_tmp="$(mktemp)"
+                sed "s/__USER__/$USER/g" "$sys_dir/sudoers.d/inerium-msi.template" > "$sudo_tmp"
+                if visudo -cf "$sudo_tmp" >/dev/null 2>&1; then
+                    install_root_if_changed 440 "$sudo_tmp" /etc/sudoers.d/inerium-msi
+                fi
+                rm -f "$sudo_tmp"
+            fi
+            install_root_if_changed 644 "$sys_dir/systemd/system/msi-fan-regulator.service" /etc/systemd/system/msi-fan-regulator.service
+        fi
+
+        if [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+            run_step "Compiling msi-fan-regulator (--features msi-ec)..." \
+                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator
+            install_root_if_changed 755 "$REPO_DIR/target/release/msi-fan-regulator" /usr/local/bin/msi-fan-regulator
+            sudo udevadm control --reload-rules || true
+            sudo udevadm trigger || true
+            sudo systemctl daemon-reload || true
+            sudo systemctl enable msi-fan-regulator.service || true
+            if systemctl is-active --quiet msi-fan-regulator.service 2>/dev/null; then
+                sudo systemctl restart msi-fan-regulator.service || true
+            fi
         fi
     fi
 }
@@ -168,6 +175,8 @@ install_converter_addon() {
 deploy_selected_addons() {
     if [[ "$WITH_GDRIVE" -eq 1 ]]; then
         run_step "Configuring Google Drive addon..." install_gdrive_addon
+    else
+        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive"
     fi
     if [[ "$WITH_CONVERTER" -eq 1 ]]; then
         run_step "Configuring Dolphin Converter addon..." install_converter_addon
@@ -175,12 +184,14 @@ deploy_selected_addons() {
         fetch_silueta_model
     fi
     if [[ "$WITH_MSI_EC" -eq 1 ]]; then
-        run_step "Configuring MSI Cooling addon..." install_msi_ec_addon
+        run_step "Configuring MSI EC / Cooling addon..." install_msi_ec_addon
     fi
     if [[ "$WITH_CAMERA" -eq 1 ]]; then
         run_step "Configuring Inerium Camera addon..." install_camera_addon
     fi
     if [[ "$WITH_NOVPN" -eq 1 ]]; then
         run_step "Configuring noVPN addon..." install_novpn_addon
+    else
+        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn"
     fi
 }

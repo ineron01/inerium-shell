@@ -1,13 +1,23 @@
 -- Universal workspace configuration
 -- Wiki: https://wiki.hypr.land/Configuring/Workspace-Rules/
 
-hl.workspace_rule({ workspace = 1, default = true, persistent = true })
-hl.workspace_rule({ workspace = 2, persistent = true })
-hl.workspace_rule({ workspace = 3, persistent = true })
-hl.workspace_rule({ workspace = 4, persistent = true })
-hl.workspace_rule({ workspace = 5, persistent = true })
-hl.workspace_rule({ workspace = 6, persistent = true })
-hl.workspace_rule({ workspace = 7, persistent = true })
-hl.workspace_rule({ workspace = 8, persistent = true })
-hl.workspace_rule({ workspace = 9, persistent = true })
-hl.workspace_rule({ workspace = 10, persistent = true })
+local count = 3
+local home = os.getenv("HOME") or ""
+local count_file = home .. "/.config/hypr/config/workspaces_count"
+local f = io.open(count_file, "r")
+if f then
+    local content = f:read("*all")
+    f:close()
+    local n = tonumber(content and content:match("%d+"))
+    if n and n >= 1 and n <= 10 then
+        count = n
+    end
+end
+
+for i = 1, count do
+    if i == 1 then
+        hl.workspace_rule({ workspace = 1, default = true, persistent = true })
+    else
+        hl.workspace_rule({ workspace = i, persistent = true })
+    end
+end

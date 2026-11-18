@@ -347,9 +347,10 @@ detect_installed_addons_and_features() {
                     case "$target" in
                         gdrive)    WITH_GDRIVE=1 ;;
                         converter) WITH_CONVERTER=1 ;;
-                        camera)    WITH_CAMERA=1 ;;
-                        msi-ec)    WITH_MSI_EC=1 ;;
-                        novpn)     WITH_NOVPN=1 ;;
+                        camera)        WITH_CAMERA=1 ;;
+                        msi-ec)        WITH_MSI_EC=1 ;;
+                        fan-regulator) WITH_FAN_REGULATOR=1; WITH_MSI_EC=1 ;;
+                        novpn)         WITH_NOVPN=1 ;;
                     esac
                     ;;
                 SYS_FILE)
@@ -365,7 +366,8 @@ detect_installed_addons_and_features() {
     [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && WITH_GDRIVE=1
     [[ -d "$HOME/.local/share/kio/servicemenus" && -f "$HOME/.local/share/kio/servicemenus/10-convert-docs.desktop" ]] && WITH_CONVERTER=1
     [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && WITH_CAMERA=1
-    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && WITH_MSI_EC=1
+    [[ -f "/etc/modules-load.d/msi-ec.conf" || -d "/sys/devices/platform/msi-ec" ]] && WITH_MSI_EC=1
+    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
     if [[ -f "/etc/systemd/system/novpn.service" ]] || command -v novpn >/dev/null 2>&1; then
         WITH_NOVPN=1
     fi

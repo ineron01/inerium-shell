@@ -23,6 +23,7 @@ deploy_user_scripts_and_menus() {
             local step_name
             step_name="$(basename "$step")"
             [[ "$step_name" == "20-gdrive" ]] && continue  # Managed by --with-gdrive
+            [[ "$step_name" == "30-novpn" ]] && continue   # Managed by --with-novpn
             link_item "$step" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/$step_name"
         done
     fi
