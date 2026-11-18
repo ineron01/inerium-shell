@@ -1,0 +1,66 @@
+# Inerium Desktop Theme Template
+# Copy this file to `~/.config/inerium/themes/<your-theme-id>.toml` to create a custom theme.
+# It will instantly appear in the Appearance gallery and `inerium-theme list`.
+
+[theme]
+id = "my-custom-theme"               # Unique identifier (lowercase, hyphens only, e.g. "cyberpunk-2077")
+name = "My Custom Theme"             # Human-readable title shown in menus and center
+author = "Your Name"                 # Author attribution
+upstream = "https://github.com/..."  # Optional upstream link
+variant = "dark"                     # "dark" or "light" (controls GTK/Portal system theme switch)
+license = "MIT"                      # License
+description = "My custom desktop theme"
+
+[palette]
+# Canvas and background layers (RGB or RGBA)
+bg_canvas         = "rgba(24, 22, 22, 0.97)" # Waybar, Rofi, and popups base background
+bg_surface        = "#221f1f"                # Windows, dialogs, cards
+bg_surface_alt    = "#1c1a1a"                # Contrasting panels, sidebars
+bg_surface_hover  = "#2d2a2a"                # Button and list item hover state
+bg_surface_active = "#363434"                # Active/pressed element state
+
+# Borders and outlines
+border_subtle     = "rgba(197, 201, 197, 0.10)" # Subtle window borders and card outlines
+border_active     = "rgba(197, 201, 197, 0.35)" # Active window border, focused elements
+
+# Typography
+text_primary      = "#c5c9c5"                # Default body text
+text_heading      = "#e6e2cc"                # Headings, active window titles
+text_muted        = "#737c73"                # Secondary information, disabled items
+text_subtle       = "#a6a69c"                # Tertiary text, timestamps
+text_inverted     = "#181616"                # Text on bright accent badges
+
+# Accent colors (Used for badges, highlights, graphs and Waybar indicators)
+accent_green      = "#87a987"
+accent_green_bg   = "rgba(135, 169, 135, 0.16)"
+accent_green_border = "rgba(135, 169, 135, 0.35)"
+
+accent_blue       = "#8ba4b0"
+accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
+accent_blue_border = "rgba(139, 164, 176, 0.38)"
+
+accent_amber      = "#c4b28a"
+accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
+accent_amber_border = "rgba(196, 178, 138, 0.38)"
+
+accent_red        = "#c4746e"
+accent_red_bg     = "rgba(196, 116, 110, 0.15)"
+accent_red_border = "rgba(196, 116, 110, 0.38)"
+
+accent_aqua       = "#8ea4a2"
+accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
+accent_aqua_border = "rgba(142, 164, 162, 0.38)"
+
+accent_purple     = "#8a7ea8"
+accent_purple_bg  = "rgba(138, 126, 168, 0.16)"
+accent_purple_border = "rgba(138, 126, 168, 0.38)"
+
+# Desktop UI controls
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(17, 17, 27, 0.60)"
+slider_trough     = "rgba(108, 112, 134, 0.22)"
+slider_thumb      = "#c5c9c5"
+
+[display]
+# Optional display color temperature via hyprsunset (e.g. 5500 for warm paper light, 6500 for standard)
+temperature = 6500

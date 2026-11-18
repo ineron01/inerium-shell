@@ -34,10 +34,10 @@ inerium-shell/
 │   └── inerium-tools/       # Waybar telemetry daemons, IPC bridges & cooling regulator
 ├── docs/                    # Illustrated guides, keybindings, and module runbooks
 ├── first-login.d/           # Onboarding sign-in steps (GitHub CLI, Google Drive rclone)
-├── hardware/                # Patched MSI EC DKMS kernel driver supporting Bravo 15 C7VE
 ├── local/                   # User executables (~/.local/bin/) and Dolphin KIO servicemenus
 ├── scripts/install/         # Modular installation phases (00-helpers through 70-summary)
 ├── system/                  # System-wide udev rules, greetd configs, and systemd units
+├── themes/                  # Inerium Dragon, Lotus, and custom desktop color palettes
 ├── bootstrap.sh             # One-command TTY bootstrap installer
 └── install.sh               # Universal idempotent orchestrator (--bin, --from-source)
 ```
@@ -102,18 +102,28 @@ cd ~/inerium-shell
 
 ---
 
-## Optional System Add-ons
+## Optional System Add-ons & Installer Options
 
 Inerium Shell provides optional system extensions that can be selected in the installer TUI or passed via CLI flags:
 
+### Add-on Flags
 - `--with-gdrive`: **Google Drive Integration** — Background `rclone` user service mount for cloud storage access in Dolphin.
 - `--with-converter`: **Dolphin Converter** — Context menu audio, video, document, and PDF converter with optional AI background removal (`silueta.onnx`).
 - `--with-camera`: **Inerium Camera** — Turns an Android phone into a high-definition webcam (`/dev/video0`) with GTK4 GUI, dynamic switching (back/front/laptop), and portrait/landscape support.
 - `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
 - `--all-addons`: Installs all optional add-ons together.
-- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium-shell` (leaving any custom paths untouched).
-- `--prune`: **Prune Obsolete Files** — Scans and removes obsolete files from previous versions against the installation manifest.
+
+### Configuration & Lifecycle Flags
+- `--bin`: Install prebuilt binaries from GitHub Releases (default).
+- `--from-source`: Compile Rust workspace locally via Cargo.
+- `--with-greeter`: Install and configure `greetd` + `inerium-greeter` display manager.
+- `--lang [en|ru]`: Set installer and system language preference.
+- `--workspaces N`: Workspaces per monitor (1-9, default: 3).
+- `--fetch-model`: Download `silueta.onnx` background removal AI model (~43 MB) if missing.
+- `--dry-run`: Print planned actions without modifying the system.
+- `--non-interactive`, `-y`: Run unattended without interactive TUI prompts.
+- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium-shell` (leaving any custom developer paths untouched).
 
 ---
 
@@ -203,11 +213,12 @@ slider_thumb      = "#e6e2cc"
 temperature = 6500 # Screen temperature in Kelvins (6500 for neutral daylight, 5500 for warm paper)
 ```
 
-Additional reference examples (such as `kanagawa-lotus.toml` for warm Japanese paper or `kanagawa-wave.toml`) can be found in `themes/extra/`.
+Additional popular palettes (`catppuccin-mocha`, `catppuccin-latte`, `tokyo-night`, `gruvbox-dark`, `nord`, `dracula`, `kanagawa-lotus`, `kanagawa-wave`) reside in `themes/extra/`. You can select any of them in `inerium-setup` or install via `inerium-theme install <id>`, which copies the theme into `~/.config/inerium/themes/` permanently. A template for crafting your own theme is available at `~/.config/inerium/themes/template.toml.example`.
 
 ### CLI Commands
-- `inerium-theme list` — List all available themes (built-in and user-installed).
-- `inerium-theme set <id>` — Apply a theme by ID (e.g. `inerium-theme set inerium-light`).
+- `inerium-theme list` — List active themes (`--all` to list all including extra, `--json` for machine output).
+- `inerium-theme set <id>` — Apply a theme by ID.
+- `inerium-theme install <id>` — Move an extra theme into permanent user themes (`~/.config/inerium/themes/`) and apply it.
 - `inerium-theme toggle` — Toggle between the primary dark and light themes.
 - `inerium-theme status` — Output active theme metadata in JSON.
 

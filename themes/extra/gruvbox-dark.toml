@@ -1,0 +1,56 @@
+[theme]
+id = "gruvbox-dark"
+name = "Gruvbox Dark"
+author = "morhetz"
+upstream = "https://github.com/morhetz/gruvbox"
+variant = "dark"
+license = "MIT"
+description = "Retro groove color scheme with warm autumnal contrast"
+
+[palette]
+bg_canvas         = "rgba(40, 40, 40, 0.97)"
+bg_surface        = "#32302f"
+bg_surface_alt    = "#1d2021"
+bg_surface_hover  = "#3c3836"
+bg_surface_active = "#504945"
+
+border_subtle     = "rgba(235, 219, 178, 0.12)"
+border_active     = "rgba(250, 189, 47, 0.35)"
+
+text_primary      = "#ebdbb2"
+text_heading      = "#fbf1c7"
+text_muted        = "#928374"
+text_subtle       = "#d5c4a1"
+text_inverted     = "#282828"
+
+accent_green      = "#b8bb26"
+accent_green_bg   = "rgba(184, 187, 38, 0.16)"
+accent_green_border = "rgba(184, 187, 38, 0.38)"
+
+accent_blue       = "#83a598"
+accent_blue_bg    = "rgba(131, 165, 152, 0.16)"
+accent_blue_border = "rgba(131, 165, 152, 0.38)"
+
+accent_amber      = "#fabd2f"
+accent_amber_bg   = "rgba(250, 189, 47, 0.16)"
+accent_amber_border = "rgba(250, 189, 47, 0.38)"
+
+accent_red        = "#fb4934"
+accent_red_bg     = "rgba(251, 73, 52, 0.16)"
+accent_red_border = "rgba(251, 73, 52, 0.38)"
+
+accent_aqua       = "#8ec07c"
+accent_aqua_bg    = "rgba(142, 192, 124, 0.16)"
+accent_aqua_border = "rgba(142, 192, 124, 0.38)"
+
+accent_purple     = "#d3869b"
+accent_purple_bg  = "rgba(211, 134, 155, 0.16)"
+accent_purple_border = "rgba(211, 134, 155, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(29, 32, 33, 0.60)"
+slider_trough     = "rgba(146, 131, 116, 0.22)"
+slider_thumb      = "#ebdbb2"
+
+[display]
+temperature = 6500

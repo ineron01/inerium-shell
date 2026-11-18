@@ -98,9 +98,63 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     theme_head.append(&open_theme_btn);
     theme_card.append(&theme_head);
 
-    let themes_row = Box::new(Orientation::Horizontal, 8);
-    populate_setup_themes(&themes_row, &status_cb, lang);
-    theme_card.append(&themes_row);
+    let selected_theme = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+    let selected_theme_name = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+
+    let themes_flow = gtk4::FlowBox::new();
+    themes_flow.set_valign(gtk4::Align::Start);
+    themes_flow.set_max_children_per_line(5);
+    themes_flow.set_min_children_per_line(2);
+    themes_flow.set_selection_mode(gtk4::SelectionMode::None);
+    themes_flow.set_row_spacing(8);
+    themes_flow.set_column_spacing(8);
+
+    populate_setup_themes(&themes_flow, &selected_theme, &selected_theme_name, &status_cb, lang);
+    theme_card.append(&themes_flow);
+
+    let theme_actions = Box::new(Orientation::Horizontal, 8);
+    let theme_spacer = Box::new(Orientation::Horizontal, 0);
+    theme_spacer.set_hexpand(true);
+    theme_actions.append(&theme_spacer);
+
+    let apply_theme_btn = Button::with_label(tr(lang, "✓ Save & Apply Theme", "✓ Применить выбранную тему"));
+    apply_theme_btn.add_css_class("btn-primary");
+    {
+        let selected_theme_c = selected_theme.clone();
+        let selected_name_c = selected_theme_name.clone();
+        let status_cb_c = status_cb.clone();
+        apply_theme_btn.connect_clicked(move |_| {
+            let target_id = selected_theme_c.borrow().clone();
+            let target_name = selected_name_c.borrow().clone();
+            if target_id.is_empty() {
+                return;
+            }
+            status_cb_c.warn(tr(lang, "Saving theme on a permanent basis...", "Сохранение и применение темы на постоянной основе..."));
+            let status_cb_local = status_cb_c.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let tid = target_id.clone();
+                let res = gio::spawn_blocking(move || {
+                    std::process::Command::new("inerium-theme")
+                        .arg("install")
+                        .arg(&tid)
+                        .status()
+                }).await;
+                if let Ok(Ok(s)) = res && s.success() {
+                    status_cb_local.ok(&match lang {
+                        Lang::En => format!("Theme '{target_name}' saved to ~/.config/inerium/themes and applied"),
+                        Lang::Ru => format!("Тема '{target_name}' сохранена в постоянные и успешно применена"),
+                    });
+                } else {
+                    status_cb_local.error(&match lang {
+                        Lang::En => format!("Failed to apply theme '{target_name}'"),
+                        Lang::Ru => format!("Не удалось применить тему '{target_name}'"),
+                    });
+                }
+            });
+        });
+    }
+    theme_actions.append(&apply_theme_btn);
+    theme_card.append(&theme_actions);
     content.append(&theme_card);
 
     // 1. Quick Wallpaper Picker Card
@@ -231,6 +285,10 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     let ovr_card = Box::new(Orientation::Vertical, 10);
     ovr_card.add_css_class("setup-card");
 
+    let ovr_head = Box::new(Orientation::Horizontal, 8);
+    let ovr_title_box = Box::new(Orientation::Vertical, 2);
+    ovr_title_box.set_hexpand(true);
+
     let ovr_title = Label::new(Some(tr(
         lang,
         "Input, keyboard & power settings",
@@ -238,7 +296,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     )));
     ovr_title.add_css_class("card-title");
     ovr_title.set_xalign(0.0);
-    ovr_card.append(&ovr_title);
+    ovr_title_box.append(&ovr_title);
 
     let ovr_sub = Label::new(Some(tr(
         lang,
@@ -247,7 +305,29 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     )));
     ovr_sub.add_css_class("card-muted");
     ovr_sub.set_xalign(0.0);
-    ovr_card.append(&ovr_sub);
+    ovr_title_box.append(&ovr_sub);
+    ovr_head.append(&ovr_title_box);
+
+    let open_binds_btn = Button::builder()
+        .label(tr(lang, "📝 Keybinds", "📝 Хоткеи"))
+        .build();
+    open_binds_btn.add_css_class("flat-btn");
+    open_binds_btn.set_tooltip_text(Some(tr(
+        lang,
+        "Open ~/.config/hypr/config/keybinds.lua in default editor",
+        "Открыть ~/.config/hypr/config/keybinds.lua в редакторе",
+    )));
+    {
+        let paths_clone = paths.clone();
+        open_binds_btn.connect_clicked(move |_| {
+            let p = paths_clone.keybinds_lua_path();
+            if p.exists() {
+                let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+            }
+        });
+    }
+    ovr_head.append(&open_binds_btn);
+    ovr_card.append(&ovr_head);
 
     let live_inputs = query_live_inputs();
     let saved_inputs = std::fs::read_to_string(paths.input_lua_path())
@@ -603,6 +683,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
         let sw_dwt = sw_dwt.clone();
         let idle_dd = idle_dd.clone();
         let sw_bat_limit = sw_bat_limit.clone();
+        let selected_theme_save = selected_theme.clone();
 
         ovr_save_btn.connect_clicked(move |_| {
             let layout = kb_entry.text().trim().to_string();
@@ -657,6 +738,18 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
                 let _ = set_battery_charge_threshold(target_th);
             }
 
+            let theme_id = selected_theme_save.borrow().clone();
+            if !theme_id.is_empty() {
+                glib::MainContext::default().spawn_local(async move {
+                    let _ = gio::spawn_blocking(move || {
+                        std::process::Command::new("inerium-theme")
+                            .arg("install")
+                            .arg(&theme_id)
+                            .status()
+                    }).await;
+                });
+            }
+
             if let Err(e) = save_inputs_and_reload(&paths, &input_cfg) {
                 status_cb.error(&e);
                 return;
@@ -670,8 +763,8 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
             }
             status_cb.ok(tr(
                 lang,
-                "Keyboard, mouse, touchpad & hypridle overrides applied",
-                "Настройки клавиатуры, мыши, тачпада и hypridle применены",
+                "Settings, theme & hardware overrides applied",
+                "Настройки, тема и параметры оборудования сохранены",
             ));
         });
     }
@@ -848,13 +941,19 @@ fn truncate_label(s: &str, max_chars: usize) -> String {
 }
 
 
-fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
-    while let Some(child) = row.first_child() {
-        row.remove(&child);
+fn populate_setup_themes(
+    flow: &gtk4::FlowBox,
+    selected_id: &std::rc::Rc<std::cell::RefCell<String>>,
+    selected_name: &std::rc::Rc<std::cell::RefCell<String>>,
+    status_cb: &StatusCallback,
+    lang: Lang,
+) {
+    while let Some(child) = flow.first_child() {
+        flow.remove(&child);
     }
 
     let mut themes = Vec::new();
-    if let Ok(out) = std::process::Command::new("inerium-theme").arg("list").arg("--json").output()
+    if let Ok(out) = std::process::Command::new("inerium-theme").arg("list").arg("--all").arg("--json").output()
         && let Ok(val) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout)
     {
         for v in val {
@@ -862,16 +961,21 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
             let name = v.get("name").and_then(|x| x.as_str()).unwrap_or_default().to_string();
             let variant = v.get("variant").and_then(|x| x.as_str()).unwrap_or_default().to_string();
             let is_active = v.get("is_active").and_then(|x| x.as_bool()).unwrap_or(false);
-            themes.push((id, name, variant, is_active));
+            let is_extra = v.get("is_extra").and_then(|x| x.as_bool()).unwrap_or(false);
+            if is_active {
+                selected_id.replace(id.clone());
+                selected_name.replace(name.clone());
+            }
+            themes.push((id, name, variant, is_active, is_extra));
         }
     }
 
     let buttons: std::rc::Rc<std::cell::RefCell<Vec<(String, Button)>>> = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
 
-    for (id, name, variant, is_active) in themes {
+    for (id, name, variant, is_active, is_extra) in themes {
         let btn = Button::new();
         btn.add_css_class("wall-card");
-        btn.set_hexpand(true);
+        btn.set_size_request(140, -1);
         if is_active {
             btn.add_css_class("active");
         }
@@ -879,16 +983,25 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
         let inner = Box::new(Orientation::Vertical, 4);
         inner.set_margin_top(8);
         inner.set_margin_bottom(8);
-        inner.set_margin_start(10);
-        inner.set_margin_end(10);
+        inner.set_margin_start(8);
+        inner.set_margin_end(8);
 
+        let top_row = Box::new(Orientation::Horizontal, 4);
         let ico_str = if variant == "light" { "󰔏" } else { "󰔎" };
         let ico = Label::new(Some(ico_str));
         ico.add_css_class("card-title");
-        inner.append(&ico);
+        top_row.append(&ico);
+
+        if is_extra {
+            let extra_badge = Label::new(Some("[extra]"));
+            extra_badge.add_css_class("card-meta");
+            top_row.append(&extra_badge);
+        }
+        inner.append(&top_row);
 
         let title = Label::new(Some(&name));
         title.add_css_class("card-title");
+        title.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         inner.append(&title);
 
         let badge = Label::new(Some(&format!("[{variant}]")));
@@ -901,6 +1014,8 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
         let name_click = name.clone();
         let status_cb_click = status_cb.clone();
         let btns_ref = buttons.clone();
+        let sel_id_c = selected_id.clone();
+        let sel_name_c = selected_name.clone();
 
         btn.connect_clicked(move |_| {
             for (bid, b) in btns_ref.borrow().iter() {
@@ -910,18 +1025,16 @@ fn populate_setup_themes(row: &Box, status_cb: &StatusCallback, lang: Lang) {
                     b.remove_css_class("active");
                 }
             }
-            status_cb_click.ok(&match lang {
-                Lang::En => format!("Theme '{name_click}' applied"),
-                Lang::Ru => format!("Тема '{name_click}' успешно применена"),
-            });
+            sel_id_c.replace(id_click.clone());
+            sel_name_c.replace(name_click.clone());
 
-            let id_cmd = id_click.clone();
-            std::thread::spawn(move || {
-                let _ = std::process::Command::new("inerium-theme").arg("set").arg(&id_cmd).status();
+            status_cb_click.warn(&match lang {
+                Lang::En => format!("Theme '{name_click}' selected. Click 'Save & Apply Theme' to confirm."),
+                Lang::Ru => format!("Выбрана тема '{name_click}'. Нажмите «Применить выбранную тему» для сохранения."),
             });
         });
 
         buttons.borrow_mut().push((id, btn.clone()));
-        row.append(&btn);
+        flow.append(&btn);
     }
 }

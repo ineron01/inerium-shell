@@ -18,6 +18,7 @@ High-performance native Rust micro-utilities and telemetry data providers for Wa
 - `inerium-theme`: Single Source of Truth theme compiler & switcher with author attribution, GTK Libadwaita variables, hyprsunset display temperature harmonization, and user hooks (`~/.config/inerium/hooks.d/`).
 - `hypr-ipc-bridge`: Hyprland 0.56+ Lua workspace compatibility bridge.
 - `inerium-osd-watcher`: SwayOSD layout & inotify webcam watcher.
+- `inerium-wallpaper`: Dynamic wallpaper setter for hyprpaper (`<IMAGE_PATH> [MONITOR|all] [--no-notify]`).
 
 ## Build & Install
 ```bash

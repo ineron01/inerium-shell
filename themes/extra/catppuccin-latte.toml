@@ -1,0 +1,56 @@
+[theme]
+id = "catppuccin-latte"
+name = "Catppuccin Latte"
+author = "Catppuccin Org"
+upstream = "https://github.com/catppuccin/catppuccin"
+variant = "light"
+license = "MIT"
+description = "Crisp light pastel theme with soothing coffee and milk tones"
+
+[palette]
+bg_canvas         = "rgba(239, 241, 245, 0.98)"
+bg_surface        = "#e6e9ef"
+bg_surface_alt    = "#dce0e8"
+bg_surface_hover  = "#dfe2ea"
+bg_surface_active = "#ccd0da"
+
+border_subtle     = "rgba(76, 79, 105, 0.12)"
+border_active     = "rgba(30, 102, 245, 0.35)"
+
+text_primary      = "#4c4f69"
+text_heading      = "#4c4f69"
+text_muted        = "#8c8fa1"
+text_subtle       = "#6c6f85"
+text_inverted     = "#eff1f5"
+
+accent_green      = "#40a02b"
+accent_green_bg   = "rgba(64, 160, 43, 0.16)"
+accent_green_border = "rgba(64, 160, 43, 0.38)"
+
+accent_blue       = "#1e66f5"
+accent_blue_bg    = "rgba(30, 102, 245, 0.16)"
+accent_blue_border = "rgba(30, 102, 245, 0.38)"
+
+accent_amber      = "#fe640b"
+accent_amber_bg   = "rgba(254, 100, 11, 0.16)"
+accent_amber_border = "rgba(254, 100, 11, 0.38)"
+
+accent_red        = "#d20f39"
+accent_red_bg     = "rgba(210, 15, 57, 0.16)"
+accent_red_border = "rgba(210, 15, 57, 0.38)"
+
+accent_aqua       = "#179299"
+accent_aqua_bg    = "rgba(23, 146, 153, 0.16)"
+accent_aqua_border = "rgba(23, 146, 153, 0.38)"
+
+accent_purple     = "#8839ef"
+accent_purple_bg  = "rgba(136, 57, 239, 0.16)"
+accent_purple_border = "rgba(136, 57, 239, 0.38)"
+
+shadow            = "rgba(76, 79, 105, 0.14)"
+modal_backdrop    = "rgba(76, 79, 105, 0.35)"
+slider_trough     = "rgba(76, 79, 105, 0.16)"
+slider_thumb      = "#4c4f69"
+
+[display]
+temperature = 6500

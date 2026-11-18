@@ -1,6 +1,6 @@
 # Inerium Shell — Дополнительные модули и компоненты
 
-В состав Inerium Shell входят опциональные системные модули, которые можно выбрать при установке в интерактивном TUI или через флаги командной строки (`--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
+В состав Inerium Shell входят опциональные системные модули, которые можно выбрать при установке в интерактивном TUI или через флаги командной строки (`--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
 
 ---
 
@@ -49,3 +49,30 @@
   - `novpn curl https://ifconfig.me` — покажет реальный IP-адрес провайдера.
   - `novpn google-chrome-stable` — браузер пойдет в сеть напрямую без VPN.
   - `novpn status` — статус связи и IP-адреса хоста (VPN) и изолированной сети.
+
+---
+
+## 4. Интеграция с Google Drive (`--with-gdrive`)
+
+- **Описание:** Прямая фоновая синхронизация и монтирование Google Диска в файловый менеджер Dolphin через `rclone`.
+- **Состав:**
+  - `~/.config/rclone/filter.txt`
+  - `~/.config/systemd/user/gdrive.service`
+  - `~/.config/inerium/first-login.d/20-gdrive`
+- **Ключевые возможности:**
+  - Монтирует Google Drive в директорию `~/GoogleDrive` с VFS-кэшем 10 ГБ и автоматическим переподключением при сбоях сети.
+  - Интерактивный терминальный виджет авторизации в мастере настройки `inerium-setup`.
+
+---
+
+## 5. Универсальный конвертер Dolphin (`--with-converter`)
+
+- **Описание:** Высокопроизводительный нативный Rust-конвертер, интегрированный прямо в контекстное меню Dolphin KIO.
+- **Состав:**
+  - `crates/dolphin-converter` -> `~/.local/bin/dolphin-convert`
+  - `~/.local/share/kio/servicemenus/converter-*.desktop`
+  - Опциональная нейросетевая модель: `~/.local/share/dolphin-converter/models/silueta.onnx`
+- **Ключевые возможности:**
+  - Быстрая конвертация офисных документов (PDF, DOCX, ODT через LibreOffice и Pandoc), медиафайлов (MP4, MP3, WAV, WEBP через FFmpeg и ImageMagick).
+  - Параллельная обработка очередей файлов на пуле потоков Rayon.
+  - Опциональное локальное ИИ-удаление фона с изображений через ONNX Runtime (`silueta.onnx`).

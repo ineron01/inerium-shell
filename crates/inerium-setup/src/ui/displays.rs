@@ -235,6 +235,31 @@ pub fn build_displays_tab(
     let refresh_btn = Button::with_label(tr(lang, "󰑐 Refresh", "󰑐 Обновить"));
     refresh_btn.add_css_class("btn-secondary");
     mon_head.append(&refresh_btn);
+
+    let open_cfg_btn = Button::with_label(tr(lang, "📝 Open config", "📝 Открыть конфиг"));
+    open_cfg_btn.add_css_class("btn-secondary");
+    open_cfg_btn.set_tooltip_text(Some(tr(
+        lang,
+        "Open ~/.config/hypr/config/monitors.lua in default editor",
+        "Открыть ~/.config/hypr/config/monitors.lua в редакторе",
+    )));
+    {
+        let paths_clone = paths.clone();
+        open_cfg_btn.connect_clicked(move |_| {
+            let p = paths_clone.monitors_lua_path();
+            if !p.exists() {
+                if let Some(parent) = p.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(
+                    &p,
+                    "-- Universal monitor configuration\nhl.monitor({\n    output   = \"\",\n    mode     = \"preferred\",\n    position = \"auto\",\n    scale    = 1.0,\n})\n",
+                );
+            }
+            let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+        });
+    }
+    mon_head.append(&open_cfg_btn);
     mon_card.append(&mon_head);
 
     // Layout preset bar

@@ -1,6 +1,6 @@
 # Inerium Shell — Optional Modules & Add-ons
 
-Inerium Shell includes optional system modules that can be selected during installation via the interactive TUI or CLI flags (`--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
+Inerium Shell includes optional system modules that can be selected during installation via the interactive TUI or CLI flags (`--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
 
 ---
 
@@ -49,3 +49,30 @@ Inerium Shell includes optional system modules that can be selected during insta
   - `novpn curl https://ifconfig.me` — runs curl showing physical IP address.
   - `novpn google-chrome-stable` — runs browser without VPN.
   - `novpn status` — displays connectivity and public IP for both VPN host and direct network namespace.
+
+---
+
+## 4. Google Drive Integration (`--with-gdrive`)
+
+- **Description:** Direct background synchronization and mounting of Google Drive inside Dolphin file manager via `rclone`.
+- **Components:**
+  - `~/.config/rclone/filter.txt`
+  - `~/.config/systemd/user/gdrive.service`
+  - `~/.config/inerium/first-login.d/20-gdrive`
+- **Key Features:**
+  - Mounts Google Drive at `~/GoogleDrive` with 10 GB VFS cache and automatic retry on network drops.
+  - Interactive authentication terminal widget integrated in `inerium-setup` onboarding wizard.
+
+---
+
+## 5. Dolphin Converter (`--with-converter`)
+
+- **Description:** High-performance native Rust context menu converter integrated directly into Dolphin KIO service menus.
+- **Components:**
+  - `crates/dolphin-converter` -> `~/.local/bin/dolphin-convert`
+  - `~/.local/share/kio/servicemenus/converter-*.desktop`
+  - Optional AI model: `~/.local/share/dolphin-converter/models/silueta.onnx`
+- **Key Features:**
+  - Fast conversion for office documents (PDF, DOCX, ODT via LibreOffice & Pandoc), media formats (MP4, MP3, WAV, WEBP via FFmpeg & ImageMagick).
+  - Rayon-based multi-threaded parallel file processing.
+  - Optional AI background removal powered by local ONNX runtime (`silueta.onnx`).

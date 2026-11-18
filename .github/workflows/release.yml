@@ -4,12 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  schedule:
+    - cron: '0 4 * * 1'
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag name (e.g. v0.1.0)"
+        description: "Release tag name (e.g. v0.2.0)"
         required: true
-        default: "v0.1.0-manual"
+        default: "v0.2.0"
 
 permissions:
   contents: write

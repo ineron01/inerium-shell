@@ -77,6 +77,33 @@ build_from_source() {
     ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
     manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
     install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
+
+    log "Cleaning build target directory to free disk space..."
+    cargo clean --manifest-path "$REPO_DIR/Cargo.toml" 2>/dev/null || true
+}
+
+check_installed_binaries_abi() {
+    local -a user_bins
+    read -ra user_bins <<< "$USER_BINS_STR"
+    local has_broken=0
+    for bin in "${user_bins[@]}"; do
+        local bpath="$HOME/.local/bin/$bin"
+        if [[ -x "$bpath" ]]; then
+            local missing
+            missing="$(ldd "$bpath" 2>/dev/null | grep "not found" || true)"
+            if [[ -n "$missing" ]]; then
+                warn "ABI mismatch in $bin:"
+                printf '%s\n' "$missing" >&2
+                has_broken=1
+            fi
+        fi
+    done
+    if [[ "$has_broken" -eq 1 ]]; then
+        warn "One or more binaries have broken dynamic library dependencies."
+        return 1
+    fi
+    log "All installed binaries have healthy library dependencies."
+    return 0
 }
 
 deliver_binaries() {

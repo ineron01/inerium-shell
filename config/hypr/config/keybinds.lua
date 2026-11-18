@@ -88,9 +88,10 @@ for i = 1, 6 do
     hl.bind(mainMod .. " + ALT + " .. digit, hl.dsp.window.move({ workspace = i, follow = false }))
 end
 
--- Focus monitors by index with SUPER + CONTROL + 1..2
-hl.bind(mainMod .. " + CONTROL + " .. digitCode(1), hl.dsp.focus({ monitor = "0" }))
-hl.bind(mainMod .. " + CONTROL + " .. digitCode(2), hl.dsp.focus({ monitor = "1" }))
+-- Focus monitors by index with SUPER + CONTROL + 1..3
+for i = 1, 3 do
+    hl.bind(mainMod .. " + CONTROL + " .. digitCode(i), hl.dsp.focus({ monitor = tostring(i - 1) }))
+end
 
 -- Relative workspace navigation
 hl.bind(mainMod .. " + CONTROL + Right",       hl.dsp.focus({ workspace = "m+1" }))

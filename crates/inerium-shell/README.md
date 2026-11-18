@@ -8,7 +8,7 @@ Native Rust GTK4 Layer-Shell popup daemon and Control Center for Hyprland.
 - **Service:** `inerium-popups.service` (`systemd --user`)
 - **Key Modules:**
   - `hw.rs`: Async DDC/CI worker, MSI EC sysfs, PipeWire volume, EnvyControl.
-  - `views/`: `control_center`, `audio`, `network`, `bluetooth`, `media`, `power`, `wallpaper`.
+  - `views/`: `control_center`, `audio`, `network`, `bluetooth`, `media`, `power`, `appearance`.
   - Cursor SafeZone (80 ms timer, 65 px margin).
   - Batch IPC querying cursor position and monitor geometries.
 

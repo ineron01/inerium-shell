@@ -170,7 +170,6 @@ pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
     let home = get_home();
     let theme_roots = [
         home.join("Repos/inerium-shell/themes"),
-        home.join(".local/share/inerium-shell/themes"),
         home.join(".config/inerium/themes"),
     ];
 
@@ -179,6 +178,67 @@ pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
     }
 
     map
+}
+
+pub fn get_extra_theme_roots() -> Vec<PathBuf> {
+    let home = get_home();
+    vec![
+        home.join("Repos/inerium-shell/themes/extra"),
+        home.join(".local/share/inerium-shell/themes/extra"),
+        PathBuf::from("/usr/share/inerium-shell/themes/extra"),
+    ]
+}
+
+pub fn load_all_themes() -> BTreeMap<String, ThemeConfig> {
+    let mut map = load_available_themes();
+    for root in get_extra_theme_roots() {
+        scan_dir_for_themes(&root, &mut map);
+    }
+    map
+}
+
+pub fn install_extra_theme(id: &str) -> Result<ThemeConfig, String> {
+    let home = get_home();
+    let dest_dir = home.join(".config/inerium/themes");
+    let dest_file = dest_dir.join(format!("{id}.toml"));
+
+    if dest_file.exists()
+        && let Ok(content) = fs::read_to_string(&dest_file)
+        && let Ok(cfg) = toml::from_str::<ThemeConfig>(&content)
+    {
+        return Ok(cfg);
+    }
+
+    for root in get_extra_theme_roots() {
+        let src = root.join(format!("{id}.toml"));
+        if src.exists() {
+            let _ = fs::create_dir_all(&dest_dir);
+            if let Err(e) = fs::copy(&src, &dest_file) {
+                return Err(format!("Failed to copy theme file: {e}"));
+            }
+            if let Ok(content) = fs::read_to_string(&dest_file)
+                && let Ok(cfg) = toml::from_str::<ThemeConfig>(&content)
+            {
+                return Ok(cfg);
+            }
+        }
+    }
+
+    Err(format!("Тема '{id}' не найдена в дополнительных палитрах."))
+}
+
+fn resolve_theme_alias(input_id: &str) -> &str {
+    match input_id {
+        "dark" | "dragon" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
+        "light" | "inerium-light" | "белая" | "светлая" => "inerium-light",
+        "lotus" => "kanagawa-lotus",
+        "wave" => "kanagawa-wave",
+        "mocha" => "catppuccin-mocha",
+        "latte" => "catppuccin-latte",
+        "tokyo" | "tokyonight" => "tokyo-night",
+        "gruvbox" => "gruvbox-dark",
+        other => other,
+    }
 }
 
 pub fn get_current_theme_id() -> String {
@@ -1268,8 +1328,9 @@ fn print_help() {
     inerium-theme <КОМАНДА>
 
 КОМАНДЫ:
-    list                  Показать все доступные палитры с указанием авторов
-    set <id>              Применить палитру по ID (например: inerium-light, kanagawa-dragon, kanagawa-lotus)
+    list [--all] [--json] Показать активные темы (или все включая дополнительные с --all)
+    set <id>              Применить палитру по ID (если тема в extra, автоматически скопирует её)
+    install <id>          Перенести тему из дополнительных в постоянные и применить
     toggle                Быстрое переключение (темный <-> светлый вариант)
     status                Вывести текущую активную тему и авторство в формате JSON
     help, --help          Показать эту справку
@@ -1284,15 +1345,23 @@ fn main() {
         return;
     }
 
-    let themes = load_available_themes();
+    let active_themes = load_available_themes();
 
     match args[0].as_str() {
         "list" => {
             let cur_id = get_current_theme_id();
+            let show_all = args.iter().any(|a| a == "--all" || a == "-a");
+            let themes_map = if show_all {
+                load_all_themes()
+            } else {
+                active_themes.clone()
+            };
+
             if args.iter().any(|a| a == "--json") {
-                let list: Vec<_> = themes
+                let list: Vec<_> = themes_map
                     .iter()
                     .map(|(id, t)| {
+                        let is_extra = !active_themes.contains_key(id);
                         serde_json::json!({
                             "id": id,
                             "name": t.theme.name,
@@ -1300,6 +1369,7 @@ fn main() {
                             "variant": t.theme.variant,
                             "description": t.theme.description.clone().unwrap_or_default(),
                             "is_active": id == &cur_id,
+                            "is_extra": is_extra,
                             "colors": {
                                 "bg": t.palette.bg_canvas,
                                 "surface": t.palette.bg_surface,
@@ -1314,9 +1384,10 @@ fn main() {
             }
 
             println!("Доступные палитры Inerium Desktop:\n");
-            for (id, t) in &themes {
+            for (id, t) in &themes_map {
                 let active_mark = if id == &cur_id { "* " } else { "  " };
-                let author_str = format!("(автор: {})", t.theme.author);
+                let extra_mark = if !active_themes.contains_key(id) { " (extra)" } else { "" };
+                let author_str = format!("(автор: {}){}", t.theme.author, extra_mark);
                 println!(
                     "{}{:<18} [{:<5}] {:<22} {}",
                     active_mark, id, t.theme.variant, t.theme.name, author_str
@@ -1329,7 +1400,7 @@ fn main() {
         }
         "status" => {
             let cur_id = get_current_theme_id();
-            let theme = themes.get(&cur_id).or_else(|| themes.get("kanagawa-dragon"));
+            let theme = active_themes.get(&cur_id).or_else(|| active_themes.get("kanagawa-dragon"));
             if let Some(t) = theme {
                 if let Ok(s) = serde_json::to_string(&t.theme) {
                     println!("{}", s);
@@ -1343,11 +1414,11 @@ fn main() {
         }
         "toggle" => {
             let cur_id = get_current_theme_id();
-            let cur_theme = themes.get(&cur_id).or_else(|| themes.get("kanagawa-dragon"));
+            let cur_theme = active_themes.get(&cur_id).or_else(|| active_themes.get("kanagawa-dragon"));
             let is_dark = cur_theme.map(|t| t.theme.variant == "dark").unwrap_or(true);
 
             let target_id = if is_dark {
-                if themes.contains_key("inerium-light") {
+                if active_themes.contains_key("inerium-light") {
                     "inerium-light"
                 } else {
                     "kanagawa-lotus"
@@ -1356,7 +1427,7 @@ fn main() {
                 "kanagawa-dragon"
             };
 
-            if let Some(target) = themes.get(target_id) {
+            if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
                     "Тема переключена: {} (автор: {})",
@@ -1367,6 +1438,27 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "install" | "add" => {
+            if args.len() < 2 {
+                eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list --all'.");
+                std::process::exit(1);
+            }
+            let input_id = args[1].to_lowercase();
+            let target_id = resolve_theme_alias(&input_id);
+            match install_extra_theme(target_id) {
+                Ok(theme) => {
+                    apply_theme(&theme);
+                    println!(
+                        "Тема '{}' (автор: {}) успешно перенесена в постоянные и применена.",
+                        theme.theme.name, theme.theme.author
+                    );
+                }
+                Err(e) => {
+                    eprintln!("Ошибка: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         "set" => {
             if args.len() < 2 {
                 eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list'.");
@@ -1374,18 +1466,21 @@ fn main() {
             }
 
             let input_id = args[1].to_lowercase();
-            let target_id = match input_id.as_str() {
-                "dark" | "dragon" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
-                "light" | "inerium-light" | "белая" | "светлая" => "inerium-light",
-                "lotus" => "kanagawa-lotus",
-                "wave" => "kanagawa-wave",
-                other => other,
-            };
+            let target_id = resolve_theme_alias(&input_id);
 
-            if let Some(target) = themes.get(target_id) {
+            if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
                     "Установлена палитра: {} (автор: {})",
+                    target.theme.name, target.theme.author
+                );
+                if let Some(upstream) = &target.theme.upstream {
+                    println!("Оригинальный репозиторий: {}", upstream);
+                }
+            } else if let Ok(target) = install_extra_theme(target_id) {
+                apply_theme(&target);
+                println!(
+                    "Палитра '{}' перенесена из дополнительных в постоянные и применена (автор: {}).",
                     target.theme.name, target.theme.author
                 );
                 if let Some(upstream) = &target.theme.upstream {

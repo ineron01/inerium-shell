@@ -10,6 +10,7 @@ warn() { printf '[inerium-shell] WARNING: %s\n' "$*" >&2; }
 manifest_record_binary() { :; }
 manifest_record_symlink() { :; }
 manifest_record_template() { :; }
+manifest_record_config() { :; }
 manifest_record_system_file() { :; }
 manifest_record_user_unit() { :; }
 manifest_record_system_unit() { :; }
@@ -99,6 +100,54 @@ link_item() {
         mv "$dst" "$bak"
     fi
     ln -sfn "$src" "$dst"
+}
+
+deploy_config_file() {
+    local src="$1"
+    local dst="$2"
+    local mode="${3:-644}"
+    manifest_record_config "$dst"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        if [[ ! -e "$dst" ]]; then
+            printf '[DRY-RUN] install -m %s %s -> %s\n' "$mode" "$src" "$dst"
+        elif ! cmp -s "$src" "$dst" 2>/dev/null; then
+            if [[ "${UPDATE_CONFIGS:-0}" -eq 1 || "${NON_INTERACTIVE:-0}" -eq 1 && "${FORCE_OVERWRITE:-0}" -eq 1 ]]; then
+                printf '[DRY-RUN] mv %s -> %s.bak.%s && install -m %s %s -> %s\n' "$dst" "$dst" "$BACKUP_STAMP" "$mode" "$src" "$dst"
+            else
+                printf '[DRY-RUN] preserve existing config %s\n' "$dst"
+            fi
+        fi
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$dst")"
+
+    # If dst is a legacy symlink, remove the symlink first so we install a real file
+    if [[ -L "$dst" ]]; then
+        rm -f "$dst"
+    fi
+
+    if [[ ! -e "$dst" ]]; then
+        # Clean installation: install immediately without prompt
+        install -m "$mode" "$src" "$dst"
+        return 0
+    fi
+
+    # If file exists and matches source, nothing to do
+    if cmp -s "$src" "$dst" 2>/dev/null; then
+        return 0
+    fi
+
+    # File exists and differs
+    if [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
+        local bak="${dst}.bak.${BACKUP_STAMP}"
+        log "Backing up user config: $dst -> $bak"
+        mv "$dst" "$bak"
+        install -m "$mode" "$src" "$dst"
+    else
+        log "Preserving user config (pass --update-configs to overwrite): $dst"
+    fi
 }
 
 render_template() {

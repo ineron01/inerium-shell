@@ -1,0 +1,56 @@
+[theme]
+id = "tokyo-night"
+name = "Tokyo Night"
+author = "folke"
+upstream = "https://github.com/folke/tokyonight.nvim"
+variant = "dark"
+license = "Apache-2.0"
+description = "A clean dark theme celebrating the lights of downtown Tokyo at night"
+
+[palette]
+bg_canvas         = "rgba(26, 27, 38, 0.97)"
+bg_surface        = "#24283b"
+bg_surface_alt    = "#16161e"
+bg_surface_hover  = "#2f3549"
+bg_surface_active = "#3b4261"
+
+border_subtle     = "rgba(192, 202, 245, 0.12)"
+border_active     = "rgba(122, 162, 247, 0.40)"
+
+text_primary      = "#c0caf5"
+text_heading      = "#c0caf5"
+text_muted        = "#565f89"
+text_subtle       = "#9aa5ce"
+text_inverted     = "#1a1b26"
+
+accent_green      = "#9ece6a"
+accent_green_bg   = "rgba(158, 206, 106, 0.16)"
+accent_green_border = "rgba(158, 206, 106, 0.38)"
+
+accent_blue       = "#7aa2f7"
+accent_blue_bg    = "rgba(122, 162, 247, 0.16)"
+accent_blue_border = "rgba(122, 162, 247, 0.38)"
+
+accent_amber      = "#e0af68"
+accent_amber_bg   = "rgba(224, 175, 104, 0.16)"
+accent_amber_border = "rgba(224, 175, 104, 0.38)"
+
+accent_red        = "#f7768e"
+accent_red_bg     = "rgba(247, 118, 142, 0.16)"
+accent_red_border = "rgba(247, 118, 142, 0.38)"
+
+accent_aqua       = "#7dcfff"
+accent_aqua_bg    = "rgba(125, 207, 255, 0.16)"
+accent_aqua_border = "rgba(125, 207, 255, 0.38)"
+
+accent_purple     = "#bb9af7"
+accent_purple_bg  = "rgba(187, 154, 247, 0.16)"
+accent_purple_border = "rgba(187, 154, 247, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(22, 22, 30, 0.60)"
+slider_trough     = "rgba(86, 95, 137, 0.22)"
+slider_thumb      = "#c0caf5"
+
+[display]
+temperature = 6500

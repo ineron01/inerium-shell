@@ -1,0 +1,56 @@
+[theme]
+id = "nord"
+name = "Nord"
+author = "Arctic Ice Studio"
+upstream = "https://github.com/nordtheme/nord"
+variant = "dark"
+license = "MIT"
+description = "An arctic, north-bluish clean and elegant color palette"
+
+[palette]
+bg_canvas         = "rgba(46, 52, 64, 0.97)"
+bg_surface        = "#3b4252"
+bg_surface_alt    = "#242933"
+bg_surface_hover  = "#434c5e"
+bg_surface_active = "#4c566a"
+
+border_subtle     = "rgba(236, 239, 244, 0.12)"
+border_active     = "rgba(136, 192, 208, 0.38)"
+
+text_primary      = "#eceff4"
+text_heading      = "#eceff4"
+text_muted        = "#616e88"
+text_subtle       = "#d8dee9"
+text_inverted     = "#2e3440"
+
+accent_green      = "#a3be8c"
+accent_green_bg   = "rgba(163, 190, 140, 0.16)"
+accent_green_border = "rgba(163, 190, 140, 0.38)"
+
+accent_blue       = "#88c0d0"
+accent_blue_bg    = "rgba(136, 192, 208, 0.16)"
+accent_blue_border = "rgba(136, 192, 208, 0.38)"
+
+accent_amber      = "#ebcb8b"
+accent_amber_bg   = "rgba(235, 203, 139, 0.16)"
+accent_amber_border = "rgba(235, 203, 139, 0.38)"
+
+accent_red        = "#bf616a"
+accent_red_bg     = "rgba(191, 97, 106, 0.16)"
+accent_red_border = "rgba(191, 97, 106, 0.38)"
+
+accent_aqua       = "#8fbcbb"
+accent_aqua_bg    = "rgba(143, 188, 187, 0.16)"
+accent_aqua_border = "rgba(143, 188, 187, 0.38)"
+
+accent_purple     = "#b48ead"
+accent_purple_bg  = "rgba(180, 142, 173, 0.16)"
+accent_purple_border = "rgba(180, 142, 173, 0.38)"
+
+shadow            = "rgba(0, 0, 0, 0.85)"
+modal_backdrop    = "rgba(36, 41, 51, 0.60)"
+slider_trough     = "rgba(76, 86, 106, 0.25)"
+slider_thumb      = "#eceff4"
+
+[display]
+temperature = 6500

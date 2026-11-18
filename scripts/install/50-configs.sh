@@ -36,65 +36,143 @@ deploy_user_scripts_and_menus() {
 }
 
 deploy_desktop_configs() {
-    log "Linking desktop configurations into ~/.config..."
-    for dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar; do
-        link_item "$REPO_DIR/config/$dir" "$HOME/.config/$dir"
-    done
-    link_item "$REPO_DIR/config/btop/btop.conf" "$HOME/.config/btop/btop.conf"
+    log "Installing desktop configurations into ~/.config..."
 
-    # Fish shell (preserve runtime fish_variables)
+    # Migrate legacy directory symlinks from earlier releases to real directories
+    for dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar hypr; do
+        local target="$HOME/.config/$dir"
+        if [[ -L "$target" ]]; then
+            local raw_dest
+            raw_dest="$(readlink -f "$target" 2>/dev/null || true)"
+            if [[ "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* ]]; then
+                # Guard developer workspace on live host
+                if [[ "$raw_dest" == "$REPO_DIR"* && -d "$REPO_DIR/.git" && "$REPO_DIR" == *"Repos/inerium"* ]]; then
+                    continue
+                fi
+                log "Migrating legacy directory symlink to real directory: $target"
+                run "rm -f '$target'"
+                run "mkdir -p '$target'"
+            fi
+        else
+            run "mkdir -p '$HOME/.config/$dir'"
+        fi
+    done
+
+    # 1. Environment.d
+    run "mkdir -p '$HOME/.config/environment.d'"
+    [[ -f "$REPO_DIR/config/environment.d/10-theme.conf" ]] && \
+        deploy_config_file "$REPO_DIR/config/environment.d/10-theme.conf" "$HOME/.config/environment.d/10-theme.conf"
+
+    # 2. GTK 3 & GTK 4
+    run "mkdir -p '$HOME/.config/gtk-3.0' '$HOME/.config/gtk-4.0'"
+    for f in gtk.css settings.ini; do
+        [[ -f "$REPO_DIR/config/gtk-3.0/$f" ]] && deploy_config_file "$REPO_DIR/config/gtk-3.0/$f" "$HOME/.config/gtk-3.0/$f"
+        [[ -f "$REPO_DIR/config/gtk-4.0/$f" ]] && deploy_config_file "$REPO_DIR/config/gtk-4.0/$f" "$HOME/.config/gtk-4.0/$f"
+    done
+
+    # 3. Kitty Terminal
+    run "mkdir -p '$HOME/.config/kitty/themes'"
+    deploy_config_file "$REPO_DIR/config/kitty/kitty.conf" "$HOME/.config/kitty/kitty.conf"
+    for f in "$REPO_DIR"/config/kitty/themes/*.conf; do
+        [[ -f "$f" ]] || continue
+        deploy_config_file "$f" "$HOME/.config/kitty/themes/$(basename "$f")"
+    done
+
+    # 4. Mako Notification Daemon
+    run "mkdir -p '$HOME/.config/mako'"
+    deploy_config_file "$REPO_DIR/config/mako/config" "$HOME/.config/mako/config"
+
+    # 5. Rofi Application Launcher
+    run "mkdir -p '$HOME/.config/rofi'"
+    for f in "$REPO_DIR"/config/rofi/*.rasi; do
+        [[ -f "$f" ]] || continue
+        deploy_config_file "$f" "$HOME/.config/rofi/$(basename "$f")"
+    done
+
+    # 6. UWSM Session Manager
+    run "mkdir -p '$HOME/.config/uwsm'"
+    for f in env env-hyprland; do
+        [[ -f "$REPO_DIR/config/uwsm/$f" ]] && deploy_config_file "$REPO_DIR/config/uwsm/$f" "$HOME/.config/uwsm/$f"
+    done
+
+    # 7. Waybar Panel
+    run "mkdir -p '$HOME/.config/waybar'"
+    for f in config.jsonc style.css colors.css; do
+        [[ -f "$REPO_DIR/config/waybar/$f" ]] && deploy_config_file "$REPO_DIR/config/waybar/$f" "$HOME/.config/waybar/$f"
+    done
+
+    # 8. Btop System Monitor
+    run "mkdir -p '$HOME/.config/btop'"
+    deploy_config_file "$REPO_DIR/config/btop/btop.conf" "$HOME/.config/btop/btop.conf"
+
+    # 9. Fish shell (preserve runtime fish_variables)
     run "mkdir -p '$HOME/.config/fish/functions'"
-    link_item "$REPO_DIR/config/fish/config.fish" "$HOME/.config/fish/config.fish"
+    deploy_config_file "$REPO_DIR/config/fish/config.fish" "$HOME/.config/fish/config.fish"
     for func in "$REPO_DIR"/config/fish/functions/*.fish; do
         [[ -f "$func" ]] || continue
-        link_item "$func" "$HOME/.config/fish/functions/$(basename "$func")"
+        deploy_config_file "$func" "$HOME/.config/fish/functions/$(basename "$func")"
     done
 
-    # Themes & Qt5/Qt6, KDE & SwayOSD
-    run "mkdir -p '$HOME/.local/share/color-schemes'"
-    run "mkdir -p '$HOME/.config/inerium/themes'"
-    for t in "$REPO_DIR"/themes/*.toml; do
-        [[ -f "$t" ]] || continue
-        link_item "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
+    # 10. KDE / Dolphin integration
+    deploy_config_file "$REPO_DIR/config/kdeglobals" "$HOME/.config/kdeglobals"
+    deploy_config_file "$REPO_DIR/config/dolphinrc" "$HOME/.config/dolphinrc"
+
+    # 11. Qt5 / Qt6 colors & SwayOSD
+    run "mkdir -p '$HOME/.config/qt5ct/colors' '$HOME/.config/qt6ct/colors' '$HOME/.config/swayosd'"
+    for c in "$REPO_DIR"/config/qt5ct/colors/*.conf; do
+        [[ -f "$c" ]] && deploy_config_file "$c" "$HOME/.config/qt5ct/colors/$(basename "$c")"
     done
-    [[ -d "$REPO_DIR/themes/extra" ]] && link_item "$REPO_DIR/themes/extra" "$HOME/.config/inerium/themes/examples"
-    link_item "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
-    link_item "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
-    link_item "$REPO_DIR/config/kdeglobals" "$HOME/.config/kdeglobals"
-    link_item "$REPO_DIR/config/dolphinrc" "$HOME/.config/dolphinrc"
-    link_item "$REPO_DIR/config/qt5ct/colors" "$HOME/.config/qt5ct/colors"
-    link_item "$REPO_DIR/config/qt6ct/colors" "$HOME/.config/qt6ct/colors"
-    link_item "$REPO_DIR/config/swayosd/style.css" "$HOME/.config/swayosd/style.css"
+    for c in "$REPO_DIR"/config/qt6ct/colors/*.conf; do
+        [[ -f "$c" ]] && deploy_config_file "$c" "$HOME/.config/qt6ct/colors/$(basename "$c")"
+    done
+    deploy_config_file "$REPO_DIR/config/swayosd/style.css" "$HOME/.config/swayosd/style.css"
     render_template "$REPO_DIR/config/qt5ct/qt5ct.conf.template" "$HOME/.config/qt5ct/qt5ct.conf"
     render_template "$REPO_DIR/config/qt6ct/qt6ct.conf.template" "$HOME/.config/qt6ct/qt6ct.conf"
     render_template "$REPO_DIR/config/swayosd/config.toml.template" "$HOME/.config/swayosd/config.toml"
+
+    # 12. Themes (Base in ~/.config/inerium/themes, Extra in ~/.local/share/inerium-shell/themes/extra)
+    run "mkdir -p '$HOME/.local/share/color-schemes'"
+    run "mkdir -p '$HOME/.local/share/inerium-shell/themes/extra'"
+    run "mkdir -p '$HOME/.config/inerium/themes'"
+    # Base themes (Dark & Light)
+    for t in "$REPO_DIR"/themes/*.toml; do
+        [[ -f "$t" ]] || continue
+        deploy_config_file "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
+    done
+    # Extra themes pool for inerium-setup and inerium-theme install
+    for t in "$REPO_DIR"/themes/extra/*.toml; do
+        [[ -f "$t" ]] || continue
+        deploy_config_file "$t" "$HOME/.local/share/inerium-shell/themes/extra/$(basename "$t")"
+    done
+    if [[ -f "$REPO_DIR/themes/template.toml.example" ]]; then
+        deploy_config_file "$REPO_DIR/themes/template.toml.example" "$HOME/.config/inerium/themes/template.toml.example"
+    fi
+    # Clean up legacy 'examples' symlink
+    [[ -L "$HOME/.config/inerium/themes/examples" ]] && run "rm -f '$HOME/.config/inerium/themes/examples'"
+    deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
+    deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
+
     if command -v inerium-theme >/dev/null 2>&1; then
         inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
     elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
         plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
     fi
 
-    # Hyprland
+    # 13. Hyprland configuration
     run "mkdir -p '$HOME/.config/hypr/config'"
     for f in hypridle.conf hyprland.lua hyprlock.conf xdph.conf; do
-        [[ -f "$REPO_DIR/config/hypr/$f" ]] && link_item "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f"
+        [[ -f "$REPO_DIR/config/hypr/$f" ]] && deploy_config_file "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f"
     done
     for f in "$REPO_DIR"/config/hypr/config/*.lua; do
         [[ -f "$f" ]] || continue
         base="$(basename "$f")"
         case "$base" in
             monitors.lua|input.lua|keybinds.lua|workspaces.lua|variables.lua)
-                # Mutable user configs: copy template on initial install, never overwrite on update
-                if [[ ! -e "$HOME/.config/hypr/config/$base" ]]; then
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        printf '[DRY-RUN] install -m 644 %s -> %s\n' "$f" "$HOME/.config/hypr/config/$base"
-                    else
-                        run "install -m 644 '$f' '$HOME/.config/hypr/config/$base'"
-                    fi
-                fi
+                # Mutable user configs: copy template on initial install, preserve on update unless forced
+                deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
                 ;;
             *)
-                link_item "$f" "$HOME/.config/hypr/config/$base"
+                deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
                 ;;
         esac
     done
@@ -141,9 +219,9 @@ detect_and_generate_local_overlays() {
                 echo "-- Auto-generated by inerium-shell hardware detection (gitignored)"
                 if [[ "$has_nv" -eq 1 && "$has_amd" -eq 0 && "$has_intel" -eq 0 ]]; then
                     echo 'hl.env("LIBVA_DRIVER_NAME", "nvidia")'
-                    echo 'hl.env("GBM_BACKEND", "nvidia-drm")'
                     echo 'hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")'
                     echo 'hl.env("NVD_BACKEND", "direct")'
+                    echo '-- Note: GBM_BACKEND is omitted for Aquamarine / modern Hyprland compatibility (explicit sync).'
                 elif [[ "$has_amd" -eq 1 ]]; then
                     echo 'hl.env("LIBVA_DRIVER_NAME", "radeonsi")'
                     echo 'hl.env("VDPAU_DRIVER", "radeonsi")'
@@ -409,7 +487,11 @@ enable_user_services_and_defaults() {
         log "Refreshing systemd user daemon & enabling user services..."
         run "systemctl --user daemon-reload"
         run "systemctl --user mask $MASK_UNITS >/dev/null 2>&1 || true"
-        run "systemctl --user enable $USER_UNITS"
+        for u in $USER_UNITS; do
+            if systemctl --user list-unit-files "$u" >/dev/null 2>&1 || [[ -f "$HOME/.config/systemd/user/$u" ]]; then
+                run "systemctl --user enable '$u' >/dev/null 2>&1 || true"
+            fi
+        done
     else
         log "No active systemd --user D-Bus session (TTY/chroot); creating offline .wants/mask links..."
         for m in $MASK_UNITS; do

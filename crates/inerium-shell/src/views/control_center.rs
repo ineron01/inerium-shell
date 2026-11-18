@@ -40,18 +40,6 @@ fn get_theme_info() -> (bool, String, String, usize) {
     let home = hw::home_dir();
 
     let mut theme_ids = std::collections::HashSet::new();
-    let repo_themes = home.join("Repos/inerium-shell/themes");
-    if let Ok(entries) = std::fs::read_dir(&repo_themes) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file()
-                && path.extension().is_some_and(|e| e == "toml")
-                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            {
-                theme_ids.insert(stem.to_string());
-            }
-        }
-    }
     let user_themes = home.join(".config/inerium/themes");
     if let Ok(entries) = std::fs::read_dir(&user_themes) {
         for entry in entries.flatten() {

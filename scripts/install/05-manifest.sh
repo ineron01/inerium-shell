@@ -27,6 +27,7 @@ manifest_record() {
 manifest_record_binary()      { manifest_record "BIN" "$1"; }
 manifest_record_symlink()     { manifest_record "LINK" "$1" "$2"; }
 manifest_record_template()    { manifest_record "RENDER" "$1"; }
+manifest_record_config()      { manifest_record "CONFIG" "$1"; }
 manifest_record_system_file() { manifest_record "SYS_FILE" "$1"; }
 manifest_record_user_unit()   { manifest_record "USER_UNIT" "$1"; }
 manifest_record_system_unit() { manifest_record "SYS_UNIT" "$1"; }
@@ -59,6 +60,21 @@ manifest_clean_orphans() {
                 rm -f "$link"
             fi
         done < <(find "$dir" -maxdepth 1 -xtype l -print0 2>/dev/null)
+    done
+
+    # Migrate legacy directory symlinks from earlier releases to real directories
+    local config_dir
+    for config_dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar; do
+        local target="$HOME/.config/$config_dir"
+        if [[ -L "$target" ]]; then
+            local raw_dest
+            raw_dest="$(readlink "$target" 2>/dev/null || true)"
+            if [[ "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* || "$raw_dest" == *Repos/inerium* ]]; then
+                log "Migrating legacy directory symlink to real directory: $target"
+                rm -f "$target"
+                mkdir -p "$target"
+            fi
+        fi
     done
 
     # Known legacy obsolete paths from v0.1.0 and Kanagawa
@@ -134,6 +150,12 @@ prune_obsolete_and_save_manifest() {
                     RENDER)
                         if [[ -f "$target" ]]; then
                             log "Pruning obsolete rendered config: $target"
+                            rm -f "$target"
+                        fi
+                        ;;
+                    CONFIG)
+                        if [[ -f "$target" ]]; then
+                            log "Pruning obsolete installed config: $target"
                             rm -f "$target"
                         fi
                         ;;
@@ -246,6 +268,16 @@ run_uninstall() {
             RENDER)
                 if [[ -f "$target" ]]; then
                     log "Removing rendered configuration: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] rm -f %s\n' "$target"
+                    else
+                        rm -f "$target"
+                    fi
+                fi
+                ;;
+            CONFIG)
+                if [[ -f "$target" ]]; then
+                    log "Removing installed configuration: $target"
                     if [[ "$DRY_RUN" -eq 1 ]]; then
                         printf '[DRY-RUN] rm -f %s\n' "$target"
                     else

@@ -14,6 +14,8 @@ SKIP_BUILD=0
 FETCH_MODEL=0
 WITH_GREETER=0
 DO_UNINSTALL=0
+CHECK_ABI=0
+UPDATE_CONFIGS=0
 NON_INTERACTIVE="${INERIUM_NON_INTERACTIVE:-0}"
 INSTALL_MODE="bin"
 MODE_EXPLICIT=0
@@ -41,7 +43,7 @@ Usage: $(basename "$0") [OPTIONS]
 
 Options:
   --bin              Install prebuilt binaries from GitHub Releases (default)
-  --from-source      Compile Rust workspace and inerium-polkit locally via Cargo
+  --from-source      Compile Rust workspace locally via Cargo
   --dry-run          Print planned actions without modifying the system
   --skip-pkgs        Skip paru package installation
   --skip-build       Skip binary download and Cargo compilation
@@ -55,6 +57,8 @@ Options:
   --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-msi-ec, --with-novpn)
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
+  --update-configs   Update configuration files (backs up existing user files to .bak)
+  --check-abi        Check dynamic library ABI health for installed binaries
   --uninstall        Uninstall Inerium Shell and remove tracked files/services
   --prune            Prune obsolete files against previous install manifest
   --non-interactive  Run without interactive TUI prompts (also -y)
@@ -76,6 +80,8 @@ while [[ $# -gt 0 ]]; do
             INSTALL_MODE="source"; MODE_EXPLICIT=1; shift ;;
         --dry-run)         DRY_RUN=1; NON_INTERACTIVE=1; shift ;;
         --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
+        --check-abi)       CHECK_ABI=1; NON_INTERACTIVE=1; shift ;;
+        --update-configs)  UPDATE_CONFIGS=1; shift ;;
         --prune|--clean)   shift ;;
         --skip-pkgs)       SKIP_PKGS=1; shift ;;
         --skip-build)      SKIP_BUILD=1; shift ;;
@@ -114,7 +120,7 @@ source "$SCRIPTS_DIR/60-addons.sh"
 source "$SCRIPTS_DIR/70-summary.sh"
 
 export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed warn log
-export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD
+export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS
 
 # ============================================================================
 # Main Execution Pipeline
@@ -125,6 +131,11 @@ init_log_file
 if [[ "$DO_UNINSTALL" -eq 1 ]]; then
     run_uninstall
     exit 0
+fi
+
+if [[ "$CHECK_ABI" -eq 1 ]]; then
+    check_installed_binaries_abi
+    exit $?
 fi
 
 init_sudo_keepalive
