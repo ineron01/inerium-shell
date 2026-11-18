@@ -69,7 +69,14 @@ run_step() {
     fi
     if use_tui; then
         printf '\n=== %s (%s) ===\n' "$title" "$(date '+%H:%M:%S')" >> "$LOG_FILE"
-        if ! gum spin --spinner dot --title "$title" -- bash -c '"$@" >> "$0" 2>&1' "$LOG_FILE" "$@"; then
+        "$@" >> "$LOG_FILE" 2>&1 &
+        local step_pid=$!
+        if ! gum spin --spinner dot --title "$title" -- tail --pid="$step_pid" -f /dev/null; then
+            kill -9 "$step_pid" 2>/dev/null || true
+            wait "$step_pid" 2>/dev/null || true
+            return 1
+        fi
+        if ! wait "$step_pid"; then
             printf '\n[inerium-shell] ERROR during: %s\n' "$title" >&2
             printf '[inerium-shell] Last 25 lines of %s:\n' "$LOG_FILE" >&2
             tail -n 25 "$LOG_FILE" >&2 || true

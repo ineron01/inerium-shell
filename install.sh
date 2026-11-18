@@ -164,29 +164,37 @@ if use_tui; then
 fi
 
 # 1. Base packages (pacman / paru)
+log "[1/8] Installing base packages (pacman / paru)..."
 install_base_packages
 
 # 2. Rust binaries delivery
+log "[2/8] Delivering Inerium binaries..."
 deliver_binaries
 
 # 3. User scripts, KIO menus, desktop entries, indexer
+log "[3/8] Deploying user scripts and menus..."
 deploy_user_scripts_and_menus
 
 # 4. Dotfiles (~/.config), mutable templates, and local hardware overlays
+log "[4/8] Installing desktop configs and wallpapers (~/.config)..."
 deploy_desktop_configs
 detect_and_generate_local_overlays
 deploy_wallpapers
 
 # 5. Wayland sessions and login screen (greetd)
+log "[5/8] Configuring display manager (greetd)..."
 configure_greeter
 
 # 6. Systemd user services and browser defaults
+log "[6/8] Enabling systemd user services..."
 enable_user_services_and_defaults
 
 # 7. Optional add-ons (Google Drive, Dolphin Converter, MSI Cooling, Camera, noVPN)
+log "[7/8] Configuring selected add-on modules..."
 deploy_selected_addons
 
 # 8. Record installation manifest and prune obsolete files
+log "[8/8] Finalizing install manifest..."
 prune_obsolete_and_save_manifest
 
 # 9. Summary & completion

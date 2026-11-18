@@ -14,6 +14,30 @@ ensure_console_cyrillic_font() {
     fi
 }
 
+gum_choose_multiselect() {
+    local header="$1"
+    local selected="$2"
+    shift 2
+    if [[ -n "$selected" ]]; then
+        gum choose --no-limit \
+            --selected-prefix="[✓] " \
+            --unselected-prefix="[ ] " \
+            --selected.foreground="212" \
+            --item.foreground="245" \
+            --header="$header" \
+            --selected="$selected" \
+            "$@"
+    else
+        gum choose --no-limit \
+            --selected-prefix="[✓] " \
+            --unselected-prefix="[ ] " \
+            --selected.foreground="212" \
+            --item.foreground="245" \
+            --header="$header" \
+            "$@"
+    fi
+}
+
 ensure_gum_installed() {
     if [[ "$DRY_RUN" -eq 0 && "$NON_INTERACTIVE" -eq 0 && -t 0 && -t 1 ]] && ! command -v gum >/dev/null 2>&1; then
         if [[ "$SKIP_PKGS" -eq 0 ]]; then
@@ -89,12 +113,9 @@ run_tui_prompts() {
                 [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
                 [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
 
+                local header_addons="Выберите состав модулей (клавиша 'x' — отметить/снять, Enter — подтвердить):"
                 local chosen_addons
-                if [[ -n "$sel" ]]; then
-                    chosen_addons="$(gum choose --no-limit --header "Выберите состав модулей (Пробел — переключить, Enter — подтвердить):" --selected "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
-                else
-                    chosen_addons="$(gum choose --no-limit --header "Выберите состав модулей (Пробел — переключить, Enter — подтвердить):" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
-                fi
+                chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
 
                 WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_NOVPN=0
                 [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
@@ -154,12 +175,9 @@ run_tui_prompts() {
                 [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
                 [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
 
+                local header_addons="Select modules ('x' key to toggle, Enter to confirm):"
                 local chosen_addons
-                if [[ -n "$sel" ]]; then
-                    chosen_addons="$(gum choose --no-limit --header "Select modules (Space to toggle, Enter to confirm):" --selected "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
-                else
-                    chosen_addons="$(gum choose --no-limit --header "Select modules (Space to toggle, Enter to confirm):" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
-                fi
+                chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
 
                 WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_NOVPN=0
                 [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
@@ -249,9 +267,9 @@ run_tui_prompts() {
         local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
         local opt_msi="Охлаждение MSI — msi-ec DKMS + авторегулятор кулеров (MSI)"
         local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
-        local header_addons="Дополнительные модули (Пробел — выбор/снятие, Enter — подтвердить):"
+        local header_addons="Дополнительные модули (клавиша 'x' — отметить/снять, Enter — подтвердить):"
         local chosen_addons
-        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        chosen_addons="$(gum_choose_multiselect "$header_addons" "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
         [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
         [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
@@ -319,9 +337,9 @@ run_tui_prompts() {
         local opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
         local opt_msi="MSI Cooling — msi-ec DKMS + fan regulator (MSI)"
         local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
-        local header_addons="Optional Add-on Modules (Space to toggle, Enter to confirm):"
+        local header_addons="Optional Add-on Modules ('x' key to toggle, Enter to confirm):"
         local chosen_addons
-        chosen_addons="$(gum choose --no-limit --header "$header_addons" --selected "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+        chosen_addons="$(gum_choose_multiselect "$header_addons" "$opt_gdrive,$opt_novpn" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
         [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
         [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
         [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
