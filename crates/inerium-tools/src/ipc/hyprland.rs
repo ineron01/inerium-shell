@@ -15,16 +15,19 @@ pub fn get_hyprland_base_dir() -> PathBuf {
 /// Resolves the directory for the active Hyprland instance.
 /// Checks `HYPRLAND_INSTANCE_SIGNATURE` first, falling back to newest modified directory.
 pub fn get_socket_dir() -> Option<PathBuf> {
-    let hypr_dir = get_hyprland_base_dir();
+    get_socket_dir_from(&get_hyprland_base_dir(), env::var("HYPRLAND_INSTANCE_SIGNATURE").ok().as_deref())
+}
 
-    let sig = env::var("HYPRLAND_INSTANCE_SIGNATURE")
-        .ok()
+/// Pure resolution helper for socket directory without relying on global environment variables.
+pub fn get_socket_dir_from(hypr_dir: &std::path::Path, sig_opt: Option<&str>) -> Option<PathBuf> {
+    let sig = sig_opt
         .filter(|s| {
             let p = hypr_dir.join(s);
             p.join(".socket.sock").exists() || p.join(".socket.real.sock").exists() || p.join(".socket2.sock").exists()
         })
+        .map(|s| s.to_string())
         .or_else(|| {
-            let entries = fs::read_dir(&hypr_dir).ok()?;
+            let entries = fs::read_dir(hypr_dir).ok()?;
             let mut subdirs: Vec<_> = entries
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
@@ -86,7 +89,20 @@ mod tests {
 
     #[test]
     fn test_socket_dir() {
-        let dir = get_socket_dir();
-        assert!(dir.is_some(), "Hyprland socket directory should be found in active session");
+        if let Some(dir) = get_socket_dir() {
+            assert!(dir.is_dir());
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!("inerium-test-hypr-{}", std::process::id()));
+        let mock_sig = "mock_instance_ci";
+        let mock_instance = temp_dir.join(mock_sig);
+        let _ = fs::create_dir_all(&mock_instance);
+        let mock_sock = mock_instance.join(".socket.sock");
+        let _ = fs::write(&mock_sock, b"");
+
+        let resolved = get_socket_dir_from(&temp_dir, Some(mock_sig));
+        assert_eq!(resolved, Some(mock_instance));
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

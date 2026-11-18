@@ -6,23 +6,45 @@ use crate::sys::posix::*;
 
 pub struct PidRegistry {
     name: String,
+    base_dir: PathBuf,
 }
 
 impl PidRegistry {
     pub fn new(name: &str) -> Self {
+        Self::with_base_dir(name, Self::runtime_base_dir())
+    }
+
+    pub fn with_base_dir(name: &str, base_dir: PathBuf) -> Self {
         Self {
             name: name.to_string(),
+            base_dir,
+        }
+    }
+
+    fn runtime_base_dir() -> PathBuf {
+        if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
+            let p = PathBuf::from(rt);
+            if p.exists() {
+                return p;
+            }
+        }
+        let uid = posix_getuid();
+        let run_user = PathBuf::from(format!("/run/user/{}", uid));
+        if run_user.exists() {
+            run_user
+        } else {
+            let fallback = std::env::temp_dir().join(format!("inerium-runtime-{}", uid));
+            let _ = fs::create_dir_all(&fallback);
+            fallback
         }
     }
 
     pub fn pids_dir(&self) -> PathBuf {
-        let uid = posix_getuid();
-        PathBuf::from(format!("/run/user/{}/inerium-{}-pids", uid, self.name))
+        self.base_dir.join(format!("inerium-{}-pids", self.name))
     }
 
     pub fn state_file(&self) -> PathBuf {
-        let uid = posix_getuid();
-        PathBuf::from(format!("/run/user/{}/inerium-{}", uid, self.name))
+        self.base_dir.join(format!("inerium-{}", self.name))
     }
 
     /// Register current PID in the registry. Returns a guard that removes the file on drop.
@@ -59,8 +81,10 @@ impl PidRegistry {
             let _ = fs::remove_file(&path);
             false
         } else {
-            let _ = fs::write(&path, b"");
-            true
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(&path, b"").is_ok()
         }
     }
 
@@ -86,12 +110,17 @@ mod tests {
 
     #[test]
     fn test_pid_registry_toggle() {
-        let reg = PidRegistry::new("test-unit");
+        let temp_dir = std::env::temp_dir().join(format!("inerium-test-pids-{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let reg = PidRegistry::with_base_dir("test-unit-smoke", temp_dir.clone());
         let initial = reg.is_state_active();
+        assert!(!initial);
         let toggled = reg.toggle_state();
-        assert_ne!(initial, toggled);
-        assert_eq!(reg.is_state_active(), toggled);
+        assert!(toggled);
+        assert!(reg.is_state_active());
         let reverted = reg.toggle_state();
-        assert_eq!(reverted, initial);
+        assert!(!reverted);
+        assert!(!reg.is_state_active());
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

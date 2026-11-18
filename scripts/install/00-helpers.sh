@@ -26,6 +26,9 @@ use_tui() {
 
 check_not_root() {
     if [[ "$EUID" -eq 0 ]]; then
+        if [[ "${DRY_RUN:-0}" -eq 1 ]]; then
+            return 0
+        fi
         echo "Run install.sh as your regular user (not root/sudo); it calls sudo itself." >&2
         exit 1
     fi
