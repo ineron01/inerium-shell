@@ -52,7 +52,7 @@ Works identically from a **fresh TTY** or **inside any existing desktop environm
 
 **Short URL (via GitHub Pages):**
 ```bash
-curl -sL ineron01.github.io/inerium-shell/install.sh | bash
+curl -sL ineron01.github.io/inerium-shell | bash
 ```
 
 **Direct GitHub Raw URL (Recommended):**

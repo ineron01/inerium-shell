@@ -52,7 +52,7 @@ inerium-shell/
 
 **Короткий URL (через GitHub Pages):**
 ```bash
-curl -sL ineron01.github.io/inerium-shell/install.sh | bash
+curl -sL ineron01.github.io/inerium-shell | bash
 ```
 
 **Прямой URL GitHub Raw (рекомендуемый):**
