@@ -159,6 +159,7 @@ fi
 
 ensure_gum_installed
 if use_tui; then
+    ensure_console_cyrillic_font
     run_tui_prompts
 fi
 

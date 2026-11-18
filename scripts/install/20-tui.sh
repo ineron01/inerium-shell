@@ -3,6 +3,17 @@
 # scripts/install/20-tui.sh — Interactive Bilingual TUI (gum) & prompts
 # ============================================================================
 
+ensure_console_cyrillic_font() {
+    # If running in a Linux virtual terminal (TTY), ensure a font with Cyrillic glyphs is loaded
+    if [[ "${TERM:-}" == "linux" ]] && command -v setfont >/dev/null 2>&1; then
+        for font in ter-v16b cyr-sun16 latarcyrheb-sun16; do
+            if setfont "$font" >/dev/null 2>&1 || sudo setfont "$font" >/dev/null 2>&1; then
+                break
+            fi
+        done
+    fi
+}
+
 ensure_gum_installed() {
     if [[ "$DRY_RUN" -eq 0 && "$NON_INTERACTIVE" -eq 0 && -t 0 && -t 1 ]] && ! command -v gum >/dev/null 2>&1; then
         if [[ "$SKIP_PKGS" -eq 0 ]]; then
@@ -180,6 +191,7 @@ run_tui_prompts() {
             --selected "$def_lang" "Русский" "English")"
         if [[ "$lang_choice" == "Русский" ]]; then
             INSTALL_LANG="ru"
+            ensure_console_cyrillic_font
         else
             INSTALL_LANG="en"
         fi
