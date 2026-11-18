@@ -129,7 +129,7 @@ else
 fi
 
 if [[ ! -t 0 && -t 1 && -r /dev/tty ]]; then
-    exec "$TARGET_DIR/install.sh" --with-greeter "$@" < /dev/tty
+    exec "$TARGET_DIR/install.sh" "$@" < /dev/tty
 else
-    exec "$TARGET_DIR/install.sh" --with-greeter "$@"
+    exec "$TARGET_DIR/install.sh" "$@"
 fi
