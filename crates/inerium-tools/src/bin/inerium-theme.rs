@@ -1128,6 +1128,13 @@ pub fn apply_theme(theme: &ThemeConfig) {
         }
     }
 
+    // 3b. XDG Desktop Portal GTK (refresh CSS cache for file/app choosers)
+    let _ = Command::new("systemctl")
+        .args(["--user", "try-restart", "xdg-desktop-portal-gtk"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
     // 4. KDE / Dolphin / Qt
     let kde_colors_content = emit_kde_colors(theme);
     let kde_colors_path = home.join(format!(".local/share/color-schemes/{}.colors", kde_scheme_name));
