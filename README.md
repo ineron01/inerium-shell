@@ -52,10 +52,10 @@ Works identically from a **fresh TTY** or **inside any existing desktop environm
 
 **Short URL (via GitHub Pages):**
 ```bash
-curl -sL ineron01.github.io/inerium-shell | bash
+curl -sL ineron01.github.io/inerium-shell/install.sh | bash
 ```
 
-**Direct GitHub Raw URL (Alternative / Fallback):**
+**Direct GitHub Raw URL (Recommended):**
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/main/bootstrap.sh)"
 ```
