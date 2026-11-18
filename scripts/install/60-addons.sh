@@ -116,8 +116,10 @@ install_novpn_addon() {
         sudo systemctl enable novpn.service || true
     fi
 
-    if [[ -f "$REPO_DIR/local/share/applications/google-chrome-direct.desktop.template" ]]; then
-        render_template "$REPO_DIR/local/share/applications/google-chrome-direct.desktop.template" "$HOME/.local/share/applications/google-chrome-direct.desktop"
+    local novpn_first_login="$REPO_DIR/first-login.d/30-novpn"
+    if [[ -f "$novpn_first_login" ]]; then
+        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        link_item "$novpn_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn"
     fi
 }
 

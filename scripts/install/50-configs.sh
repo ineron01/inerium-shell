@@ -514,15 +514,20 @@ enable_user_services_and_defaults() {
         run "kbuildsycoca6 --noincremental >/dev/null 2>&1 || true"
     fi
 
-    # Set Google Chrome as default web browser if installed
-    if [[ -f /usr/share/applications/google-chrome.desktop ]]; then
-        if command -v xdg-mime >/dev/null 2>&1; then
-            run "xdg-mime default google-chrome.desktop x-scheme-handler/http >/dev/null 2>&1 || true"
-            run "xdg-mime default google-chrome.desktop x-scheme-handler/https >/dev/null 2>&1 || true"
-            run "xdg-mime default google-chrome.desktop text/html >/dev/null 2>&1 || true"
-        fi
-        if command -v xdg-settings >/dev/null 2>&1; then
-            BROWSER="" run "xdg-settings set default-web-browser google-chrome.desktop >/dev/null 2>&1 || true"
+    # Set default web browser only if not already configured in the system
+    if command -v xdg-settings >/dev/null 2>&1; then
+        local cur_browser
+        cur_browser="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+        if [[ -z "$cur_browser" ]]; then
+            for b_desk in google-chrome.desktop firefox.desktop brave-browser.desktop chromium.desktop; do
+                if [[ -f "/usr/share/applications/$b_desk" || -f "$HOME/.local/share/applications/$b_desk" ]]; then
+                    run "xdg-settings set default-web-browser '$b_desk' >/dev/null 2>&1 || true"
+                    run "xdg-mime default '$b_desk' x-scheme-handler/http >/dev/null 2>&1 || true"
+                    run "xdg-mime default '$b_desk' x-scheme-handler/https >/dev/null 2>&1 || true"
+                    run "xdg-mime default '$b_desk' text/html >/dev/null 2>&1 || true"
+                    break
+                fi
+            done
         fi
     fi
 }

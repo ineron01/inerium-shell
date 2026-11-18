@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# ============================================================================
+# inerium — Unified CLI for Inerium Shell Desktop Environment
+# ============================================================================
+set -euo pipefail
+
+find_repo_dir() {
+    if [[ -n "${INERIUM_SHELL_DIR:-}" && -d "$INERIUM_SHELL_DIR" ]]; then
+        echo "$INERIUM_SHELL_DIR"
+    elif [[ -n "${INERIUM_DESKTOP_DIR:-}" && -d "$INERIUM_DESKTOP_DIR" ]]; then
+        echo "$INERIUM_DESKTOP_DIR"
+    elif [[ -d "$HOME/Repos/inerium-shell" ]]; then
+        echo "$HOME/Repos/inerium-shell"
+    elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell" ]]; then
+        echo "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
+    elif [[ -d "$HOME/inerium-shell" ]]; then
+        echo "$HOME/inerium-shell"
+    else
+        echo ""
+    fi
+}
+
+usage() {
+    cat <<EOF
+Использование: inerium <команда> [параметры...]
+
+Команды:
+  update, up      Обновить Inerium Shell (бинарники, службы, модули)
+  setup           Открыть графический интерфейс настроек (inerium-setup)
+  theme [ID]      Просмотр или переключение темы оформления
+  check           Проверить целостность системных библиотек и бинарников (ABI)
+  status          Текущее состояние системы и активных модулей
+  help, -h        Показать эту справку
+
+Примеры:
+  inerium update        # Интерактивное обновление (с вопросом о модулях)
+  inerium update -y     # Быстрое тихое обновление без вопросов
+  inerium setup         # Настройки мониторов, обоев и интеграций
+EOF
+}
+
+cmd_update() {
+    local repo_dir
+    repo_dir="$(find_repo_dir)"
+    if [[ -z "$repo_dir" || ! -f "$repo_dir/install.sh" ]]; then
+        echo "[inerium] Ошибка: Каталог Inerium Shell не найден." >&2
+        echo "          Запустите установку: curl -sL ineron01.github.io/inerium-shell | bash" >&2
+        exit 1
+    fi
+
+    # If running outside a terminal (e.g. launched from GUI button or .desktop),
+    # launch inside an interactive terminal emulator so the user sees the TUI!
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        if command -v kitty >/dev/null 2>&1; then
+            exec kitty --title "Inerium Update" -e "$0" update "$@"
+        elif command -v xdg-terminal-exec >/dev/null 2>&1; then
+            exec xdg-terminal-exec "$0" update "$@"
+        fi
+    fi
+
+    echo "[inerium] Проверка обновлений репозитория в $repo_dir..."
+    if [[ -d "$repo_dir/.git" ]]; then
+        if [[ "$repo_dir" == *"/Repos/inerium"* ]]; then
+            echo "[inerium] Обнаружено рабочее дерево разработчика ($repo_dir). Пропуск git pull."
+        else
+            git -C "$repo_dir" pull --ff-only 2>/dev/null || {
+                echo "[inerium] Предупреждение: Не удалось обновить git репозиторий (продолжаем с текущей копией)."
+            }
+        fi
+    fi
+
+    exec "$repo_dir/install.sh" --update "$@"
+}
+
+cmd_status() {
+    local repo_dir
+    repo_dir="$(find_repo_dir)"
+    echo "=== Inerium Shell — Состояние системы ==="
+    echo "Версия репозитория: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
+    echo "Каталог:            ${repo_dir:-не найден}"
+    echo "Сессия Wayland:     ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
+    echo ""
+    echo "Установленные модули:"
+    [[ -f "/etc/greetd/config.toml" ]] && echo "  [✓] Greetd (Экран входа)" || echo "  [ ] Greetd"
+    command -v novpn >/dev/null 2>&1 && echo "  [✓] noVPN (Сетевая изоляция)" || echo "  [ ] noVPN"
+    [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && echo "  [✓] Google Drive (rclone)" || echo "  [ ] Google Drive"
+    [[ -d "$HOME/.local/share/kio/servicemenus" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
+    [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
+    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && echo "  [✓] Охлаждение MSI (msi-ec)" || echo "  [ ] Охлаждение MSI"
+}
+
+COMMAND="${1:-}"
+[[ $# -gt 0 ]] && shift || true
+
+case "$COMMAND" in
+    "update"|"up")
+        cmd_update "$@"
+        ;;
+    "setup"|"config")
+        exec inerium-setup "$@"
+        ;;
+    "theme")
+        exec inerium-theme "$@"
+        ;;
+    "check"|"abi")
+        repo_dir="$(find_repo_dir)"
+        if [[ -n "$repo_dir" && -f "$repo_dir/install.sh" ]]; then
+            exec "$repo_dir/install.sh" --check-abi "$@"
+        else
+            echo "install.sh не найден." >&2; exit 1
+        fi
+        ;;
+    "status")
+        cmd_status
+        ;;
+    "help"|"-h"|"--help"|"")
+        usage
+        ;;
+    *)
+        echo "Неизвестная команда: $COMMAND" >&2
+        usage
+        exit 1
+        ;;
+esac

@@ -41,13 +41,14 @@ Inerium Shell includes optional system modules that can be selected during insta
 - **Description:** Lightweight network-namespace-based split-tunneling utility to route specific applications directly through the physical ISP gateway, bypassing any active global VPN (AmneziaVPN, WireGuard, OpenVPN).
 - **Components:**
   - `/usr/local/bin/novpn`
+  - `/usr/local/bin/novpn-desktop`
   - `/usr/local/bin/novpn-exec`
   - `/usr/local/bin/novpn-up`
   - `/usr/local/bin/novpn-down`
   - `/etc/systemd/system/novpn.service`
 - **Usage:**
+  - `novpn make-desktop` — universal direct shortcut generator for any installed browser (XDG discovery).
   - `novpn curl https://ifconfig.me` — runs curl showing physical IP address.
-  - `novpn google-chrome-stable` — runs browser without VPN.
   - `novpn status` — displays connectivity and public IP for both VPN host and direct network namespace.
 
 ---

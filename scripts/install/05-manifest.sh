@@ -338,3 +338,38 @@ run_uninstall() {
     fi
     log "Inerium Shell uninstallation complete."
 }
+
+detect_installed_addons_and_features() {
+    if [[ -f "$MANIFEST_FILE" ]]; then
+        while IFS=$'\t' read -r type target extra; do
+            case "$type" in
+                ADDON)
+                    case "$target" in
+                        gdrive)    WITH_GDRIVE=1 ;;
+                        converter) WITH_CONVERTER=1 ;;
+                        camera)    WITH_CAMERA=1 ;;
+                        msi-ec)    WITH_MSI_EC=1 ;;
+                        novpn)     WITH_NOVPN=1 ;;
+                    esac
+                    ;;
+                SYS_FILE)
+                    if [[ "$target" == *greetd* ]]; then
+                        WITH_GREETER=1
+                    fi
+                    ;;
+            esac
+        done < "$MANIFEST_FILE"
+    fi
+
+    # Live system fallback checks
+    [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && WITH_GDRIVE=1
+    [[ -d "$HOME/.local/share/kio/servicemenus" && -f "$HOME/.local/share/kio/servicemenus/10-convert-docs.desktop" ]] && WITH_CONVERTER=1
+    [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && WITH_CAMERA=1
+    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && WITH_MSI_EC=1
+    if [[ -f "/etc/systemd/system/novpn.service" ]] || command -v novpn >/dev/null 2>&1; then
+        WITH_NOVPN=1
+    fi
+    if [[ -f "/etc/greetd/config.toml" ]] || systemctl is-enabled greetd.service >/dev/null 2>&1; then
+        WITH_GREETER=1
+    fi
+}

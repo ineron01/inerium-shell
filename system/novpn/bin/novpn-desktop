@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+# ============================================================================
+# novpn-desktop — Universal noVPN Desktop Profile Generator
+# Zero-hardcode XDG-standard browser discovery & isolated profile generator.
+# ============================================================================
+set -euo pipefail
+
+get_app_dirs() {
+    local -a dirs=()
+    local xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
+    dirs+=("$xdg_data/applications")
+    if [[ -n "${XDG_DATA_DIRS:-}" ]]; then
+        local old_ifs="$IFS"
+        IFS=':'
+        for d in $XDG_DATA_DIRS; do
+            dirs+=("$d/applications")
+        done
+        IFS="$old_ifs"
+    else
+        dirs+=("/usr/local/share/applications" "/usr/share/applications")
+    fi
+    printf '%s\n' "${dirs[@]}"
+}
+
+# Returns list of installed browsers in format: "BIN|NAME|ICON|DESKTOP_PATH"
+# Discovered dynamically via freedesktop.org XDG Desktop Entry Specification.
+find_installed_browsers() {
+    local -A seen_bins=()
+    local -a app_dirs
+    mapfile -t app_dirs < <(get_app_dirs)
+
+    for d in "${app_dirs[@]}"; do
+        [[ -d "$d" ]] || continue
+        for f in "$d"/*.desktop; do
+            [[ -f "$f" ]] || continue
+            # Avoid recursion on already generated direct shortcuts
+            [[ "$(basename "$f")" == *"-direct.desktop" ]] && continue
+
+            # Standard XDG category or MIME type check for web browsers
+            if grep -qE '^Categories=.*WebBrowser' "$f" 2>/dev/null || grep -qE '^MimeType=.*x-scheme-handler/https' "$f" 2>/dev/null; then
+                # Isolate the main [Desktop Entry] section (exclude action sub-sections)
+                local entry_section
+                entry_section="$(sed -e '/^\[Desktop Action/,$d' "$f")"
+
+                local exec_line
+                exec_line="$(echo "$entry_section" | grep -m1 '^Exec=' | cut -d= -f2- || true)"
+                [[ -z "$exec_line" ]] && continue
+
+                local raw_bin
+                raw_bin="$(awk '{print $1}' <<< "$exec_line" | tr -d '"'\''')"
+                local bin_name
+                bin_name="$(basename "$raw_bin")"
+
+                local real_bin=""
+                if [[ -x "$raw_bin" ]]; then
+                    real_bin="$(readlink -f "$raw_bin" 2>/dev/null || echo "$raw_bin")"
+                elif command -v "$bin_name" >/dev/null 2>&1; then
+                    real_bin="$(readlink -f "$(command -v "$bin_name")" 2>/dev/null || command -v "$bin_name")"
+                fi
+                [[ -z "$real_bin" || -n "${seen_bins[$bin_name]:-}" ]] && continue
+                seen_bins["$bin_name"]=1
+
+                local name
+                name="$(echo "$entry_section" | grep -m1 '^Name\[ru\]=' | cut -d= -f2- || true)"
+                [[ -z "$name" ]] && name="$(echo "$entry_section" | grep -m1 '^Name=' | cut -d= -f2- || echo "$bin_name")"
+
+                local icon
+                icon="$(echo "$entry_section" | grep -m1 '^Icon=' | cut -d= -f2- || echo "$bin_name")"
+
+                echo "$bin_name|$name|$icon|$f"
+            fi
+        done
+    done
+}
+
+detect_engine_flags() {
+    local bin="$1"
+    local profile_dir="$2"
+    local help_txt=""
+
+    if command -v timeout >/dev/null 2>&1; then
+        help_txt="$(timeout 1s "$bin" --help 2>&1 || true)"
+    else
+        help_txt="$("$bin" --help 2>&1 || true)"
+    fi
+
+    if grep -q "user-data-dir" <<< "$help_txt"; then
+        # Chromium engine (Chrome, Brave, Chromium, Vivaldi, Edge, Yandex, Thorium...)
+        echo "CHROMIUM|novpn $bin --user-data-dir=$profile_dir %U|novpn $bin --user-data-dir=$profile_dir|novpn $bin --user-data-dir=$profile_dir --incognito"
+    elif grep -q -- "--profile" <<< "$help_txt"; then
+        # Gecko engine (Firefox, Zen, Floorp, LibreWolf, Waterfox, Tor...)
+        echo "GECKO|novpn $bin --no-remote --profile $profile_dir %U|novpn $bin --no-remote --profile $profile_dir|novpn $bin --no-remote --profile $profile_dir --private-window"
+    else
+        # Dynamic fallback based on common engine naming or XDG isolation
+        case "$bin" in
+            *firefox*|*zen*|*wolf*|*floorp*|*tor*)
+                echo "GECKO|novpn $bin --no-remote --profile $profile_dir %U|novpn $bin --no-remote --profile $profile_dir|novpn $bin --no-remote --profile $profile_dir --private-window"
+                ;;
+            *)
+                echo "CHROMIUM|novpn $bin --user-data-dir=$profile_dir %U|novpn $bin --user-data-dir=$profile_dir|novpn $bin --user-data-dir=$profile_dir --incognito"
+                ;;
+        esac
+    fi
+}
+
+usage() {
+    cat <<EOF
+Использование: novpn make-desktop [БРАУЗЕР]
+              novpn-desktop [БРАУЗЕР]
+
+Автоматически обнаруживает установленные веб-браузеры по стандарту XDG
+и создает изолированный профиль для работы напрямую в обход VPN.
+
+Параметры:
+  [БРАУЗЕР]       Имя или бинарник браузера (например: firefox, chrome, brave, zen)
+  --list, -l      Список обнаруженных браузеров
+  --json          Список браузеров в формате JSON для интеграций
+  -h, --help      Справка
+
+Примеры:
+  novpn make-desktop
+  novpn make-desktop firefox
+  novpn make-desktop brave
+EOF
+}
+
+TARGET="${1:-}"
+
+case "$TARGET" in
+    "-h"|"--help"|"help")
+        usage
+        exit 0
+        ;;
+    "--list"|"-l")
+        find_installed_browsers | while IFS='|' read -r b n i f; do
+            echo "$b ($n)"
+        done
+        exit 0
+        ;;
+    "--json")
+        first=1
+        printf '['
+        while IFS='|' read -r b n i f; do
+            [[ -z "$b" ]] && continue
+            if [[ "$first" -eq 1 ]]; then
+                first=0
+            else
+                printf ','
+            fi
+            clean_name="${n//\"/\\\"}"
+            printf '{"id":"%s","name":"%s"}' "$b" "$clean_name"
+        done < <(find_installed_browsers)
+        printf ']\n'
+        exit 0
+        ;;
+esac
+
+mapfile -t BROWSERS < <(find_installed_browsers)
+
+if [[ ${#BROWSERS[@]} -eq 0 ]]; then
+    echo "[novpn-desktop] Ошибка: В системе не обнаружен ни один веб-браузер по стандарту XDG." >&2
+    echo "                 Установите браузер и повторите команду." >&2
+    exit 1
+fi
+
+SELECTED_LINE=""
+
+if [[ -n "$TARGET" ]]; then
+    for line in "${BROWSERS[@]}"; do
+        IFS='|' read -r b n i f <<< "$line"
+        if [[ "$b" == "$TARGET" || "$b" == *"$TARGET"* || "$n" == *"$TARGET"* ]]; then
+            SELECTED_LINE="$line"
+            break
+        fi
+    done
+    if [[ -z "$SELECTED_LINE" ]]; then
+        echo "[novpn-desktop] Предупреждение: Браузер '$TARGET' не найден в списке XDG-приложений." >&2
+        if command -v "$TARGET" >/dev/null 2>&1; then
+            echo "[novpn-desktop] Найден бинарник в PATH: $(command -v "$TARGET"). Генерируем профиль..."
+            SELECTED_LINE="$TARGET|$TARGET|$TARGET|"
+        else
+            echo "[novpn-desktop] Ошибка: Команда '$TARGET' недоступна." >&2
+            exit 1
+        fi
+    fi
+else
+    # Auto-resolve
+    if [[ ${#BROWSERS[@]} -eq 1 ]]; then
+        SELECTED_LINE="${BROWSERS[0]}"
+    else
+        # Try system default browser first
+        if command -v xdg-settings >/dev/null 2>&1; then
+            default_desk="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+            for line in "${BROWSERS[@]}"; do
+                IFS='|' read -r b n i f <<< "$line"
+                if [[ -n "$default_desk" && "$(basename "$f")" == "$default_desk" ]]; then
+                    SELECTED_LINE="$line"
+                    break
+                fi
+            done
+        fi
+
+        if [[ -z "$SELECTED_LINE" ]]; then
+            if [[ -t 0 && -t 1 ]]; then
+                if command -v gum >/dev/null 2>&1; then
+                    echo "Выберите браузер для создания ярлыка прямого доступа (noVPN):"
+                    choices=()
+                    for line in "${BROWSERS[@]}"; do
+                        IFS='|' read -r b n i f <<< "$line"
+                        choices+=("$b ($n)")
+                    done
+                    chosen="$(gum choose "${choices[@]}")"
+                    chosen_b="$(awk '{print $1}' <<< "$chosen")"
+                    for line in "${BROWSERS[@]}"; do
+                        IFS='|' read -r b n i f <<< "$line"
+                        if [[ "$b" == "$chosen_b" ]]; then
+                            SELECTED_LINE="$line"
+                            break
+                        fi
+                    done
+                else
+                    echo "Обнаружено несколько браузеров. Выберите один:"
+                    select line in "${BROWSERS[@]}"; do
+                        if [[ -n "$line" ]]; then
+                            SELECTED_LINE="$line"
+                            break
+                        fi
+                    done
+                fi
+            else
+                SELECTED_LINE="${BROWSERS[0]}"
+            fi
+        fi
+    fi
+fi
+
+IFS='|' read -r BIN_NAME DISPLAY_NAME ICON DESKTOP_PATH <<< "$SELECTED_LINE"
+
+PROFILE_DIR="$HOME/.config/${BIN_NAME}-direct"
+mkdir -p "$PROFILE_DIR"
+
+IFS='|' read -r ENGINE EXEC_MAIN EXEC_WIN EXEC_PRIV <<< "$(detect_engine_flags "$BIN_NAME" "$PROFILE_DIR")"
+
+DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+mkdir -p "$DESKTOP_DIR"
+DESKTOP_FILE="$DESKTOP_DIR/${BIN_NAME}-direct.desktop"
+
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=${DISPLAY_NAME} (Без VPN)
+Name[en]=${DISPLAY_NAME} (No VPN)
+Name[ru]=${DISPLAY_NAME} (Без VPN)
+GenericName=Web Browser
+GenericName[ru]=Веб-браузер
+Comment=Access the Internet directly without VPN
+Comment[ru]=Доступ в Интернет напрямую через провайдера без VPN
+StartupWMClass=${BIN_NAME}-direct
+Exec=${EXEC_MAIN}
+StartupNotify=true
+Terminal=false
+Icon=${ICON}
+Type=Application
+Categories=Network;WebBrowser;
+Actions=new-window;new-private-window;
+Keywords=novpn;direct;vpn;безвпн;директ;браузер;browser;${BIN_NAME};
+
+[Desktop Action new-window]
+Name=Новое окно
+Name[en]=New Window
+Exec=${EXEC_WIN}
+
+[Desktop Action new-private-window]
+Name=Новое приватное окно
+Name[en]=New Private Window
+Exec=${EXEC_PRIV}
+EOF
+
+chmod 644 "$DESKTOP_FILE"
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+fi
+
+echo "[novpn-desktop] ✓ Создан профиль прямого доступа (движок: $ENGINE):"
+echo "                Ярлык:   $DESKTOP_FILE"
+echo "                Профиль: $PROFILE_DIR"
+echo "                Запуск:  $EXEC_MAIN"
+echo "                Ярлык '${DISPLAY_NAME} (Без VPN)' теперь доступен в меню приложений и Rofi."

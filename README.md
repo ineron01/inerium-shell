@@ -118,6 +118,7 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--all-addons`: Installs all optional add-ons together.
 
 ### Configuration & Lifecycle Flags
+- `--update`: Update an existing installation (preserves installed add-on modules and configuration without repeating initial setup questions).
 - `--bin`: Install prebuilt binaries from GitHub Releases (default).
 - `--from-source`: Compile Rust workspace locally via Cargo.
 - `--with-greeter`: Install and configure `greetd` + `inerium-greeter` display manager.

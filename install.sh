@@ -16,6 +16,7 @@ WITH_GREETER=0
 DO_UNINSTALL=0
 CHECK_ABI=0
 UPDATE_CONFIGS=0
+IS_UPDATE=0
 NON_INTERACTIVE="${INERIUM_NON_INTERACTIVE:-0}"
 INSTALL_MODE="bin"
 MODE_EXPLICIT=0
@@ -57,6 +58,7 @@ Options:
   --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-msi-ec, --with-novpn)
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
+  --update           Update existing installation (keeps installed modules, pulls latest binaries)
   --update-configs   Update configuration files (backs up existing user files to .bak)
   --check-abi        Check dynamic library ABI health for installed binaries
   --uninstall        Uninstall Inerium Shell and remove tracked files/services
@@ -79,6 +81,7 @@ while [[ $# -gt 0 ]]; do
             fi
             INSTALL_MODE="source"; MODE_EXPLICIT=1; shift ;;
         --dry-run)         DRY_RUN=1; NON_INTERACTIVE=1; shift ;;
+        --update)          IS_UPDATE=1; UPDATE_CONFIGS=1; shift ;;
         --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
         --check-abi)       CHECK_ABI=1; NON_INTERACTIVE=1; shift ;;
         --update-configs)  UPDATE_CONFIGS=1; shift ;;
@@ -140,6 +143,19 @@ fi
 
 init_sudo_keepalive
 init_manifest
+
+if [[ "$IS_UPDATE" -eq 1 ]]; then
+    detect_installed_addons_and_features
+    if [[ -z "$INSTALL_LANG" ]]; then
+        if [[ -f "$HOME/.config/locale.conf" ]] && grep -q "ru_RU" "$HOME/.config/locale.conf"; then
+            INSTALL_LANG="ru"
+        elif [[ "${LANG:-}" =~ ^ru || "${LC_ALL:-}" =~ ^ru ]]; then
+            INSTALL_LANG="ru"
+        else
+            INSTALL_LANG="en"
+        fi
+    fi
+fi
 
 ensure_gum_installed
 if use_tui; then

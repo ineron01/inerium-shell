@@ -38,10 +38,10 @@ ddcutil
 brightnessctl
 upower
 
-# Shell, Terminal, File Manager, Browser & Python
+# Shell, Terminal, File Manager & Python
 fish
 kitty
-google-chrome
+gum
 btop
 fastfetch
 gnome-text-editor

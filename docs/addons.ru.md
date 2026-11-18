@@ -41,13 +41,14 @@
 - **Описание:** Легковесная утилита split-tunneling на базе изолированных сетевых пространств имен Linux (`ip netns`). Позволяет запускать выбранные приложения напрямую через физический шлюз провайдера, минуя любой глобальный VPN (AmneziaVPN, WireGuard, OpenVPN).
 - **Состав:**
   - `/usr/local/bin/novpn`
+  - `/usr/local/bin/novpn-desktop`
   - `/usr/local/bin/novpn-exec`
   - `/usr/local/bin/novpn-up`
   - `/usr/local/bin/novpn-down`
   - `/etc/systemd/system/novpn.service`
 - **Примеры использования:**
+  - `novpn make-desktop` — универсальный генератор ярлыка прямого доступа для любого установленного браузера (автообнаружение XDG).
   - `novpn curl https://ifconfig.me` — покажет реальный IP-адрес провайдера.
-  - `novpn google-chrome-stable` — браузер пойдет в сеть напрямую без VPN.
   - `novpn status` — статус связи и IP-адреса хоста (VPN) и изолированной сети.
 
 ---

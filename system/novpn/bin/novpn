@@ -27,14 +27,29 @@ case "${1:-}" in
         echo "Запуск novpn..."
         sudo systemctl start novpn.service
         ;;
+    "make-desktop"|"desktop"|"profile"|"make-profile")
+        shift
+        desktop_helper="/usr/local/bin/novpn-desktop"
+        if [[ ! -x "$desktop_helper" ]]; then
+            desktop_helper="$(dirname "$0")/novpn-desktop"
+        fi
+        if command -v "$desktop_helper" >/dev/null 2>&1 || [[ -x "$desktop_helper" ]]; then
+            exec "$desktop_helper" "$@"
+        else
+            echo "Ошибка: утилита novpn-desktop не найдена." >&2
+            exit 1
+        fi
+        ;;
     "help"|"-h"|"--help"|"")
         if [ -z "${1:-}" ]; then
             echo "Использование: novpn <команда> [параметры...]"
             echo "              novpn [status|refresh|on|off]"
+            echo "              novpn make-desktop [браузер]"
             echo ""
             echo "Примеры:"
             echo "  novpn curl https://ifconfig.me"
-            echo "  novpn google-chrome-stable --user-data-dir=~/.config/google-chrome-direct"
+            echo "  novpn make-desktop firefox"
+            echo "  novpn make-desktop brave"
             echo "  novpn status"
             exit 1
         fi

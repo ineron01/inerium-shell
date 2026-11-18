@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Title: Прямой интернет без VPN (noVPN) — профиль браузера
+set -euo pipefail
+
+configured() {
+    compgen -G "$HOME/.local/share/applications/*-direct.desktop" >/dev/null 2>&1
+}
+
+if [[ "${1:-}" == --check ]]; then
+    configured || exit 1
+    exit 0
+fi
+
+if ! command -v novpn >/dev/null 2>&1; then
+    echo "Служба noVPN не установлена (модуль --with-novpn)."
+    exit 1
+fi
+
+echo "Настройка прямого доступа в интернет в обход VPN (noVPN)..."
+novpn make-desktop "${@:-}"

@@ -141,6 +141,27 @@ fn build_shell(
     title_box.append(&subtitle);
     header.append(&title_box);
 
+    // Update button (runs interactive TUI in kitty)
+    let update_btn = Button::with_label(tr(lang, "󰚰 Update", "󰚰 Обновить"));
+    update_btn.add_css_class("seg-btn");
+    update_btn.set_valign(Align::Center);
+    update_btn.set_tooltip_text(Some(tr(
+        lang,
+        "Check and update Inerium Shell components and configuration",
+        "Проверить и обновить компоненты и конфигурацию Inerium Shell",
+    )));
+    update_btn.connect_clicked(|_| {
+        let _ = std::process::Command::new("kitty")
+            .args(["--title", "Inerium Update", "-e", "inerium", "update"])
+            .spawn()
+            .or_else(|_| {
+                std::process::Command::new("inerium")
+                    .arg("update")
+                    .spawn()
+            });
+    });
+    header.append(&update_btn);
+
     // Language toggle (EN / RU)
     let lang_seg = Box::new(Orientation::Horizontal, 2);
     lang_seg.add_css_class("seg-group");

@@ -23,6 +23,152 @@ run_tui_prompts() {
         is_msi=1
     fi
 
+    # Update Mode prompt workflow
+    if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
+        if [[ -z "$INSTALL_LANG" ]]; then
+            if [[ -f "$HOME/.config/locale.conf" ]] && grep -q "ru_RU" "$HOME/.config/locale.conf"; then
+                INSTALL_LANG="ru"
+            elif [[ "${LANG:-}" =~ ^ru || "${LC_ALL:-}" =~ ^ru ]]; then
+                INSTALL_LANG="ru"
+            else
+                INSTALL_LANG="en"
+            fi
+        fi
+
+        if [[ "$INSTALL_LANG" == "ru" ]]; then
+            gum style \
+                --border rounded \
+                --border-foreground 212 \
+                --padding "1 3" \
+                --margin "1 0" \
+                --bold \
+                "INERIUM SHELL — ОБНОВЛЕНИЕ" \
+                "Быстрое обновление компонентов и конфигураций"
+
+            gum style \
+                --border normal \
+                --border-foreground 99 \
+                --padding "0 2" \
+                --margin "0 0 1 0" \
+                "Текущая конфигурация:" \
+                "  GPU:                 $gpu_info" \
+                "  Дисплейный менеджер: $dm_info" \
+                "  noVPN:               $([[ "$WITH_NOVPN" -eq 1 ]] && echo 'Включен' || echo 'Выключен')" \
+                "  Google Drive:        $([[ "$WITH_GDRIVE" -eq 1 ]] && echo 'Включен' || echo 'Выключен')" \
+                "  Dolphin Converter:   $([[ "$WITH_CONVERTER" -eq 1 ]] && echo 'Включен' || echo 'Выключен')" \
+                "  Inerium Camera:      $([[ "$WITH_CAMERA" -eq 1 ]] && echo 'Включен' || echo 'Выключен')" \
+                "  MSI EC:              $([[ "$WITH_MSI_EC" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
+
+            local modify_choice=0
+            if gum confirm "Хотите добавить новые компоненты или изменить состав модулей?" --default=false; then
+                modify_choice=1
+            fi
+
+            if [[ "$modify_choice" -eq 1 ]]; then
+                local opt_gdrive="Google Drive — интеграция облака в Dolphin (rclone)"
+                local opt_converter="Dolphin Converter — конвертация файлов (LibreOffice, Pandoc, ONNX)"
+                local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
+                local opt_msi="Охлаждение MSI — msi-ec DKMS + авторегулятор кулеров (MSI)"
+                local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
+
+                local sel=""
+                [[ "$WITH_GDRIVE" -eq 1 ]] && sel="${sel:+$sel,}$opt_gdrive"
+                [[ "$WITH_CONVERTER" -eq 1 ]] && sel="${sel:+$sel,}$opt_converter"
+                [[ "$WITH_NOVPN" -eq 1 ]] && sel="${sel:+$sel,}$opt_novpn"
+                [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
+                [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
+
+                local chosen_addons
+                if [[ -n "$sel" ]]; then
+                    chosen_addons="$(gum choose --no-limit --header "Выберите состав модулей (Пробел — переключить, Enter — подтвердить):" --selected "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+                else
+                    chosen_addons="$(gum choose --no-limit --header "Выберите состав модулей (Пробел — переключить, Enter — подтвердить):" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+                fi
+
+                WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_NOVPN=0
+                [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
+                [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
+                [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
+                [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
+                [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+
+                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "$HOME/.local/share/dolphin-converter/models/silueta.onnx" ]]; then
+                    if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" --default=true; then
+                        FETCH_MODEL=1
+                    fi
+                fi
+            else
+                log "Сохранение текущего набора модулей. Запуск быстрого обновления..."
+            fi
+        else
+            gum style \
+                --border rounded \
+                --border-foreground 212 \
+                --padding "1 3" \
+                --margin "1 0" \
+                --bold \
+                "INERIUM SHELL — UPDATE" \
+                "Fast update of desktop components and configurations"
+
+            gum style \
+                --border normal \
+                --border-foreground 99 \
+                --padding "0 2" \
+                --margin "0 0 1 0" \
+                "Current Configuration:" \
+                "  GPU:             $gpu_info" \
+                "  Display Manager: $dm_info" \
+                "  noVPN:           $([[ "$WITH_NOVPN" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')" \
+                "  Google Drive:    $([[ "$WITH_GDRIVE" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')" \
+                "  Converter:       $([[ "$WITH_CONVERTER" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')" \
+                "  Camera:          $([[ "$WITH_CAMERA" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')" \
+                "  MSI EC:          $([[ "$WITH_MSI_EC" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
+
+            local modify_choice=0
+            if gum confirm "Do you want to add new components or modify installed modules?" --default=false; then
+                modify_choice=1
+            fi
+
+            if [[ "$modify_choice" -eq 1 ]]; then
+                local opt_gdrive="Google Drive — cloud integration in Dolphin (rclone)"
+                local opt_converter="Dolphin Converter — media/doc conversion & ONNX background removal"
+                local opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
+                local opt_msi="MSI Cooling — msi-ec DKMS + fan regulator (MSI)"
+                local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
+
+                local sel=""
+                [[ "$WITH_GDRIVE" -eq 1 ]] && sel="${sel:+$sel,}$opt_gdrive"
+                [[ "$WITH_CONVERTER" -eq 1 ]] && sel="${sel:+$sel,}$opt_converter"
+                [[ "$WITH_NOVPN" -eq 1 ]] && sel="${sel:+$sel,}$opt_novpn"
+                [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
+                [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
+
+                local chosen_addons
+                if [[ -n "$sel" ]]; then
+                    chosen_addons="$(gum choose --no-limit --header "Select modules (Space to toggle, Enter to confirm):" --selected "$sel" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+                else
+                    chosen_addons="$(gum choose --no-limit --header "Select modules (Space to toggle, Enter to confirm):" "$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_msi")"
+                fi
+
+                WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_NOVPN=0
+                [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
+                [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
+                [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
+                [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
+                [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+
+                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "$HOME/.local/share/dolphin-converter/models/silueta.onnx" ]]; then
+                    if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" --default=true; then
+                        FETCH_MODEL=1
+                    fi
+                fi
+            else
+                log "Keeping installed modules untouched. Proceeding with fast update..."
+            fi
+        fi
+        return 0
+    fi
+
     # Select language if not explicitly provided
     if [[ -z "$INSTALL_LANG" ]]; then
         local def_lang="Русский"
