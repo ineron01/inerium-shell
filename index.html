@@ -35,6 +35,8 @@ else
     TARGET_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
 fi
 
+cd "$HOME" 2>/dev/null || true
+
 has_gum() {
     command -v gum >/dev/null 2>&1 && [[ -t 1 ]]
 }
