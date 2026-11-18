@@ -187,7 +187,7 @@
         "exec": "inerium-bluetooth --waybar",
         "return-type": "json",
         "on-click": "inerium-popup bluetooth",
-        "on-click-right": "inerium-toggle-bluetooth",
+        "on-click-right": "rfkill toggle bluetooth",
         "on-click-middle": "uwsm app -- blueman-manager",
         "tooltip": true
     },

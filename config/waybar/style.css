@@ -28,11 +28,10 @@ window#waybar {
 #tray,
 #status,
 #session {
-    background: @bg;
+    background: alpha(@bg, 0.82);
     border: 1px solid @line;
     border-radius: 10px;
     margin: 2px 3px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
