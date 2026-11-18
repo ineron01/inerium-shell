@@ -41,14 +41,30 @@ window {
     background-color: rgba(135, 169, 135, 0.18); color: #87a987; font-size: 22px;
 }
 
+entry.password,
+.password-input,
 passwordentry {
     min-height: 48px; padding: 0 16px; border-radius: 12px;
-    background-color: #221f1f; color: #e6e2cc; font-size: 14px;
+    background-color: #221f1f; background-image: none; color: #e6e2cc; font-size: 14px;
     border: 1px solid rgba(197, 201, 197, 0.12); box-shadow: none; outline: none;
 }
-passwordentry:focus-within { border-color: rgba(135, 169, 135, 0.65); }
-passwordentry.error { border-color: rgba(196, 116, 110, 0.85); }
-passwordentry > text > placeholder { color: #737c73; }
+entry.password text,
+.password-input text {
+    color: #e6e2cc;
+    background-color: transparent;
+    background-image: none;
+}
+entry.password:focus-within,
+.password-input:focus-within { border-color: rgba(135, 169, 135, 0.65); }
+entry.password.error,
+.password-input.error { border-color: rgba(196, 116, 110, 0.85); }
+entry.password placeholder,
+entry.password text placeholder,
+.password-input placeholder { color: #737c73; }
+entry.password image,
+.password-input image { color: #737c73; }
+entry.password image:hover,
+.password-input image:hover { color: #e6e2cc; }
 
 .session-btn {
     min-height: 42px; padding: 0 14px; border-radius: 12px;
@@ -290,8 +306,9 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         );
     }
 
+    let is_dark = !theme_css.contains("variant: light");
     if let Some(settings) = gtk4::Settings::default() {
-        settings.set_gtk_application_prefer_dark_theme(true);
+        settings.set_gtk_application_prefer_dark_theme(is_dark);
     }
 
     let cfg = load_config(DEFAULT_CONFIG_PATH);
@@ -424,6 +441,7 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         // Поле пароля + кнопка входа
         let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
         let pw = gtk4::PasswordEntry::new();
+        pw.add_css_class("password-input");
         pw.set_show_peek_icon(true);
         pw.set_hexpand(true);
         pw.set_placeholder_text(Some("Пароль"));
