@@ -5,12 +5,13 @@ local border_active_2 = INERIUM_ACCENT_PRIMARY or INERIUM_DRAGON_BLUE or INERIUM
 local border_inactive = INERIUM_BORDER or "rgba(454444cc)"
 local primary = INERIUM_ACCENT_PRIMARY or INERIUM_BLUE or "rgba(7fb4caff)"
 local purple = INERIUM_PURPLE or "rgba(938aa9ff)"
+local shadow_color = INERIUM_SHADOW or "rgba(18, 16, 16, 0.65)"
 
 hl.config({
     general = {
         gaps_in = 4,
         gaps_out = 4,
-        border_size = 1,
+        border_size = 2,
         extend_border_grab_area = 10,
         resize_on_border = true,
         col = {
@@ -55,7 +56,7 @@ hl.config({
             enabled = true,
             range = 14,
             render_power = 3,
-            color = "rgba(18, 16, 16, 0.65)",
+            color = shadow_color,
         },
     },
 })

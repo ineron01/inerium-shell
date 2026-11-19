@@ -13,4 +13,6 @@
     green-line:   rgba(135, 169, 135, 0.35);
     red:          #c4746e;
     primary:      #8ba4b0;
+    primary-soft: rgba(139, 164, 176, 0.16);
+    primary-line: rgba(139, 164, 176, 0.35);
 }

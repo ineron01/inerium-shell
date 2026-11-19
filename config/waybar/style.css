@@ -41,12 +41,12 @@ window#waybar {
     margin-left: 0;
     padding: 0 11px;
     font-size: 15px;
-    color: @green;
+    color: @primary;
 }
 
 #custom-launcher:hover {
-    background: alpha(@green, 0.18);
-    border-color: alpha(@green, 0.45);
+    background: alpha(@primary, 0.18);
+    border-color: alpha(@primary, 0.45);
     color: @fg-bright;
 }
 
@@ -78,9 +78,9 @@ window#waybar {
     color: @fg-bright;
 }
 
-#custom-control { color: @blue; }
+#custom-control { color: @primary; }
 #custom-control:hover {
-    background: alpha(@blue, 0.18);
+    background: alpha(@primary, 0.18);
     color: @fg-bright;
 }
 
@@ -118,7 +118,7 @@ window#waybar {
 
 #workspaces button.active {
     min-width: 34px;
-    background: alpha(@green, 0.24);
+    background: alpha(@primary, 0.24);
     color: @fg-bright;
 }
 
@@ -150,12 +150,12 @@ window#waybar {
 
 #mpris {
     padding: 0 12px;
-    color: @blue;
+    color: @primary;
 }
 
 #mpris:hover {
     background: @hover;
-    border-color: alpha(@blue, 0.38);
+    border-color: alpha(@primary, 0.38);
     color: @fg-bright;
 }
 

@@ -36,7 +36,7 @@ inputbar {
 }
 
 prompt {
-    text-color: @green;
+    text-color: @primary;
     vertical-align: 0.5;
 }
 
@@ -80,8 +80,8 @@ element normal.normal, element alternate.normal {
 }
 
 element normal.active, element alternate.active {
-    background-color: @green-soft;
-    border-color: @green-line;
+    background-color: @primary-soft;
+    border-color: @primary-line;
     text-color: @fg-bright;
 }
 
@@ -90,8 +90,8 @@ element normal.urgent, element alternate.urgent {
 }
 
 element selected.normal, element selected.active, element selected.urgent {
-    background-color: @green-soft;
-    border-color: @green-line;
+    background-color: @primary-soft;
+    border-color: @primary-line;
     text-color: @fg-bright;
 }
 

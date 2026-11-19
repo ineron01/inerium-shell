@@ -12,6 +12,7 @@ end
 safe_require("config.animations")
 package.loaded["config.colors"] = nil
 safe_require("config.colors")
+package.loaded["config.decorations"] = nil
 safe_require("config.decorations")
 safe_require("config.variables")
 safe_require("config.environment")
