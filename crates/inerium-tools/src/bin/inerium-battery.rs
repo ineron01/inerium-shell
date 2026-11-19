@@ -56,22 +56,163 @@ struct BatteryInfo {
     threshold: i64,
     time_str: String,
     icon: &'static str,
+    total_now: i64,
+    total_full: i64,
 }
 
-fn get_battery_info() -> BatteryInfo {
+impl BatteryInfo {
+    fn update_rates(&mut self, rate: f64, power_w: f64) {
+        self.power_w = power_w;
+        self.time_str = compute_time_str(
+            &self.status,
+            self.ac_online,
+            self.total_now,
+            self.total_full,
+            rate,
+            self.threshold,
+        );
+    }
+}
+
+fn compute_time_str(
+    status: &str,
+    ac_online: bool,
+    total_now: i64,
+    total_full: i64,
+    rate: f64,
+    threshold: i64,
+) -> String {
+    if rate <= 0.0 {
+        return String::new();
+    }
+    if status == "Discharging" || (!ac_online && total_now > 0) {
+        let hrs = total_now as f64 / rate;
+        let h = hrs as i64;
+        let m = ((hrs - h as f64) * 60.0) as i64;
+        format!("{}ч {:02}м", h, m)
+    } else if status == "Charging" {
+        let target = if threshold < 100 {
+            ((total_full as f64) * (threshold as f64 / 100.0)).round() as i64
+        } else {
+            total_full
+        };
+        if target > total_now {
+            let rem = target - total_now;
+            let hrs = rem as f64 / rate;
+            let h = hrs as i64;
+            let m = ((hrs - h as f64) * 60.0) as i64;
+            format!("{}ч {:02}м до {}%", h, m, threshold)
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EmaFilter {
+    rate: Option<f64>,
+    power: Option<f64>,
+    last_status: String,
+    last_ac: bool,
+}
+
+impl EmaFilter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn update(&mut self, raw_rate: f64, raw_power: f64, status: &str, ac: bool) -> (f64, f64) {
+        if self.last_status != status || self.last_ac != ac {
+            self.rate = None;
+            self.power = None;
+            self.last_status = status.to_string();
+            self.last_ac = ac;
+        }
+
+        const ALPHA: f64 = 0.12;
+
+        let smoothed_rate = match self.rate {
+            Some(prev) if raw_rate > 0.0 => ALPHA * raw_rate + (1.0 - ALPHA) * prev,
+            _ => raw_rate,
+        };
+
+        let smoothed_power = match self.power {
+            Some(prev) if raw_power > 0.0 => ALPHA * raw_power + (1.0 - ALPHA) * prev,
+            _ => raw_power,
+        };
+
+        self.rate = Some(smoothed_rate);
+        self.power = Some(smoothed_power);
+
+        (smoothed_rate, smoothed_power)
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BatteryCache {
+    rate: f64,
+    power: f64,
+    status: String,
+    timestamp: u64,
+}
+
+fn cache_path() -> std::path::PathBuf {
+    let uid = inerium_tools::sys::posix::posix_getuid();
+    std::path::PathBuf::from(format!("/run/user/{}/inerium-battery-rate.json", uid))
+}
+
+fn save_smoothed_cache(rate: f64, power: f64, status: &str) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let cache = BatteryCache {
+        rate,
+        power,
+        status: status.to_string(),
+        timestamp: now,
+    };
+    if let Ok(data) = serde_json::to_string(&cache) {
+        let _ = std::fs::write(cache_path(), data);
+    }
+}
+
+fn load_smoothed_cache(current_status: &str) -> Option<(f64, f64)> {
+    let content = std::fs::read_to_string(cache_path()).ok()?;
+    let cache: BatteryCache = serde_json::from_str(&content).ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if now.saturating_sub(cache.timestamp) <= 15 && cache.status == current_status {
+        Some((cache.rate, cache.power))
+    } else {
+        None
+    }
+}
+
+fn query_battery_raw() -> (BatteryInfo, f64, f64) {
     let (bats, mut ac_online) = discover_power_supplies();
     if bats.is_empty() {
-        return BatteryInfo {
-            present: false,
-            capacity: 0,
-            status: String::new(),
-            ac_online: true,
-            power_w: 0.0,
-            health_pct: 100.0,
-            threshold: 100,
-            time_str: String::new(),
-            icon: ICON_PLUGGED,
-        };
+        return (
+            BatteryInfo {
+                present: false,
+                capacity: 0,
+                status: String::new(),
+                ac_online: true,
+                power_w: 0.0,
+                health_pct: 100.0,
+                threshold: 100,
+                time_str: String::new(),
+                icon: ICON_PLUGGED,
+                total_now: 0,
+                total_full: 0,
+            },
+            0.0,
+            0.0,
+        );
     }
 
     let mut total_now = 0i64;
@@ -157,34 +298,14 @@ fn get_battery_info() -> BatteryInfo {
     };
 
     let threshold = min_threshold;
-
-    let time_str = if total_rate > 0 {
-        if overall_status == "Discharging" || (!ac_online && total_now > 0) {
-            let hrs = total_now as f64 / total_rate as f64;
-            let h = hrs as i64;
-            let m = ((hrs - h as f64) * 60.0) as i64;
-            format!("{}ч {:02}м", h, m)
-        } else if overall_status == "Charging" {
-            let target = if threshold < 100 {
-                ((total_full as f64) * (threshold as f64 / 100.0)).round() as i64
-            } else {
-                total_full
-            };
-            if target > total_now {
-                let rem = target - total_now;
-                let hrs = rem as f64 / total_rate as f64;
-                let h = hrs as i64;
-                let m = ((hrs - h as f64) * 60.0) as i64;
-                format!("{}ч {:02}м до {}%", h, m, threshold)
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
-    } else {
-        String::new()
-    };
+    let time_str = compute_time_str(
+        &overall_status,
+        ac_online,
+        total_now,
+        total_full,
+        total_rate as f64,
+        threshold,
+    );
 
     let icon = if ac_online {
         if overall_status == "Charging" {
@@ -197,17 +318,35 @@ fn get_battery_info() -> BatteryInfo {
         BATTERY_ICONS[idx]
     };
 
-    BatteryInfo {
-        present: true,
-        capacity,
-        status: overall_status,
-        ac_online,
-        power_w: total_power_w,
-        health_pct,
-        threshold,
-        time_str,
-        icon,
+    (
+        BatteryInfo {
+            present: true,
+            capacity,
+            status: overall_status,
+            ac_online,
+            power_w: total_power_w,
+            health_pct,
+            threshold,
+            time_str,
+            icon,
+            total_now,
+            total_full,
+        },
+        total_rate as f64,
+        total_power_w,
+    )
+}
+
+fn get_battery_info() -> BatteryInfo {
+    let (mut info, raw_rate, raw_power) = query_battery_raw();
+    if info.present {
+        if let Some((smoothed_rate, smoothed_power)) = load_smoothed_cache(&info.status) {
+            info.update_rates(smoothed_rate, smoothed_power);
+        } else {
+            info.update_rates(raw_rate, raw_power);
+        }
     }
+    info
 }
 
 fn format_battery(info: &BatteryInfo) -> String {
@@ -345,9 +484,17 @@ fn run_watch(waybar: bool) {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
     let mut last_output = String::new();
+    let mut filter = EmaFilter::new();
 
     loop {
-        let info = get_battery_info();
+        let (mut info, raw_rate, raw_power) = query_battery_raw();
+        if info.present {
+            let (smoothed_rate, smoothed_power) =
+                filter.update(raw_rate, raw_power, &info.status, info.ac_online);
+            info.update_rates(smoothed_rate, smoothed_power);
+            save_smoothed_cache(smoothed_rate, smoothed_power, &info.status);
+        }
+
         let current = if waybar { format_json(&info) } else { format_battery(&info) };
         if current != last_output {
             let _ = writeln!(handle, "{}", current);
@@ -413,6 +560,8 @@ mod tests {
             threshold: 100,
             time_str: String::new(),
             icon: ICON_PLUGGED,
+            total_now: 0,
+            total_full: 0,
         };
         assert_eq!(
             format_json(&info),
@@ -465,6 +614,8 @@ mod tests {
             threshold: 80,
             time_str: "0ч 30м до 80%".to_string(),
             icon: ICON_CHARGING,
+            total_now: 0,
+            total_full: 0,
         };
         let tip = format_tooltip(&info);
         assert!(tip.contains("Лимит заряда:"));
@@ -496,5 +647,26 @@ mod tests {
         assert_eq!(bats.len(), 2);
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_ema_filter_smoothing_and_reset() {
+        let mut filter = EmaFilter::new();
+
+        // 1. Initial sample sets baseline directly
+        let (r1, p1) = filter.update(1000.0, 10.0, "Discharging", false);
+        assert_eq!(r1, 1000.0);
+        assert_eq!(p1, 10.0);
+
+        // 2. Next sample is smoothed
+        let (r2, p2) = filter.update(2000.0, 20.0, "Discharging", false);
+        // ALPHA = 0.12 => 0.12 * 2000 + 0.88 * 1000 = 240 + 880 = 1120.0
+        assert!((r2 - 1120.0).abs() < 1e-4);
+        assert!((p2 - 11.2).abs() < 1e-4);
+
+        // 3. Status change resets filter immediately
+        let (r3, p3) = filter.update(3000.0, 30.0, "Charging", true);
+        assert_eq!(r3, 3000.0);
+        assert_eq!(p3, 30.0);
     }
 }
