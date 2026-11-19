@@ -39,6 +39,10 @@ fn clock_registry() -> PidRegistry {
     PidRegistry::new("clock-detailed")
 }
 
+fn seconds_registry() -> PidRegistry {
+    PidRegistry::new("clock-seconds")
+}
+
 fn month_offset_path() -> PathBuf {
     let uid = posix_getuid();
     PathBuf::from(format!("/run/user/{}/inerium-clock-offset", uid))
@@ -71,6 +75,16 @@ fn toggle_detailed() {
     let reg = clock_registry();
     reg.toggle_state();
     reg.notify_all(SIGUSR1);
+}
+
+fn is_seconds_active() -> bool {
+    seconds_registry().is_state_active()
+}
+
+fn toggle_seconds() {
+    let reg = seconds_registry();
+    reg.toggle_state();
+    clock_registry().notify_all(SIGUSR1);
 }
 
 const WEEKDAY_SHORT_RU: [&str; 7] = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
@@ -116,6 +130,13 @@ fn format_time() -> String {
     let mut tm: Tm = unsafe { std::mem::zeroed() };
     unsafe { localtime_r(&now, &mut tm); }
 
+    let show_seconds = is_seconds_active();
+    let time_str = if show_seconds {
+        format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+    } else {
+        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    };
+
     if is_detailed() {
         let wday_idx = ((tm.tm_wday + 6) % 7) as usize;
         let mon_idx = (tm.tm_mon.clamp(0, 11)) as usize;
@@ -128,19 +149,19 @@ fn format_time() -> String {
                     None => String::new(),
                 };
                 format!(
-                    "{}, {} {}  {:02}:{:02}",
-                    capitalized, tm.tm_mday, MONTH_SHORT_RU[mon_idx], tm.tm_hour, tm.tm_min
+                    "{}, {} {}  {}",
+                    capitalized, tm.tm_mday, MONTH_SHORT_RU[mon_idx], time_str
                 )
             }
             Lang::En => {
                 format!(
-                    "{}, {} {}  {:02}:{:02}",
-                    WEEKDAY_SHORT_EN[wday_idx], tm.tm_mday, MONTH_SHORT_EN[mon_idx], tm.tm_hour, tm.tm_min
+                    "{}, {} {}  {}",
+                    WEEKDAY_SHORT_EN[wday_idx], tm.tm_mday, MONTH_SHORT_EN[mon_idx], time_str
                 )
             }
         }
     } else {
-        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+        time_str
     }
 }
 
@@ -260,21 +281,20 @@ fn format_tooltip() -> String {
     }
 
     let footer_text = tr(
-        "LMB: Format · RMB: Reset · Wheel: Months",
-        "ЛКМ: Формат · ПКМ: Сброс · Колесо: Месяцы",
+        "LMB: Date · MMB: Seconds · RMB: Reset · Wheel: Months",
+        "ЛКМ: Дата · СКМ: Секунды · ПКМ: Сброс · Колесо: Месяцы",
     );
     output.push_str(&format!("\n<span size='small' color='#727169'>{}</span>", footer_text));
     output.push_str("</span>");
     output
 }
 
-fn format_json() -> String {
+fn format_json(tooltip: &str) -> String {
     let text = format_time();
-    let tooltip = format_tooltip();
     format!(
         "{{\"text\":\"{}\",\"tooltip\":\"{}\",\"class\":\"clock\"}}",
         escape_json(&text),
-        escape_json(&tooltip)
+        escape_json(tooltip)
     )
 }
 
@@ -295,6 +315,9 @@ fn run_watch(waybar: bool) {
 
     let offset_path = month_offset_path();
 
+    let mut cached_tooltip = String::new();
+    let mut last_tooltip_key = (-1, -1, Lang::Ru);
+
     loop {
         // Auto-reset month offset after 15 seconds of inactivity
         if offset_path.exists()
@@ -305,14 +328,46 @@ fn run_watch(waybar: bool) {
                 let _ = fs::remove_file(&offset_path);
             }
 
-        let current = if waybar { format_json() } else { format_time() };
+        let now_dur = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+        let now_secs = now_dur.as_secs() as i64;
+        let subsec_ms = now_dur.subsec_millis() as i32;
+
+        let mut tm: Tm = unsafe { std::mem::zeroed() };
+        unsafe { localtime_r(&now_secs, &mut tm); }
+
+        let current = if waybar {
+            let offset = get_month_offset();
+            let lang = Lang::get();
+            if last_tooltip_key != (tm.tm_mday, offset, lang) || cached_tooltip.is_empty() {
+                cached_tooltip = format_tooltip();
+                last_tooltip_key = (tm.tm_mday, offset, lang);
+            }
+            format_json(&cached_tooltip)
+        } else {
+            format_time()
+        };
+
         if current != last_output {
             let _ = writeln!(handle, "{}", current);
             let _ = handle.flush();
             last_output = current;
         }
 
-        if self_pipe.wait_event(1000) {
+        let timeout_ms = if is_seconds_active() {
+            // Align sleep to the exact start of the next second (+ 3ms guard margin)
+            (1000 - subsec_ms + 3).clamp(1, 1000)
+        } else if offset_path.exists() {
+            // Month offset active: poll every 1s for 15s auto-reset
+            1000
+        } else {
+            // Align sleep to the next minute boundary (+ 5ms guard margin)
+            let sec = (now_secs % 60) as i32;
+            ((60 - sec) * 1000 - subsec_ms + 5).clamp(1, 60_000)
+        };
+
+        if self_pipe.wait_event(timeout_ms) {
             Lang::reinit();
         }
     }
@@ -324,6 +379,11 @@ fn main() {
         match args[1].as_str() {
             "--toggle" => {
                 toggle_detailed();
+                println!("{}", format_time());
+                return;
+            }
+            "--toggle-seconds" | "--toggle-sec" => {
+                toggle_seconds();
                 println!("{}", format_time());
                 return;
             }

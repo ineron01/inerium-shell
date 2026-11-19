@@ -95,11 +95,12 @@
 
     /* ───────────── ЦЕНТР ───────────── */
 
-    // Часы и календарь (Rust inerium-clock): формат HH:MM <-> Day, DD Mon HH:MM, интерактивный календарь
+    // Часы и календарь (Rust inerium-clock): формат HH:MM <-> Day, DD Mon HH:MM, секунды по СКМ, интерактивный календарь
     "custom/clock": {
         "exec": "inerium-clock --waybar",
         "return-type": "json",
         "on-click": "inerium-clock --toggle",
+        "on-click-middle": "inerium-clock --toggle-seconds",
         "on-click-right": "inerium-clock --reset-month",
         "on-scroll-up": "inerium-clock --next-month",
         "on-scroll-down": "inerium-clock --prev-month",
