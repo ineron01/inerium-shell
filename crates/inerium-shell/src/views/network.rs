@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::process::Command;
 use std::thread;
@@ -154,6 +155,8 @@ pub struct NetworkModel {
     pub active_ssid: Option<String>,
     pub networks: Vec<WifiAp>,
     pub password_prompt: Option<PasswordPromptState>,
+    pub focus_pass_entry: Cell<bool>,
+    pub needs_list_rebuild: Cell<bool>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
@@ -430,6 +433,8 @@ impl SimpleComponent for NetworkModel {
             active_ssid,
             networks,
             password_prompt: None,
+            focus_pass_entry: Cell::new(false),
+            needs_list_rebuild: Cell::new(false),
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
@@ -448,23 +453,23 @@ impl SimpleComponent for NetworkModel {
     }
 
     fn post_view() {
-        if let Some(ref p) = self.password_prompt {
-            if p.password.is_empty() && !pass_entry.text().is_empty() {
-                pass_entry.set_text("");
-            }
-            if !pass_entry.has_focus() {
-                pass_entry.grab_focus();
-            }
-        } else if !pass_entry.text().is_empty() {
+        if self.focus_pass_entry.get() {
+            self.focus_pass_entry.set(false);
+            pass_entry.grab_focus();
+        }
+        if self.password_prompt.is_none() && !pass_entry.text().is_empty() {
             pass_entry.set_text("");
         }
-        populate_wifi_list(
-            list_box,
-            &self.networks,
-            self.hotspot_active,
-            self.wifi_enabled,
-            &sender,
-        );
+        if self.needs_list_rebuild.get() {
+            self.needs_list_rebuild.set(false);
+            populate_wifi_list(
+                list_box,
+                &self.networks,
+                self.hotspot_active,
+                self.wifi_enabled,
+                &sender,
+            );
+        }
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -493,6 +498,7 @@ impl SimpleComponent for NetworkModel {
                 self.networks = fresh;
                 self.active_ssid = hw::get_active_wifi_ssid();
                 self.hotspot_active = hw::is_hotspot_active();
+                self.needs_list_rebuild.set(true);
             }
             NetworkMsg::SelectAp(net) => {
                 if net.is_active {
@@ -537,6 +543,7 @@ impl SimpleComponent for NetworkModel {
                     });
                 } else if !net.security.is_empty() && !net.security.contains("--") {
                     crate::set_modal_dialog_active(true);
+                    self.focus_pass_entry.set(true);
                     self.password_prompt = Some(PasswordPromptState {
                         ssid: net.ssid,
                         password: String::new(),
@@ -635,6 +642,7 @@ impl SimpleComponent for NetworkModel {
             } => {
                 self.networks = networks;
                 self.active_ssid = hw::get_active_wifi_ssid();
+                self.needs_list_rebuild.set(true);
                 if success {
                     crate::set_modal_dialog_active(false);
                     self.password_prompt = None;
@@ -650,6 +658,7 @@ impl SimpleComponent for NetworkModel {
                     prompt.ssid = ssid;
                 } else {
                     crate::set_modal_dialog_active(true);
+                    self.focus_pass_entry.set(true);
                     let err_text = error.unwrap_or_else(|| {
                         tr("Connection error", "Ошибка подключения").to_string()
                     });
@@ -667,6 +676,7 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::DisconnectFinished(fresh) => {
                 self.networks = fresh;
                 self.active_ssid = hw::get_active_wifi_ssid();
+                self.needs_list_rebuild.set(true);
             }
             NetworkMsg::StopHotspot => {
                 let s_fin = sender.clone();
