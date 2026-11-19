@@ -9,12 +9,14 @@ LOG_FILE="/tmp/inerium-install.log"
 DRY_RUN=0
 SKIP_PKGS=0
 FROM_SOURCE=0
+WITH_SYSUPGRADE=0
 
 for arg in "$@"; do
     case "$arg" in
-        --dry-run)     DRY_RUN=1 ;;
-        --skip-pkgs)   SKIP_PKGS=1 ;;
-        --from-source) FROM_SOURCE=1 ;;
+        --dry-run)           DRY_RUN=1 ;;
+        --skip-pkgs)         SKIP_PKGS=1 ;;
+        --from-source)       FROM_SOURCE=1 ;;
+        --sysupgrade|-Syu)   WITH_SYSUPGRADE=1 ;;
     esac
 done
 
@@ -84,18 +86,39 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     fi
 fi
 
-# Full upgrade first: installing on top of "pacman -Sy" alone is an unsupported partial upgrade.
+# Prerequisites installation (git, base-devel, gum)
 if [[ "$SKIP_PKGS" -eq 0 ]]; then
-    echo "[bootstrap] Upgrading system and installing git, base-devel, gum..."
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "[DRY-RUN] sudo pacman -Syu --needed --noconfirm git base-devel"
-        echo "[DRY-RUN] sudo pacman -S --needed --noconfirm gum || true"
+    if [[ "$WITH_SYSUPGRADE" -eq 1 ]]; then
+        echo "[bootstrap] Upgrading system and installing prerequisites (git, base-devel, gum)..."
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "[DRY-RUN] sudo pacman -Syu --needed --noconfirm git base-devel"
+            echo "[DRY-RUN] sudo pacman -S --needed --noconfirm gum || true"
+        else
+            sudo pacman -Syu --needed --noconfirm git base-devel >> "$LOG_FILE" 2>&1 || {
+                tail -n 25 "$LOG_FILE" >&2
+                exit 1
+            }
+            sudo pacman -S --needed --noconfirm gum >> "$LOG_FILE" 2>&1 || true
+        fi
     else
-        sudo pacman -Syu --needed --noconfirm git base-devel >> "$LOG_FILE" 2>&1 || {
-            tail -n 25 "$LOG_FILE" >&2
-            exit 1
-        }
-        sudo pacman -S --needed --noconfirm gum >> "$LOG_FILE" 2>&1 || true
+        declare -a missing_bootstrap=()
+        if command -v pacman >/dev/null 2>&1; then
+            mapfile -t missing_bootstrap < <(pacman -T git base-devel gum 2>/dev/null || true)
+        fi
+
+        if [[ ${#missing_bootstrap[@]} -gt 0 ]]; then
+            echo "[bootstrap] Installing missing prerequisites (${missing_bootstrap[*]})..."
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                echo "[DRY-RUN] sudo pacman -S --needed --noconfirm ${missing_bootstrap[*]}"
+            else
+                sudo pacman -S --needed --noconfirm "${missing_bootstrap[@]}" >> "$LOG_FILE" 2>&1 || {
+                    tail -n 25 "$LOG_FILE" >&2
+                    exit 1
+                }
+            fi
+        else
+            echo "[bootstrap] Prerequisites satisfied (git, base-devel, gum). Skipping OS upgrade."
+        fi
     fi
 elif ! command -v git >/dev/null 2>&1; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
