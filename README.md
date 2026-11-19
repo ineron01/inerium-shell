@@ -119,6 +119,7 @@ Inerium Shell provides optional system extensions that can be selected in the in
 
 ### Configuration & Lifecycle Flags
 - `--update`: Update an existing installation (preserves installed add-on modules and configuration without repeating initial setup questions).
+- `--sysupgrade`, `-Syu`: Perform a full rolling OS upgrade (`pacman -Syu`) alongside the Inerium Shell update (default update mode is targeted and fast, updating only Inerium and missing dependencies).
 - `--bin`: Install prebuilt binaries from GitHub Releases (default).
 - `--from-source`: Compile Rust workspace locally via Cargo.
 - `--with-greeter`: Install and configure `greetd` + `inerium-greeter` display manager.

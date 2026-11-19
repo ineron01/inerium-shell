@@ -34,6 +34,11 @@ check_not_root() {
     fi
 }
 
+restore_terminal() {
+    tput cnorm 2>/dev/null || printf '\033[?25h'
+    stty echo 2>/dev/null || true
+}
+
 init_log_file() {
     if [[ "$DRY_RUN" -eq 0 ]]; then
         mkdir -p "$(dirname "$LOG_FILE")"
@@ -48,7 +53,6 @@ init_sudo_keepalive() {
         fi
         ( while kill -0 "$$" 2>/dev/null; do sudo -n -v 2>/dev/null; sleep 50; done ) &
         export INERIUM_SUDO_KEEPALIVE=$!
-        trap 'kill "$INERIUM_SUDO_KEEPALIVE" 2>/dev/null || true' EXIT
     fi
 }
 
@@ -74,17 +78,21 @@ run_step() {
         if ! gum spin --spinner dot --title "$title" -- tail --pid="$step_pid" -f /dev/null; then
             kill -9 "$step_pid" 2>/dev/null || true
             wait "$step_pid" 2>/dev/null || true
+            restore_terminal
             return 1
         fi
         if ! wait "$step_pid"; then
+            restore_terminal
             printf '\n[inerium-shell] ERROR during: %s\n' "$title" >&2
             printf '[inerium-shell] Last 25 lines of %s:\n' "$LOG_FILE" >&2
             tail -n 25 "$LOG_FILE" >&2 || true
             return 1
         fi
+        printf '[inerium-shell] [✓] %s\n' "$title"
     else
         log "$title"
         "$@"
+        printf '[inerium-shell] [✓] %s\n' "$title"
     fi
 }
 

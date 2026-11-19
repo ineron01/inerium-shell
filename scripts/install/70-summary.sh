@@ -4,6 +4,7 @@
 # ============================================================================
 
 print_summary() {
+    restore_terminal
     local msg1 msg2 extra_reboot=""
     if [[ "$MSI_EC_REBUILT" -eq 1 ]]; then
         if [[ "$INSTALL_LANG" == "ru" ]]; then
@@ -39,10 +40,28 @@ print_summary() {
             --padding "1 2" \
             --margin "1 0" \
             "${lines[@]}"
+
+        echo ""
+        if [[ "$INSTALL_LANG" == "ru" ]]; then
+            if gum confirm "Рекомендуется перезагрузить систему для чистого применения изменений. Перезагрузить сейчас?" --default=false; then
+                log "Перезагрузка системы..."
+                sudo reboot
+            else
+                gum input --placeholder "Нажмите Enter для завершения..." --value="" >/dev/null 2>&1 || read -r -p "Нажмите Enter для завершения..."
+            fi
+        else
+            if gum confirm "A system reboot is recommended to apply all changes cleanly. Reboot now?" --default=false; then
+                log "Rebooting system..."
+                sudo reboot
+            else
+                gum input --placeholder "Press Enter to finish..." --value="" >/dev/null 2>&1 || read -r -p "Press Enter to finish..."
+            fi
+        fi
     else
         log "$msg1"
         log "$msg2"
         [[ -n "$extra_reboot" ]] && log "$extra_reboot"
         log "Install log: $LOG_FILE"
     fi
+    restore_terminal
 }

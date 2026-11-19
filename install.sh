@@ -29,6 +29,7 @@ WITH_FAN_REGULATOR=0
 WITH_NOVPN=0
 WITH_CONVERTER=0
 WITH_GDRIVE=0
+WITH_SYSUPGRADE=0
 INSTALL_LANG=""
 MSI_EC_REBUILT=0
 
@@ -60,6 +61,7 @@ Options:
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
   --update           Update existing installation (keeps installed modules, pulls latest binaries)
+  --sysupgrade, -Syu Perform full system upgrade (pacman -Syu) alongside Inerium update
   --update-configs   Update configuration files (backs up existing user files to .bak)
   --check-abi        Check dynamic library ABI health for installed binaries
   --uninstall        Uninstall Inerium Shell and remove tracked files/services
@@ -83,6 +85,7 @@ while [[ $# -gt 0 ]]; do
             INSTALL_MODE="source"; MODE_EXPLICIT=1; shift ;;
         --dry-run)         DRY_RUN=1; NON_INTERACTIVE=1; shift ;;
         --update)          IS_UPDATE=1; UPDATE_CONFIGS=1; shift ;;
+        --sysupgrade|-Syu) WITH_SYSUPGRADE=1; shift ;;
         --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
         --check-abi)       CHECK_ABI=1; NON_INTERACTIVE=1; shift ;;
         --update-configs)  UPDATE_CONFIGS=1; shift ;;
@@ -132,6 +135,15 @@ export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE S
 # ============================================================================
 check_not_root
 init_log_file
+
+cleanup_all_on_exit() {
+    restore_terminal
+    cleanup_manifest_tmp
+    if [[ -n "${INERIUM_SUDO_KEEPALIVE:-}" ]]; then
+        kill "$INERIUM_SUDO_KEEPALIVE" 2>/dev/null || true
+    fi
+}
+trap cleanup_all_on_exit EXIT
 
 if [[ "$DO_UNINSTALL" -eq 1 ]]; then
     run_uninstall

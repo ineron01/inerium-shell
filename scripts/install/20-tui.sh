@@ -161,6 +161,23 @@ run_tui_prompts() {
             else
                 UPDATE_CONFIGS=0
             fi
+
+            local opt_pkg_fast="Быстрое обновление Inerium (~20 МБ, экономия трафика)"
+            local opt_pkg_full="Полное обновление системы (Inerium + pacman -Syu, много трафика)"
+            local default_pkg="$opt_pkg_fast"
+            [[ "${WITH_SYSUPGRADE:-0}" -eq 1 ]] && default_pkg="$opt_pkg_full"
+
+            gum style --foreground 214 --margin "1 0 0 0" \
+                "Внимание: полное обновление системы скачивает обновления всех системных пакетов CachyOS/Arch и может потребовать от 500 МБ до нескольких ГБ трафика."
+            local chosen_pkg
+            chosen_pkg="$(gum choose --header "Режим обновления системных пакетов:" --selected "$default_pkg" "$opt_pkg_fast" "$opt_pkg_full")"
+            if [[ "$chosen_pkg" == "$opt_pkg_full" ]]; then
+                WITH_SYSUPGRADE=1
+                log "Выбрано полное обновление системы (включая pacman -Syu)."
+            else
+                WITH_SYSUPGRADE=0
+                log "Выбрано быстрое обновление Inerium (без pacman -Syu, проверка недостающих зависимостей)."
+            fi
         else
             gum style \
                 --border rounded \
@@ -251,6 +268,23 @@ run_tui_prompts() {
                 UPDATE_CONFIGS=1
             else
                 UPDATE_CONFIGS=0
+            fi
+
+            local opt_pkg_fast="Fast Inerium Update (~20 MB, bandwidth saving)"
+            local opt_pkg_full="Full System Upgrade (Inerium + pacman -Syu, high bandwidth)"
+            local default_pkg="$opt_pkg_fast"
+            [[ "${WITH_SYSUPGRADE:-0}" -eq 1 ]] && default_pkg="$opt_pkg_full"
+
+            gum style --foreground 214 --margin "1 0 0 0" \
+                "Notice: Full system upgrade downloads updates for all CachyOS/Arch packages and may require 500 MB to several GBs of bandwidth."
+            local chosen_pkg
+            chosen_pkg="$(gum choose --header "System package update mode:" --selected "$default_pkg" "$opt_pkg_fast" "$opt_pkg_full")"
+            if [[ "$chosen_pkg" == "$opt_pkg_full" ]]; then
+                WITH_SYSUPGRADE=1
+                log "Selected full system upgrade (including pacman -Syu)."
+            else
+                WITH_SYSUPGRADE=0
+                log "Selected fast Inerium update (without pacman -Syu, resolving missing dependencies only)."
             fi
         fi
         return 0

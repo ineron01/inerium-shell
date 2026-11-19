@@ -16,7 +16,6 @@ cleanup_manifest_tmp() {
         rm -f "$NEW_MANIFEST_FILE"
     fi
 }
-trap cleanup_manifest_tmp EXIT
 
 manifest_record() {
     local type="$1" target="$2" extra="${3:-}"

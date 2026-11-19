@@ -46,7 +46,16 @@ install_base_packages() {
         return 0
     fi
 
-    run_step "Upgrading system (pacman -Syu)..." sudo pacman -Syu --noconfirm
+    if [[ "${WITH_SYSUPGRADE:-0}" -eq 1 ]]; then
+        local title="Upgrading system (pacman -Syu)..."
+        [[ "${INSTALL_LANG:-}" == "ru" ]] && title="Полное обновление системы (pacman -Syu)..."
+        run_step "$title" sudo pacman -Syu --noconfirm
+    else
+        local msg="Fast dependency check (resolving missing packages only)..."
+        [[ "${INSTALL_LANG:-}" == "ru" ]] && msg="Быстрая проверка зависимостей (установка только недостающих пакетов)..."
+        log "$msg"
+    fi
+
     if ! command -v paru >/dev/null 2>&1; then
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] ensure_paru\n'
