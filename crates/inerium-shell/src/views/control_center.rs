@@ -707,7 +707,7 @@ impl SimpleComponent for ControlCenterModel {
 
                             gtk4::Button {
                                 add_css_class: "cc-slider-ico",
-                                set_label: "󰃠",
+                                set_label: "󰖨",
                                 set_tooltip_text: Some(tr(
                                     "Laptop display brightness",
                                     "Яркость экрана ноутбука",
