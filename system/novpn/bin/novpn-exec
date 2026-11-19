@@ -1,9 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Ensure novpn is active
+# 1. Ensure novpn is active
 if ! ip netns list | grep -qw "novpn"; then
     systemctl start novpn.service
+fi
+
+# 2. Self-heal and verify routing table 200 before launching
+get_active_physical_dev() {
+    ip -4 route show default 2>/dev/null | while read -r line; do
+        dev=$(echo "$line" | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}')
+        metric=$(echo "$line" | awk '{for(i=1;i<=NF;i++) if($i=="metric") print $(i+1)}')
+        [[ -z "$metric" ]] && metric=0
+        if [[ -n "$dev" ]] && ! [[ "$dev" =~ ^(amn|tun|tap|wg|awg|tailscale|virbr|waydroid|docker|veth|br-|lo) ]]; then
+            echo "$metric $dev"
+        fi
+    done | sort -n -k1,1 | head -n1 | awk '{print $2}'
+}
+
+current_t200=$(ip -4 route show table 200 default 2>/dev/null || true)
+active_phys_dev=$(get_active_physical_dev || true)
+
+if [[ -z "$current_t200" ]] || [[ -n "$active_phys_dev" && ! "$current_t200" =~ "dev $active_phys_dev" ]]; then
+    /usr/local/bin/novpn-up >/dev/null 2>&1 || true
 fi
 
 TARGET_USER="${SUDO_USER:-$(id -un)}"

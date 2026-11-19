@@ -3,11 +3,18 @@ set -uo pipefail
 
 # Remove firewall rules
 iptables -D FORWARD -i veth-host -j ACCEPT 2>/dev/null || true
-iptables -D FORWARD -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
-iptables -t nat -D POSTROUTING -s 10.200.1.0/24 ! -o amn0 -j MASQUERADE 2>/dev/null || true
+iptables -D FORWARD -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED 2>/dev/null || true
 
-# Remove routing rule & table
+# Flush any novpn nat masquerade rules
+while iptables -t nat -D POSTROUTING -s 10.200.1.0/24 ! -o amn0 -j MASQUERADE 2>/dev/null; do :; done
+while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q -- "-s 10.200.1.0/24"; do
+    rule=$(iptables -t nat -S POSTROUTING | grep -- "-s 10.200.1.0/24" | head -n1 | sed 's/^-A //')
+    iptables -t nat -D $rule 2>/dev/null || break
+done
+
+# Remove routing rules & table
 ip rule del from 10.200.1.0/24 table 200 2>/dev/null || true
+ip rule del from 10.200.1.0/24 unreachable priority 101 2>/dev/null || true
 ip route flush table 200 2>/dev/null || true
 
 # Remove links & namespace

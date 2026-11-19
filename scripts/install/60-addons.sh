@@ -119,6 +119,9 @@ install_novpn_addon() {
             [[ -f "$script" ]] && install_root_if_changed 755 "$script" "/usr/local/bin/$(basename "$script")"
         done
         install_root_if_changed 644 "$novpn_sys/systemd/novpn.service" /etc/systemd/system/novpn.service
+        if [[ -f "$novpn_sys/dispatcher.d/98-novpn-sync.sh" ]]; then
+            install_root_if_changed 755 "$novpn_sys/dispatcher.d/98-novpn-sync.sh" /etc/NetworkManager/dispatcher.d/98-novpn-sync.sh
+        fi
         sudo systemctl daemon-reload || true
         sudo systemctl enable novpn.service || true
     fi
