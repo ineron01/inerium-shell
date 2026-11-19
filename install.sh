@@ -95,12 +95,12 @@ while [[ $# -gt 0 ]]; do
         --fetch-model)     FETCH_MODEL=1; shift ;;
         --with-greeter)    WITH_GREETER=1; shift ;;
         --with-gdrive)     WITH_GDRIVE=1; shift ;;
-        --with-converter)  WITH_CONVERTER=1; shift ;;
+        --with-converter)  WITH_CONVERTER=1; FETCH_MODEL=1; shift ;;
         --with-camera)     WITH_CAMERA=1; shift ;;
         --with-msi-ec)     WITH_MSI_EC=1; shift ;;
         --with-fan-regulator) WITH_FAN_REGULATOR=1; WITH_MSI_EC=1; shift ;;
         --with-novpn)      WITH_NOVPN=1; shift ;;
-        --all-addons)      WITH_CONVERTER=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
+        --all-addons)      WITH_CONVERTER=1; FETCH_MODEL=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
         --lang)            INSTALL_LANG="${2:-}"; shift 2 ;;
         --workspaces)      WORKSPACES_PER_MON="${2:-}"; shift 2 ;;
         --non-interactive|-y) NON_INTERACTIVE=1; shift ;;

@@ -395,7 +395,7 @@ deploy_wallpapers() {
 fetch_silueta_model() {
     if [[ -s "$SILUETA_PATH" ]]; then
         log "Found silueta.onnx at $SILUETA_PATH"
-    elif [[ "$FETCH_MODEL" -eq 1 ]]; then
+    elif [[ "$FETCH_MODEL" -eq 1 || "$WITH_CONVERTER" -eq 1 ]]; then
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] download_file %s -> %s\n' "$SILUETA_URL" "$SILUETA_PATH"
         else

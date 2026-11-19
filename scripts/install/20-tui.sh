@@ -140,12 +140,6 @@ run_tui_prompts() {
                 [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
-
-                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "${SILUETA_PATH:-$HOME/.local/share/inerium/models/silueta.onnx}" ]]; then
-                    if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" --default=true; then
-                        FETCH_MODEL=1
-                    fi
-                fi
             else
                 log "Сохранение текущего набора модулей. Запуск быстрого обновления..."
             fi
@@ -248,12 +242,6 @@ run_tui_prompts() {
                 [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
-
-                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "${SILUETA_PATH:-$HOME/.local/share/inerium/models/silueta.onnx}" ]]; then
-                    if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" --default=true; then
-                        FETCH_MODEL=1
-                    fi
-                fi
             else
                 log "Keeping installed modules untouched. Proceeding with fast update..."
             fi
@@ -377,15 +365,6 @@ run_tui_prompts() {
         [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
 
-        if [[ "$WITH_CONVERTER" -eq 1 ]]; then
-            if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" \
-                --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
-                FETCH_MODEL=1
-            else
-                FETCH_MODEL=0
-            fi
-        fi
-
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
             local cfg_inst_fresh="Перезаписать на стандартные Inerium (существующие сохранятся в .bak)"
             local cfg_inst_keep="Сохранить существующие файлы (установить только отсутствующие)"
@@ -469,15 +448,6 @@ run_tui_prompts() {
         [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
         [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
-
-        if [[ "$WITH_CONVERTER" -eq 1 ]]; then
-            if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" \
-                --default="$([[ "$FETCH_MODEL" -eq 1 ]] && echo true || echo false)"; then
-                FETCH_MODEL=1
-            else
-                FETCH_MODEL=0
-            fi
-        fi
 
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
             local cfg_inst_fresh="Overwrite with standard Inerium configs (existing backed up to .bak)"
