@@ -72,7 +72,7 @@ Inerium Shell includes optional system modules that can be selected during insta
 - **Components:**
   - `crates/dolphin-converter` -> `~/.local/bin/dolphin-convert`
   - `~/.local/share/kio/servicemenus/converter-*.desktop`
-  - Optional AI model: `~/.local/share/dolphin-converter/models/silueta.onnx`
+  - Optional AI model: `~/.local/share/inerium/models/silueta.onnx`
 - **Key Features:**
   - Fast conversion for office documents (PDF, DOCX, ODT via LibreOffice & Pandoc), media formats (MP4, MP3, WAV, WEBP via FFmpeg & ImageMagick).
   - Rayon-based multi-threaded parallel file processing.

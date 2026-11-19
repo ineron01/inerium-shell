@@ -80,10 +80,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 ```
 
 > **Target Paths & Overrides:**
-> - Standard prebuilt bootstrap installs to `$XDG_DATA_HOME/inerium-shell` (default: `~/.local/share/inerium-shell`, hidden to keep `$HOME` clean).
+> - Standard prebuilt bootstrap installs to `$XDG_DATA_HOME/inerium/shell` (default: `~/.local/share/inerium/shell`, hidden to keep `$HOME` clean).
 > - Source compilation installs to `~/inerium-shell` (visible for easy access to source code).
 > - Configuration files: Deployed as real files into `$XDG_CONFIG_HOME` (`~/.config/{hypr,waybar,kitty,rofi,mako,uwsm,gtk-3.0,gtk-4.0}`) and tracked via manifest (`~/.local/state/inerium/install-manifest`), eliminating fragile directory symlinks. User customizations are preserved on upgrade; pass `--update-configs` to apply updates with automatic `.bak.<timestamp>` backups.
-> - Themes & Palettes: Shipped base themes reside in `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`); extra themes pool in `~/.local/share/inerium-shell/themes/extra/`.
+> - Themes & Palettes: Shipped base themes reside in `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`); extra themes pool in `~/.local/share/inerium/themes/extra/`.
 > - Binaries: Installed to `~/.local/bin/` (and `/usr/local/bin/inerium-greeter`).
 > - You can override the clone path anytime with `INERIUM_SHELL_DIR=/custom/path`.
 

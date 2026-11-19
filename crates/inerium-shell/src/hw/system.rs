@@ -140,10 +140,10 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
     if !has_files {
         let home = home_dir();
         let brand_sources = [
+            home.join(".local/share/inerium/wallpapers"),
             home.join(".local/share/inerium-shell/assets/wallpapers"),
             home.join("inerium-shell/assets/wallpapers"),
             home.join("Repos/inerium-shell/assets/wallpapers"),
-            home.join("Repos/inerium-desktop/assets/wallpapers"),
             PathBuf::from("/usr/share/inerium/wallpapers"),
         ];
         for src in &brand_sources {

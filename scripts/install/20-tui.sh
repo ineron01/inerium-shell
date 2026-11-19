@@ -141,7 +141,7 @@ run_tui_prompts() {
                 [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
 
-                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "$HOME/.local/share/dolphin-converter/models/silueta.onnx" ]]; then
+                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "${SILUETA_PATH:-$HOME/.local/share/inerium/models/silueta.onnx}" ]]; then
                     if gum confirm "Скачать нейросеть silueta.onnx (~43 МБ для вырезания фона в Dolphin)?" --default=true; then
                         FETCH_MODEL=1
                     fi
@@ -249,7 +249,7 @@ run_tui_prompts() {
                 [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
                 [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
 
-                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "$HOME/.local/share/dolphin-converter/models/silueta.onnx" ]]; then
+                if [[ "$WITH_CONVERTER" -eq 1 && ! -f "${SILUETA_PATH:-$HOME/.local/share/inerium/models/silueta.onnx}" ]]; then
                     if gum confirm "Download silueta.onnx (~43 MB for Dolphin AI background removal)?" --default=true; then
                         FETCH_MODEL=1
                     fi

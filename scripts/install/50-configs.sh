@@ -131,9 +131,9 @@ deploy_desktop_configs() {
     render_template "$REPO_DIR/config/qt6ct/qt6ct.conf.template" "$HOME/.config/qt6ct/qt6ct.conf"
     render_template "$REPO_DIR/config/swayosd/config.toml.template" "$HOME/.config/swayosd/config.toml"
 
-    # 12. Themes (Base in ~/.config/inerium/themes, Extra in ~/.local/share/inerium-shell/themes/extra)
+    # 12. Themes (Base in ~/.config/inerium/themes, Extra in ~/.local/share/inerium/themes/extra)
     run "mkdir -p '$HOME/.local/share/color-schemes'"
-    run "mkdir -p '$HOME/.local/share/inerium-shell/themes/extra'"
+    run "mkdir -p '$HOME/.local/share/inerium/themes/extra'"
     run "mkdir -p '$HOME/.config/inerium/themes'"
     # Base themes (Dark & Light)
     for t in "$REPO_DIR"/themes/*.toml; do
@@ -143,7 +143,7 @@ deploy_desktop_configs() {
     # Extra themes pool for inerium-setup and inerium-theme install
     for t in "$REPO_DIR"/themes/extra/*.toml; do
         [[ -f "$t" ]] || continue
-        deploy_config_file "$t" "$HOME/.local/share/inerium-shell/themes/extra/$(basename "$t")"
+        deploy_config_file "$t" "$HOME/.local/share/inerium/themes/extra/$(basename "$t")"
     done
     if [[ -f "$REPO_DIR/themes/template.toml.example" ]]; then
         deploy_config_file "$REPO_DIR/themes/template.toml.example" "$HOME/.config/inerium/themes/template.toml.example"
@@ -526,6 +526,20 @@ enable_user_services_and_defaults() {
                     run "xdg-mime default '$b_desk' x-scheme-handler/http >/dev/null 2>&1 || true"
                     run "xdg-mime default '$b_desk' x-scheme-handler/https >/dev/null 2>&1 || true"
                     run "xdg-mime default '$b_desk' text/html >/dev/null 2>&1 || true"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    # Set default graphical file manager only if unconfigured or hijacked by terminal
+    if command -v xdg-mime >/dev/null 2>&1; then
+        local cur_fm
+        cur_fm="$(xdg-mime query default inode/directory 2>/dev/null || true)"
+        if [[ -z "$cur_fm" || "$cur_fm" =~ (kitty|alacritty|foot|terminal|ghostty) ]]; then
+            for fm_desk in org.kde.dolphin.desktop org.gnome.Nautilus.desktop thunar.desktop nemo.desktop pcmanfm-qt.desktop pcmanfm.desktop; do
+                if [[ -f "/usr/share/applications/$fm_desk" || -f "$HOME/.local/share/applications/$fm_desk" ]]; then
+                    run "xdg-mime default '$fm_desk' inode/directory >/dev/null 2>&1 || true"
                     break
                 fi
             done

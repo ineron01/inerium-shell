@@ -38,7 +38,7 @@ BIN_ARCHIVE="inerium-binaries-linux-x86_64.tar.gz"
 BIN_SHA="inerium-binaries-linux-x86_64.tar.gz.sha256"
 
 SILUETA_URL="https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx"
-SILUETA_PATH="${XDG_DATA_HOME:-$HOME/.local/share}/dolphin-converter/models/silueta.onnx"
+SILUETA_PATH="${XDG_DATA_HOME:-$HOME/.local/share}/inerium/models/silueta.onnx"
 
 usage() {
     cat <<EOF

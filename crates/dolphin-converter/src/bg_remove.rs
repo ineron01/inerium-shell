@@ -20,7 +20,7 @@ fn get_model_path() -> Result<PathBuf, String> {
 
     if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
         let candidate = PathBuf::from(xdg_data)
-            .join("dolphin-converter/models/silueta.onnx");
+            .join("inerium/models/silueta.onnx");
         if candidate.exists() {
             return Ok(candidate);
         }
@@ -28,13 +28,13 @@ fn get_model_path() -> Result<PathBuf, String> {
 
     if let Ok(home) = std::env::var("HOME") {
         let candidate = PathBuf::from(home)
-            .join(".local/share/dolphin-converter/models/silueta.onnx");
+            .join(".local/share/inerium/models/silueta.onnx");
         if candidate.exists() {
             return Ok(candidate);
         }
     }
 
-    Err("Модель сегментации silueta.onnx не найдена в ~/.local/share/dolphin-converter/models/ (укажите DOLPHIN_CONVERT_MODEL или скачайте её через install.sh).".to_string())
+    Err("Модель сегментации silueta.onnx не найдена в ~/.local/share/inerium/models/ (укажите DOLPHIN_CONVERT_MODEL или скачайте её через install.sh).".to_string())
 }
 
 /// Initializes and returns the global ONNX Runtime session lazily.

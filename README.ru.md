@@ -80,10 +80,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/ineron01/inerium-shell/m
 ```
 
 > **Расположение репозитория и пути установки:**
-> - Стандартная установка бинарников выполняется в `$XDG_DATA_HOME/inerium-shell` (по умолчанию `~/.local/share/inerium-shell`, скрытая папка — не захламляет `$HOME` и защищена от случайного удаления).
+> - Стандартная установка бинарников выполняется в `$XDG_DATA_HOME/inerium/shell` (по умолчанию `~/.local/share/inerium/shell`, скрытая папка — не захламляет `$HOME` и защищена от случайного удаления).
 > - Сборка из исходников размещает репозиторий в `~/inerium-shell` (видимая директория в `$HOME` для удобного просмотра и редактирования кода).
 > - Файлы конфигурации: Устанавливаются как реальные файлы прямо в `$XDG_CONFIG_HOME` (`~/.config/{hypr,waybar,kitty,rofi,mako,uwsm,gtk-3.0,gtk-4.0}`) и регистрируются в манифесте (`~/.local/state/inerium/install-manifest`), избавляя систему от хрупких симлинков каталогов. Пользовательские настройки сохраняются при обновлениях; для обновления конфигов используется флаг `--update-configs` с автоматическим созданием бэкапов `.bak.<timestamp>`.
-> - Темы и палитры: Базовые темы размещаются в `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`), а каталог дополнительных тем доступен в `~/.local/share/inerium-shell/themes/extra/`.
+> - Темы и палитры: Базовые темы размещаются в `~/.config/inerium/themes/` (`kanagawa-dragon.toml`, `inerium-light.toml`, `template.toml.example`), а каталог дополнительных тем доступен в `~/.local/share/inerium/themes/extra/`.
 > - Бинарные файлы: Пользовательские утилиты ставятся в `~/.local/bin/`, а экран входа — в `/usr/local/bin/inerium-greeter`.
 > - Путь к репозиторию можно переопределить переменной: `INERIUM_SHELL_DIR=/любой/путь`.
 

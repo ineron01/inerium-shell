@@ -72,7 +72,7 @@
 - **Состав:**
   - `crates/dolphin-converter` -> `~/.local/bin/dolphin-convert`
   - `~/.local/share/kio/servicemenus/converter-*.desktop`
-  - Опциональная нейросетевая модель: `~/.local/share/dolphin-converter/models/silueta.onnx`
+  - Опциональная нейросетевая модель: `~/.local/share/inerium/models/silueta.onnx`
 - **Ключевые возможности:**
   - Быстрая конвертация офисных документов (PDF, DOCX, ODT через LibreOffice и Pandoc), медиафайлов (MP4, MP3, WAV, WEBP через FFmpeg и ImageMagick).
   - Параллельная обработка очередей файлов на пуле потоков Rayon.

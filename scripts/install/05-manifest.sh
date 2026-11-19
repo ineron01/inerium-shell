@@ -313,26 +313,29 @@ run_uninstall() {
         rmdir "$MANIFEST_DIR" 2>/dev/null || true
     fi
 
-    # 6. Clean cloned repository if installed in user data directory (~/.local/share/inerium-shell)
-    local user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
+    # 6. Clean cloned repository if installed in user data directory (~/.local/share/inerium/shell or legacy ~/.local/share/inerium-shell)
+    local user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell"
+    local legacy_user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
     local installed_repo="${REPO_DIR:-}"
     if [[ -z "$installed_repo" && -f "$MANIFEST_FILE" ]]; then
         installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" | head -n 1 | cut -d' ' -f3- || true)"
     fi
 
-    if [[ -n "$installed_repo" && -d "$user_shell_dir" ]]; then
-        local can_installed can_user
-        can_installed="$(realpath "$installed_repo" 2>/dev/null || true)"
-        can_user="$(realpath "$user_shell_dir" 2>/dev/null || true)"
-        if [[ -n "$can_installed" && "$can_installed" == "$can_user" ]]; then
-            log "Removing cloned repository in user data directory: $user_shell_dir"
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                printf '[DRY-RUN] rm -rf %s\n' "$user_shell_dir"
-            else
-                rm -rf "$user_shell_dir"
+    for repo_candidate in "$user_shell_dir" "$legacy_user_shell_dir"; do
+        if [[ -n "$installed_repo" && -d "$repo_candidate" ]]; then
+            local can_installed can_cand
+            can_installed="$(realpath "$installed_repo" 2>/dev/null || true)"
+            can_cand="$(realpath "$repo_candidate" 2>/dev/null || true)"
+            if [[ -n "$can_installed" && "$can_installed" == "$can_cand" ]]; then
+                log "Removing cloned repository in user data directory: $repo_candidate"
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    printf '[DRY-RUN] rm -rf %s\n' "$repo_candidate"
+                else
+                    rm -rf "$repo_candidate"
+                fi
             fi
-        else
-            log "Preserving custom repository path: $installed_repo"
+        fi
+    done
         fi
     fi
     log "Inerium Shell uninstallation complete."

@@ -22,7 +22,7 @@ done
 # 1. Environment override (INERIUM_SHELL_DIR / INERIUM_DESKTOP_DIR)
 # 2. Local execution check (if run from an existing local clone)
 # 3. Visible home directory for source builds (~/inerium-shell)
-# 4. Standard XDG data directory for prebuilt binaries (~/.local/share/inerium-shell)
+# 4. Standard XDG data directory for prebuilt binaries (~/.local/share/inerium/shell)
 if [[ -n "${INERIUM_SHELL_DIR:-}" ]]; then
     TARGET_DIR="$INERIUM_SHELL_DIR"
 elif [[ -n "${INERIUM_DESKTOP_DIR:-}" ]]; then
@@ -31,8 +31,10 @@ elif [[ -f "${BASH_SOURCE[0]:-}" && -f "$(dirname "${BASH_SOURCE[0]}")/install.s
     TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 elif [[ "$FROM_SOURCE" -eq 1 ]]; then
     TARGET_DIR="$HOME/inerium-shell"
-else
+elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell" && ! -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell" ]]; then
     TARGET_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
+else
+    TARGET_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell"
 fi
 
 cd "$HOME" 2>/dev/null || true
