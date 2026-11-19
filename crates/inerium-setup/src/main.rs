@@ -3,6 +3,7 @@ mod model;
 mod system;
 mod theme;
 mod ui;
+mod update;
 
 use gtk4::prelude::*;
 use gtk4::{Application, CssProvider, Settings, glib};

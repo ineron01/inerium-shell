@@ -141,15 +141,11 @@ fn build_shell(
     title_box.append(&subtitle);
     header.append(&title_box);
 
-    // Update button (runs interactive TUI in kitty)
-    let update_btn = Button::with_label(tr(lang, "󰚰 Update", "󰚰 Обновить"));
-    update_btn.add_css_class("seg-btn");
+    // Update button (hidden by default, shown only if newer version is available)
+    let update_btn = Button::new();
+    update_btn.add_css_class("update-btn");
     update_btn.set_valign(Align::Center);
-    update_btn.set_tooltip_text(Some(tr(
-        lang,
-        "Check and update Inerium Shell components and configuration",
-        "Проверить и обновить компоненты и конфигурацию Inerium Shell",
-    )));
+    update_btn.set_visible(false);
     update_btn.connect_clicked(|_| {
         let _ = std::process::Command::new("kitty")
             .args(["--title", "Inerium Update", "-e", "inerium", "update"])
@@ -161,6 +157,9 @@ fn build_shell(
             });
     });
     header.append(&update_btn);
+
+    // Initial check from fast cache, or schedule background check
+    crate::update::attach_update_checker(&update_btn, lang);
 
     // Language toggle (EN / RU)
     let lang_seg = Box::new(Orientation::Horizontal, 2);

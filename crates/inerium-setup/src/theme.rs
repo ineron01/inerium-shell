@@ -278,6 +278,21 @@ window.setup-window {
     color: #e6e2cc;
 }
 
+.update-btn {
+    min-height: 28px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(135, 169, 135, 0.4);
+    background-color: rgba(135, 169, 135, 0.15);
+    color: #98bb6c;
+    font-size: 12px;
+    font-weight: 600;
+}
+.update-btn:hover {
+    background-color: rgba(135, 169, 135, 0.3);
+    color: #e6e2cc;
+}
+
 /* Inputs & Dropdowns */
 entry.setup-entry {
     min-height: 34px;
