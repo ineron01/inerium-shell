@@ -366,13 +366,6 @@ run_tui_prompts() {
             fi
         fi
 
-        if [[ -z "$WORKSPACES_PER_MON" ]]; then
-            local ws_prompt="Количество рабочих столов на монитор:"
-            local chosen_ws
-            chosen_ws="$(gum choose --header "$ws_prompt" --selected "3" "1" "2" "3" "4" "5" "6" "7" "8" "9")"
-            WORKSPACES_PER_MON="${chosen_ws:-3}"
-        fi
-
     else
         gum style \
             --border rounded \
@@ -464,13 +457,6 @@ run_tui_prompts() {
             else
                 UPDATE_CONFIGS=0
             fi
-        fi
-
-        if [[ -z "$WORKSPACES_PER_MON" ]]; then
-            local ws_prompt="Workspaces per monitor:"
-            local chosen_ws
-            chosen_ws="$(gum choose --header "$ws_prompt" --selected "3" "1" "2" "3" "4" "5" "6" "7" "8" "9")"
-            WORKSPACES_PER_MON="${chosen_ws:-3}"
         fi
     fi
 }
