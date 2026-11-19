@@ -532,11 +532,10 @@ enable_user_services_and_defaults() {
         fi
     fi
 
-    # Set default graphical file manager only if unconfigured or hijacked by terminal
+    # Set default file manager for Inerium: prefer Dolphin if user hasn't explicitly configured inode/directory
     if command -v xdg-mime >/dev/null 2>&1; then
-        local cur_fm
-        cur_fm="$(xdg-mime query default inode/directory 2>/dev/null || true)"
-        if [[ -z "$cur_fm" || "$cur_fm" =~ (kitty|alacritty|foot|terminal|ghostty) ]]; then
+        local user_mime="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+        if ! grep -q "^inode/directory=" "$user_mime" 2>/dev/null; then
             for fm_desk in org.kde.dolphin.desktop org.gnome.Nautilus.desktop thunar.desktop nemo.desktop pcmanfm-qt.desktop pcmanfm.desktop; do
                 if [[ -f "/usr/share/applications/$fm_desk" || -f "$HOME/.local/share/applications/$fm_desk" ]]; then
                     run "xdg-mime default '$fm_desk' inode/directory >/dev/null 2>&1 || true"
