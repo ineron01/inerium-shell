@@ -279,9 +279,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_clone = sender.clone();
                 std::thread::spawn(move || {
                     let _ = Command::new("inerium-theme").arg("set").arg(&id_clone).status();
-                    glib::idle_add_local_once(move || {
-                        sender_clone.input(AppearanceMsg::RefreshThemes);
-                    });
+                    sender_clone.input(AppearanceMsg::RefreshThemes);
                 });
             }
             AppearanceMsg::RefreshThemes => {

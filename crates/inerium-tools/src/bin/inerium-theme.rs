@@ -254,14 +254,16 @@ pub fn install_extra_theme(id: &str) -> Result<ThemeConfig, String> {
 
 fn resolve_theme_alias(input_id: &str) -> &str {
     match input_id {
-        "dark" | "dragon" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
+        "dark" | "dragon" | "дракон" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
         "light" | "inerium-light" | "белая" | "светлая" => "inerium-light",
-        "lotus" => "kanagawa-lotus",
-        "wave" => "kanagawa-wave",
-        "mocha" => "catppuccin-mocha",
-        "latte" => "catppuccin-latte",
-        "tokyo" | "tokyonight" => "tokyo-night",
-        "gruvbox" => "gruvbox-dark",
+        "lotus" | "лотос" => "kanagawa-lotus",
+        "wave" | "волна" => "kanagawa-wave",
+        "mocha" | "catppuccin" | "капучино" | "матча" | "мотча" | "мокка" | "catppuccin-mocha" => "catppuccin-mocha",
+        "latte" | "латте" | "catppuccin-latte" => "catppuccin-latte",
+        "dracula" | "дракула" => "dracula",
+        "tokyo" | "tokyonight" | "токио" => "tokyo-night",
+        "gruvbox" | "грувбокс" => "gruvbox-dark",
+        "nord" | "норд" => "nord",
         other => other,
     }
 }
@@ -1419,7 +1421,7 @@ fn main() {
                             "colors": {
                                 "bg": t.palette.bg_canvas,
                                 "surface": t.palette.bg_surface,
-                                "accent": t.palette.accent_blue,
+                                "accent": t.palette.get_primary(),
                                 "fg": t.palette.text_primary,
                             }
                         })
