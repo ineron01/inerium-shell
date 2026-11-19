@@ -254,16 +254,14 @@ pub fn install_extra_theme(id: &str) -> Result<ThemeConfig, String> {
 
 fn resolve_theme_alias(input_id: &str) -> &str {
     match input_id {
-        "dark" | "dragon" | "дракон" | "черная" | "темная" | "тёмная" => "kanagawa-dragon",
-        "light" | "inerium-light" | "белая" | "светлая" => "inerium-light",
-        "lotus" | "лотос" => "kanagawa-lotus",
-        "wave" | "волна" => "kanagawa-wave",
-        "mocha" | "catppuccin" | "капучино" | "матча" | "мотча" | "мокка" | "catppuccin-mocha" => "catppuccin-mocha",
-        "latte" | "латте" | "catppuccin-latte" => "catppuccin-latte",
-        "dracula" | "дракула" => "dracula",
-        "tokyo" | "tokyonight" | "токио" => "tokyo-night",
-        "gruvbox" | "грувбокс" => "gruvbox-dark",
-        "nord" | "норд" => "nord",
+        "dark" | "dragon" => "kanagawa-dragon",
+        "light" => "inerium-light",
+        "lotus" => "kanagawa-lotus",
+        "wave" => "kanagawa-wave",
+        "mocha" => "catppuccin-mocha",
+        "latte" => "catppuccin-latte",
+        "tokyo" | "tokyonight" => "tokyo-night",
+        "gruvbox" => "gruvbox-dark",
         other => other,
     }
 }
@@ -1377,7 +1375,8 @@ fn print_help() {
 
 КОМАНДЫ:
     list [--all] [--json] Показать активные темы (или все включая дополнительные с --all)
-    set <id>              Применить палитру по ID (если тема в extra, автоматически скопирует её)
+    set <id>              Применить палитру по ID (если тема в extra, переносит её в постоянные)
+    preview <id>          Быстрый показ палитры (только применение оформления без переноса файла)
     install <id>          Перенести тему из дополнительных в постоянные и применить
     toggle                Быстрое переключение (темный <-> светлый вариант)
     status                Вывести текущую активную тему и авторство в формате JSON
@@ -1507,6 +1506,26 @@ fn main() {
                 }
             }
         }
+        "preview" => {
+            if args.len() < 2 {
+                eprintln!("Ошибка: укажите идентификатор темы для превью. Выполните 'inerium-theme list --all'.");
+                std::process::exit(1);
+            }
+            let input_id = args[1].to_lowercase();
+            let target_id = resolve_theme_alias(&input_id);
+            let all_themes = load_all_themes();
+            if let Some(target) = all_themes.get(target_id) {
+                apply_theme(target);
+                println!(
+                    "Быстрый показ палитры: {} (автор: {})",
+                    target.theme.name, target.theme.author
+                );
+            } else {
+                eprintln!("Ошибка: тема '{}' не найдена.", target_id);
+                println!("Запустите 'inerium-theme list --all' для просмотра всех доступных палитр.");
+                std::process::exit(1);
+            }
+        }
         "set" => {
             if args.len() < 2 {
                 eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list'.");
@@ -1516,7 +1535,6 @@ fn main() {
             let input_id = args[1].to_lowercase();
             let target_id = resolve_theme_alias(&input_id);
 
-            let all_themes = load_all_themes();
             if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
@@ -1526,10 +1544,10 @@ fn main() {
                 if let Some(upstream) = &target.theme.upstream {
                     println!("Оригинальный репозиторий: {}", upstream);
                 }
-            } else if let Some(target) = all_themes.get(target_id) {
-                apply_theme(target);
+            } else if let Ok(target) = install_extra_theme(target_id) {
+                apply_theme(&target);
                 println!(
-                    "Применена палитра: {} (автор: {}, extra)",
+                    "Палитра '{}' перенесена из дополнительных в постоянные и применена (автор: {}).",
                     target.theme.name, target.theme.author
                 );
                 if let Some(upstream) = &target.theme.upstream {
