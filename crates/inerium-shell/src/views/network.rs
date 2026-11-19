@@ -168,6 +168,7 @@ pub enum NetworkMsg {
     PasswordInput(String),
     SubmitPassword,
     CancelPassword,
+    ForgetPromptNetwork,
     ConnectFinished {
         ssid: String,
         success: bool,
@@ -306,9 +307,9 @@ impl SimpleComponent for NetworkModel {
                 },
 
                 #[name = "pass_entry"]
-                gtk4::Entry {
+                gtk4::PasswordEntry {
                     set_placeholder_text: Some(tr("Wi-Fi password", "Пароль Wi-Fi сети")),
-                    set_visibility: false,
+                    set_show_peek_icon: true,
                     connect_changed[sender] => move |e| {
                         sender.input(NetworkMsg::PasswordInput(e.text().to_string()));
                     },
@@ -343,10 +344,17 @@ impl SimpleComponent for NetworkModel {
                         add_css_class: "cc-chip",
                         add_css_class: "on",
                         #[watch]
-                        set_sensitive: !model
-                            .password_prompt
-                            .as_ref()
-                            .is_some_and(|p| p.is_connecting),
+                        set_sensitive: {
+                            let is_connecting = model
+                                .password_prompt
+                                .as_ref()
+                                .is_some_and(|p| p.is_connecting);
+                            let is_valid = model
+                                .password_prompt
+                                .as_ref()
+                                .is_some_and(|p| p.password.trim().len() >= 8);
+                            !is_connecting && is_valid
+                        },
                         #[watch]
                         set_label: if model
                             .password_prompt
@@ -364,6 +372,21 @@ impl SimpleComponent for NetworkModel {
                         add_css_class: "cc-chip",
                         set_label: tr("Cancel", "Отмена"),
                         connect_clicked => NetworkMsg::CancelPassword,
+                    },
+
+                    #[name = "forget_btn"]
+                    gtk4::Button {
+                        add_css_class: "cc-chip",
+                        #[watch]
+                        set_visible: {
+                            if let Some(ref p) = model.password_prompt {
+                                model.networks.iter().any(|n| n.ssid == p.ssid && n.is_saved)
+                            } else {
+                                false
+                            }
+                        },
+                        set_label: tr("Forget", "Забыть"),
+                        connect_clicked => NetworkMsg::ForgetPromptNetwork,
                     },
                 },
             },
@@ -425,8 +448,15 @@ impl SimpleComponent for NetworkModel {
     }
 
     fn post_view() {
-        if self.password_prompt.is_some() && !pass_entry.has_focus() {
-            pass_entry.grab_focus();
+        if let Some(ref p) = self.password_prompt {
+            if p.password.is_empty() && !pass_entry.text().is_empty() {
+                pass_entry.set_text("");
+            }
+            if !pass_entry.has_focus() {
+                pass_entry.grab_focus();
+            }
+        } else if !pass_entry.text().is_empty() {
+            pass_entry.set_text("");
         }
         populate_wifi_list(
             list_box,
@@ -506,6 +536,7 @@ impl SimpleComponent for NetworkModel {
                         });
                     });
                 } else if !net.security.is_empty() && !net.security.contains("--") {
+                    crate::set_modal_dialog_active(true);
                     self.password_prompt = Some(PasswordPromptState {
                         ssid: net.ssid,
                         password: String::new(),
@@ -533,16 +564,30 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::PasswordInput(text) => {
                 if let Some(ref mut p) = self.password_prompt {
                     p.password = text;
+                    p.error_msg = None;
                 }
             }
             NetworkMsg::SubmitPassword => {
                 if let Some(ref mut prompt) = self.password_prompt {
+                    if prompt.password.trim().len() < 8 {
+                        return;
+                    }
                     prompt.is_connecting = true;
                     prompt.error_msg = None;
                     let ssid = prompt.ssid.clone();
                     let pass = prompt.password.clone();
                     let s_fin = sender.clone();
                     thread::spawn(move || {
+                        let saved_map = query_saved_wifi_connections();
+                        if let Some(conn) = saved_map.get(&ssid) {
+                            let _ = Command::new("nmcli")
+                                .args(["connection", "delete", "uuid", &conn.uuid])
+                                .output();
+                        }
+                        let _ = Command::new("nmcli")
+                            .args(["connection", "delete", "id", &ssid])
+                            .output();
+
                         let res = Command::new("nmcli")
                             .args(["dev", "wifi", "connect", &ssid, "password", &pass])
                             .output();
@@ -558,7 +603,29 @@ impl SimpleComponent for NetworkModel {
                 }
             }
             NetworkMsg::CancelPassword => {
+                crate::set_modal_dialog_active(false);
                 self.password_prompt = None;
+            }
+            NetworkMsg::ForgetPromptNetwork => {
+                if let Some(ref p) = self.password_prompt {
+                    let ssid = p.ssid.clone();
+                    crate::set_modal_dialog_active(false);
+                    self.password_prompt = None;
+                    let s_fin = sender.clone();
+                    thread::spawn(move || {
+                        let saved_map = query_saved_wifi_connections();
+                        if let Some(conn) = saved_map.get(&ssid) {
+                            let _ = Command::new("nmcli")
+                                .args(["connection", "delete", "uuid", &conn.uuid])
+                                .output();
+                        }
+                        let _ = Command::new("nmcli")
+                            .args(["connection", "delete", "id", &ssid])
+                            .output();
+                        let fresh = query_wifi_networks();
+                        s_fin.input(NetworkMsg::RescanFinished(fresh));
+                    });
+                }
             }
             NetworkMsg::ConnectFinished {
                 ssid,
@@ -569,6 +636,7 @@ impl SimpleComponent for NetworkModel {
                 self.networks = networks;
                 self.active_ssid = hw::get_active_wifi_ssid();
                 if success {
+                    crate::set_modal_dialog_active(false);
                     self.password_prompt = None;
                 } else if let Some(ref mut prompt) = self.password_prompt {
                     prompt.is_connecting = false;
@@ -580,6 +648,20 @@ impl SimpleComponent for NetworkModel {
                         .trim_start_matches("Ошибка: ");
                     prompt.error_msg = Some(format!("󰅖 {}", clean));
                     prompt.ssid = ssid;
+                } else {
+                    crate::set_modal_dialog_active(true);
+                    let err_text = error.unwrap_or_else(|| {
+                        tr("Connection error", "Ошибка подключения").to_string()
+                    });
+                    let clean = err_text
+                        .trim_start_matches("Error: ")
+                        .trim_start_matches("Ошибка: ");
+                    self.password_prompt = Some(PasswordPromptState {
+                        ssid,
+                        password: String::new(),
+                        error_msg: Some(format!("󰅖 {}", clean)),
+                        is_connecting: false,
+                    });
                 }
             }
             NetworkMsg::DisconnectFinished(fresh) => {
@@ -602,8 +684,19 @@ impl SimpleComponent for NetworkModel {
                 });
             }
             NetworkMsg::Back => {
+                if self.password_prompt.is_some() {
+                    crate::set_modal_dialog_active(false);
+                }
                 (self.nav_cb)("control");
             }
+        }
+    }
+}
+
+impl Drop for NetworkModel {
+    fn drop(&mut self) {
+        if self.password_prompt.is_some() {
+            crate::set_modal_dialog_active(false);
         }
     }
 }
