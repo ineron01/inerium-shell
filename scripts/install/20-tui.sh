@@ -149,6 +149,18 @@ run_tui_prompts() {
             else
                 log "Сохранение текущего набора модулей. Запуск быстрого обновления..."
             fi
+
+            local cfg_act_update="Обновить конфигурации (изменённые файлы будут забэкаплены в .bak)"
+            local cfg_act_keep="Оставить мои текущие конфигурации без изменений"
+            local default_cfg="$cfg_act_update"
+            [[ "${UPDATE_CONFIGS:-1}" -eq 0 ]] && default_cfg="$cfg_act_keep"
+            local chosen_cfg
+            chosen_cfg="$(gum choose --header "Конфигурационные файлы (~/.config):" --selected "$default_cfg" "$cfg_act_update" "$cfg_act_keep")"
+            if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
+                UPDATE_CONFIGS=1
+            else
+                UPDATE_CONFIGS=0
+            fi
         else
             gum style \
                 --border rounded \
@@ -227,6 +239,18 @@ run_tui_prompts() {
                 fi
             else
                 log "Keeping installed modules untouched. Proceeding with fast update..."
+            fi
+
+            local cfg_act_update="Update configurations (modified files backed up to .bak)"
+            local cfg_act_keep="Keep existing user configurations untouched"
+            local default_cfg="$cfg_act_update"
+            [[ "${UPDATE_CONFIGS:-1}" -eq 0 ]] && default_cfg="$cfg_act_keep"
+            local chosen_cfg
+            chosen_cfg="$(gum choose --header "Configuration files (~/.config):" --selected "$default_cfg" "$cfg_act_update" "$cfg_act_keep")"
+            if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
+                UPDATE_CONFIGS=1
+            else
+                UPDATE_CONFIGS=0
             fi
         fi
         return 0
@@ -328,6 +352,27 @@ run_tui_prompts() {
             fi
         fi
 
+        if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
+            local cfg_inst_fresh="Перезаписать на стандартные Inerium (существующие сохранятся в .bak)"
+            local cfg_inst_keep="Сохранить существующие файлы (установить только отсутствующие)"
+            local default_inst_cfg="$cfg_inst_fresh"
+            [[ "$UPDATE_CONFIGS" -eq 0 ]] && default_inst_cfg="$cfg_inst_keep"
+            local chosen_inst_cfg
+            chosen_inst_cfg="$(gum choose --header "Обнаружены существующие конфигурации (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_fresh" "$cfg_inst_keep")"
+            if [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+                UPDATE_CONFIGS=1
+            else
+                UPDATE_CONFIGS=0
+            fi
+        fi
+
+        if [[ -z "$WORKSPACES_PER_MON" ]]; then
+            local ws_prompt="Количество рабочих столов на монитор:"
+            local chosen_ws
+            chosen_ws="$(gum choose --header "$ws_prompt" --selected "3" "1" "2" "3" "4" "5" "6" "7" "8" "9")"
+            WORKSPACES_PER_MON="${chosen_ws:-3}"
+        fi
+
     else
         gum style \
             --border rounded \
@@ -405,6 +450,27 @@ run_tui_prompts() {
             else
                 FETCH_MODEL=0
             fi
+        fi
+
+        if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
+            local cfg_inst_fresh="Overwrite with standard Inerium configs (existing backed up to .bak)"
+            local cfg_inst_keep="Preserve existing files (only install missing configs)"
+            local default_inst_cfg="$cfg_inst_fresh"
+            [[ "$UPDATE_CONFIGS" -eq 0 ]] && default_inst_cfg="$cfg_inst_keep"
+            local chosen_inst_cfg
+            chosen_inst_cfg="$(gum choose --header "Existing configurations detected (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_fresh" "$cfg_inst_keep")"
+            if [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+                UPDATE_CONFIGS=1
+            else
+                UPDATE_CONFIGS=0
+            fi
+        fi
+
+        if [[ -z "$WORKSPACES_PER_MON" ]]; then
+            local ws_prompt="Workspaces per monitor:"
+            local chosen_ws
+            chosen_ws="$(gum choose --header "$ws_prompt" --selected "3" "1" "2" "3" "4" "5" "6" "7" "8" "9")"
+            WORKSPACES_PER_MON="${chosen_ws:-3}"
         fi
     fi
 }
