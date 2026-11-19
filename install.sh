@@ -127,7 +127,7 @@ source "$SCRIPTS_DIR/50-configs.sh"
 source "$SCRIPTS_DIR/60-addons.sh"
 source "$SCRIPTS_DIR/70-summary.sh"
 
-export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed warn log
+export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed download_file warn log
 export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS
 
 # ============================================================================

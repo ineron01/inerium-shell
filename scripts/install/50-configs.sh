@@ -397,10 +397,10 @@ fetch_silueta_model() {
         log "Found silueta.onnx at $SILUETA_PATH"
     elif [[ "$FETCH_MODEL" -eq 1 ]]; then
         if [[ "$DRY_RUN" -eq 1 ]]; then
-            printf '[DRY-RUN] mkdir -p %s && curl -fsSL %s -o %s\n' "$(dirname "$SILUETA_PATH")" "$SILUETA_URL" "$SILUETA_PATH"
+            printf '[DRY-RUN] download_file %s -> %s\n' "$SILUETA_URL" "$SILUETA_PATH"
         else
             mkdir -p "$(dirname "$SILUETA_PATH")"
-            run_step "Downloading silueta.onnx (~43 MB)..." curl -fsSL "$SILUETA_URL" -o "$SILUETA_PATH"
+            run_step "Downloading silueta.onnx (~43 MB)..." download_file "$SILUETA_URL" "$SILUETA_PATH" 300
         fi
     else
         log "NOTE: silueta.onnx not found at $SILUETA_PATH."

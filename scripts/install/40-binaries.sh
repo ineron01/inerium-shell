@@ -10,20 +10,20 @@ install_from_binaries() {
     local -a user_bins
     read -ra user_bins <<< "$USER_BINS_STR"
     tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT RETURN
 
-    if ! curl -fsSL "${RELEASE_BASE_URL}/${BIN_ARCHIVE}" -o "${tmp_dir}/${BIN_ARCHIVE}"; then
+    log "Fetching release archive ${RELEASE_BASE_URL}/${BIN_ARCHIVE}..."
+    if ! download_file "${RELEASE_BASE_URL}/${BIN_ARCHIVE}" "${tmp_dir}/${BIN_ARCHIVE}" 300; then
         warn "Failed to download ${RELEASE_BASE_URL}/${BIN_ARCHIVE}"
-        rm -rf "$tmp_dir"
         return 1
     fi
-    if ! curl -fsSL "${RELEASE_BASE_URL}/${BIN_SHA}" -o "${tmp_dir}/${BIN_SHA}"; then
+    log "Fetching checksum ${RELEASE_BASE_URL}/${BIN_SHA}..."
+    if ! download_file "${RELEASE_BASE_URL}/${BIN_SHA}" "${tmp_dir}/${BIN_SHA}" 60; then
         warn "Failed to download ${RELEASE_BASE_URL}/${BIN_SHA}"
-        rm -rf "$tmp_dir"
         return 1
     fi
     if ! (cd "$tmp_dir" && sha256sum -c "$BIN_SHA" >/dev/null 2>&1); then
         warn "SHA256 verification failed for ${BIN_ARCHIVE}"
-        rm -rf "$tmp_dir"
         return 1
     fi
 
@@ -34,14 +34,12 @@ install_from_binaries() {
     for bin in "${user_bins[@]}" inerium-greeter; do
         if [[ ! -x "${tmp_dir}/dist/${bin}" ]]; then
             warn "Missing binary in release archive: ${bin}"
-            rm -rf "$tmp_dir"
             return 1
         fi
         missing_libs="$(ldd "${tmp_dir}/dist/${bin}" 2>/dev/null | grep "not found" || true)"
         if [[ -n "$missing_libs" ]]; then
             warn "Shared library mismatch in ${bin}:"
             printf '%s\n' "$missing_libs" >&2
-            rm -rf "$tmp_dir"
             return 1
         fi
     done
@@ -55,7 +53,6 @@ install_from_binaries() {
     manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
     install_root_if_changed 755 "${tmp_dir}/dist/inerium-greeter" /usr/local/bin/inerium-greeter
 
-    rm -rf "$tmp_dir"
     return 0
 }
 

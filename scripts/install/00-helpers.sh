@@ -64,6 +64,39 @@ run() {
     fi
 }
 
+download_file() {
+    local url="$1"
+    local output="$2"
+    local max_time="${3:-300}"
+    local part="${output}.part"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[DRY-RUN] download_file %s -> %s (max %ss)\n' "$url" "$output" "$max_time"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$output")"
+
+    if curl -fSL \
+        --show-error \
+        --connect-timeout 20 \
+        --speed-limit 10240 \
+        --speed-time 30 \
+        --max-time "$max_time" \
+        --retry 3 \
+        --retry-delay 2 \
+        --retry-connrefused \
+        -C - \
+        "$url" -o "$part"; then
+        mv -f "$part" "$output"
+        return 0
+    else
+        local rc=$?
+        rm -f "$part"
+        return $rc
+    fi
+}
+
 run_step() {
     local title="$1"
     shift
@@ -71,11 +104,16 @@ run_step() {
         printf '[DRY-RUN] %s: %s\n' "$title" "$*"
         return 0
     fi
+    # Proactively validate sudo in foreground to prevent background prompt deadlock under gum spin
+    if [[ "$DRY_RUN" -eq 0 ]] && ! sudo -n true 2>/dev/null; then
+        sudo -v
+    fi
     if use_tui; then
         printf '\n=== %s (%s) ===\n' "$title" "$(date '+%H:%M:%S')" >> "$LOG_FILE"
         "$@" >> "$LOG_FILE" 2>&1 &
         local step_pid=$!
         if ! gum spin --spinner dot --title "$title" -- tail --pid="$step_pid" -f /dev/null; then
+            pkill -P "$step_pid" 2>/dev/null || true
             kill -9 "$step_pid" 2>/dev/null || true
             wait "$step_pid" 2>/dev/null || true
             restore_terminal
