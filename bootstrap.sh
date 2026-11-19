@@ -84,18 +84,17 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     fi
 fi
 
-# Full upgrade first: installing on top of "pacman -Sy" alone is an unsupported partial upgrade.
-if [[ "$SKIP_PKGS" -eq 0 ]]; then
-    echo "[bootstrap] Upgrading system and installing git, base-devel, gum..."
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "[DRY-RUN] sudo pacman -Syu --needed --noconfirm git base-devel"
-        echo "[DRY-RUN] sudo pacman -S --needed --noconfirm gum || true"
-    else
-        sudo pacman -Syu --needed --noconfirm git base-devel >> "$LOG_FILE" 2>&1 || {
-            tail -n 25 "$LOG_FILE" >&2
-            exit 1
-        }
-        sudo pacman -S --needed --noconfirm gum >> "$LOG_FILE" 2>&1 || true
+# Ensure bootstrap prerequisites (git, gum)
+if [[ "$SKIP_PKGS" -eq 0 ]] && command -v pacman >/dev/null 2>&1; then
+    declare -a missing_bootstrap=()
+    mapfile -t missing_bootstrap < <(pacman -T git gum 2>/dev/null || true)
+    if [[ ${#missing_bootstrap[@]} -gt 0 ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "[DRY-RUN] sudo pacman -S --needed --noconfirm ${missing_bootstrap[*]}"
+        else
+            echo "[bootstrap] Installing bootstrap prerequisites (${missing_bootstrap[*]})..."
+            sudo pacman -S --needed --noconfirm "${missing_bootstrap[@]}" >> "$LOG_FILE" 2>&1 || true
+        fi
     fi
 elif ! command -v git >/dev/null 2>&1; then
     if [[ "$DRY_RUN" -eq 1 ]]; then
