@@ -43,7 +43,11 @@ const IDLE_PRESETS: &[(&str, &str, u32, u32, u32)] = &[
     ("Never (disabled)", "Никогда (отключить автоблокировку)", 0, 0, 0),
 ];
 
-pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: Lang) -> Box {
+pub fn build_interface_tab(
+    paths: SetupPaths,
+    status_cb: StatusCallback,
+    lang: Lang,
+) -> (Box, Rc<dyn Fn() -> Result<(), String>>) {
     ensure_default_wallpapers(&paths);
     let outer = Box::new(Orientation::Vertical, 10);
 
@@ -89,9 +93,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     open_theme_btn.connect_clicked(|_| {
         let path = inerium_hw::sysfs::home_dir().join(".config/inerium/themes");
         std::thread::spawn(move || {
-            if let Ok(mut child) = std::process::Command::new("xdg-open").arg(path).spawn() {
-                let _ = child.wait();
-            }
+            let _ = inerium_hw::open_folder(&path);
         });
     });
     theme_head.append(&theme_info);
@@ -111,50 +113,6 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     populate_setup_themes(&themes_flow, &selected_theme, &selected_theme_name, &status_cb, lang);
     theme_card.append(&themes_flow);
-
-    let theme_actions = Box::new(Orientation::Horizontal, 8);
-    let theme_spacer = Box::new(Orientation::Horizontal, 0);
-    theme_spacer.set_hexpand(true);
-    theme_actions.append(&theme_spacer);
-
-    let apply_theme_btn = Button::with_label(tr(lang, "✓ Save & Apply Theme", "✓ Применить выбранную тему"));
-    apply_theme_btn.add_css_class("btn-primary");
-    {
-        let selected_theme_c = selected_theme.clone();
-        let selected_name_c = selected_theme_name.clone();
-        let status_cb_c = status_cb.clone();
-        apply_theme_btn.connect_clicked(move |_| {
-            let target_id = selected_theme_c.borrow().clone();
-            let target_name = selected_name_c.borrow().clone();
-            if target_id.is_empty() {
-                return;
-            }
-            status_cb_c.warn(tr(lang, "Saving theme on a permanent basis...", "Сохранение и применение темы на постоянной основе..."));
-            let status_cb_local = status_cb_c.clone();
-            glib::MainContext::default().spawn_local(async move {
-                let tid = target_id.clone();
-                let res = gio::spawn_blocking(move || {
-                    std::process::Command::new("inerium-theme")
-                        .arg("install")
-                        .arg(&tid)
-                        .status()
-                }).await;
-                if let Ok(Ok(s)) = res && s.success() {
-                    status_cb_local.ok(&match lang {
-                        Lang::En => format!("Theme '{target_name}' saved to ~/.config/inerium/themes and applied"),
-                        Lang::Ru => format!("Тема '{target_name}' сохранена в постоянные и успешно применена"),
-                    });
-                } else {
-                    status_cb_local.error(&match lang {
-                        Lang::En => format!("Failed to apply theme '{target_name}'"),
-                        Lang::Ru => format!("Не удалось применить тему '{target_name}'"),
-                    });
-                }
-            });
-        });
-    }
-    theme_actions.append(&apply_theme_btn);
-    theme_card.append(&theme_actions);
     content.append(&theme_card);
 
     // 1. Quick Wallpaper Picker Card
@@ -191,9 +149,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     open_wall_btn.connect_clicked(|_| {
         let path = inerium_hw::sysfs::home_dir().join(".local/share/inerium/wallpapers");
         std::thread::spawn(move || {
-            if let Ok(mut child) = std::process::Command::new("xdg-open").arg(path).spawn() {
-                let _ = child.wait();
-            }
+            let _ = inerium_hw::open_folder(&path);
         });
     });
     wall_head.append(&open_wall_btn);
@@ -656,22 +612,12 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
     let ovr_reset_btn = Button::with_label(tr(lang, "Reset settings", "Сбросить настройки"));
     ovr_reset_btn.add_css_class("btn-danger");
     ovr_actions.append(&ovr_reset_btn);
-
-    let spacer = Box::new(Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    ovr_actions.append(&spacer);
-
-    let ovr_save_btn = Button::with_label(tr(lang, "Save & Apply", "Сохранить и применить"));
-    ovr_save_btn.add_css_class("btn-primary");
-    ovr_actions.append(&ovr_save_btn);
     ovr_card.append(&ovr_actions);
 
     content.append(&ovr_card);
 
-    // Wire Save Overrides
-    {
+    let save_fn: Rc<dyn Fn() -> Result<(), String>> = {
         let paths = paths.clone();
-        let status_cb = status_cb.clone();
         let kb_entry = kb_entry.clone();
         let opt_dd = opt_dd.clone();
         let launcher_dd = launcher_dd.clone();
@@ -683,17 +629,14 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
         let sw_dwt = sw_dwt.clone();
         let idle_dd = idle_dd.clone();
         let sw_bat_limit = sw_bat_limit.clone();
-        let selected_theme_save = selected_theme.clone();
 
-        ovr_save_btn.connect_clicked(move |_| {
+        Rc::new(move || {
             let layout = kb_entry.text().trim().to_string();
             if layout.is_empty() {
-                status_cb.error(tr(
-                    lang,
-                    "kb_layout cannot be empty",
-                    "Поле kb_layout не может быть пустым",
-                ));
-                return;
+                return Err(match lang {
+                    Lang::En => "kb_layout cannot be empty".to_string(),
+                    Lang::Ru => "Поле kb_layout не может быть пустым".to_string(),
+                });
             }
             let opt_idx = opt_dd.selected() as usize;
             let kb_options = KB_TOGGLE_OPTIONS
@@ -718,7 +661,11 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
                 tap_to_click: sw_tap.is_active(),
                 disable_while_typing: sw_dwt.is_active(),
                 sensitivity: sens_scale.value(),
-                accel_profile: if sw_flat.is_active() { "flat".to_string() } else { "adaptive".to_string() },
+                accel_profile: if sw_flat.is_active() {
+                    "flat".to_string()
+                } else {
+                    "adaptive".to_string()
+                },
                 scroll_factor: scroll_scale.value(),
                 launcher_bind,
             };
@@ -738,36 +685,11 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
                 let _ = set_battery_charge_threshold(target_th);
             }
 
-            let theme_id = selected_theme_save.borrow().clone();
-            if !theme_id.is_empty() {
-                glib::MainContext::default().spawn_local(async move {
-                    let _ = gio::spawn_blocking(move || {
-                        std::process::Command::new("inerium-theme")
-                            .arg("install")
-                            .arg(&theme_id)
-                            .status()
-                    }).await;
-                });
-            }
-
-            if let Err(e) = save_inputs_and_reload(&paths, &input_cfg) {
-                status_cb.error(&e);
-                return;
-            }
-            if let Err(e) = apply_hypridle(&paths, &idle_cfg) {
-                status_cb.warn(&match lang {
-                    Lang::En => format!("Input applied, but hypridle: {e}"),
-                    Lang::Ru => format!("Ввод применён, но hypridle: {e}"),
-                });
-                return;
-            }
-            status_cb.ok(tr(
-                lang,
-                "Settings, theme & hardware overrides applied",
-                "Настройки, тема и параметры оборудования сохранены",
-            ));
-        });
-    }
+            save_inputs_and_reload(&paths, &input_cfg)?;
+            apply_hypridle(&paths, &idle_cfg)?;
+            Ok(())
+        })
+    };
 
     // Wire Reset Overrides
     {
@@ -816,7 +738,7 @@ pub fn build_interface_tab(paths: SetupPaths, status_cb: StatusCallback, lang: L
 
     scroll.set_child(Some(&content));
     outer.append(&scroll);
-    outer
+    (outer, save_fn)
 }
 
 fn make_switch_row(parent: &Box, label: &str, active: bool) -> Switch {
@@ -1029,8 +951,30 @@ fn populate_setup_themes(
             sel_name_c.replace(name_click.clone());
 
             status_cb_click.warn(&match lang {
-                Lang::En => format!("Theme '{name_click}' selected. Click 'Save & Apply Theme' to confirm."),
-                Lang::Ru => format!("Выбрана тема '{name_click}'. Нажмите «Применить выбранную тему» для сохранения."),
+                Lang::En => format!("Applying theme '{name_click}'..."),
+                Lang::Ru => format!("Применение темы '{name_click}'..."),
+            });
+            let status_local = status_cb_click.clone();
+            let name_local = name_click.clone();
+            let id_local = id_click.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let res = gio::spawn_blocking(move || {
+                    std::process::Command::new("inerium-theme")
+                        .arg("install")
+                        .arg(&id_local)
+                        .status()
+                }).await;
+                if let Ok(Ok(s)) = res && s.success() {
+                    status_local.ok(&match lang {
+                        Lang::En => format!("Theme '{name_local}' applied"),
+                        Lang::Ru => format!("Тема '{name_local}' успешно применена"),
+                    });
+                } else {
+                    status_local.error(&match lang {
+                        Lang::En => format!("Failed to apply theme '{name_local}'"),
+                        Lang::Ru => format!("Не удалось применить тему '{name_local}'"),
+                    });
+                }
             });
         });
 

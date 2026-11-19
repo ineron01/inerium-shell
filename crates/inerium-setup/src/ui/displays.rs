@@ -104,7 +104,7 @@ pub fn build_displays_tab(
     paths: SetupPaths,
     status_cb: StatusCallback,
     lang: Lang,
-) -> ScrolledWindow {
+) -> (ScrolledWindow, Rc<dyn Fn() -> Result<(), String>>) {
     let scroll = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never)
         .vscrollbar_policy(PolicyType::Automatic)
@@ -299,17 +299,6 @@ pub fn build_displays_tab(
         reset_btn.set_sensitive(false);
     }
     action_row.append(&reset_btn);
-
-    let spacer = Box::new(Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    action_row.append(&spacer);
-
-    let save_btn = Button::with_label(tr(lang, "Save & Apply", "Сохранить и применить"));
-    save_btn.add_css_class("btn-primary");
-    if managed_overlay {
-        save_btn.set_sensitive(false);
-    }
-    action_row.append(&save_btn);
     mon_card.append(&action_row);
 
     root.append(&mon_card);
@@ -686,32 +675,22 @@ pub fn build_displays_tab(
     }
 
     // Save & Apply
-    {
+    let save_fn: Rc<dyn Fn() -> Result<(), String>> = {
         let read_current_configs = read_current_configs.clone();
         let paths = paths.clone();
-        let status_cb = status_cb.clone();
         let populate = populate.clone();
         let win_c = win.clone();
-        save_btn.connect_clicked(move |_| {
+        Rc::new(move || {
             let configs = read_current_configs();
             if configs.is_empty() {
-                status_cb.warn(tr(lang, "No displays to save", "Нет мониторов для сохранения"));
-                return;
+                return Ok(());
             }
-            match save_and_reload_monitors(&paths, &configs) {
-                Ok(()) => {
-                    clamp_window_to_screen(&win_c);
-                    status_cb.ok(tr(
-                        lang,
-                        "monitors.lua verified (luac -p) and applied",
-                        "monitors.lua проверен (luac -p) и применён",
-                    ));
-                    populate();
-                }
-                Err(e) => status_cb.error(&e),
-            }
-        });
-    }
+            save_and_reload_monitors(&paths, &configs)?;
+            clamp_window_to_screen(&win_c);
+            populate();
+            Ok(())
+        })
+    };
 
     // Reset to auto-detection
     {
@@ -734,7 +713,7 @@ pub fn build_displays_tab(
     }
 
     scroll.set_child(Some(&root));
-    scroll
+    (scroll, save_fn)
 }
 
 fn labeled_field(label: &str, widget: &impl IsA<gtk4::Widget>) -> Box {

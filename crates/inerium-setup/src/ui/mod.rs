@@ -117,6 +117,7 @@ fn build_shell(
 
     let title_box = Box::new(Orientation::Vertical, 2);
     title_box.set_hexpand(true);
+    title_box.set_valign(Align::Center);
     let title = Label::new(Some(tr(lang, "Inerium Setup", "Настройка Inerium")));
     title.add_css_class("setup-title");
     title.set_xalign(0.0);
@@ -259,8 +260,8 @@ fn build_shell(
         .hexpand(true)
         .build();
 
-    let displays_page = displays::build_displays_tab(win.clone(), paths.clone(), status_cb.clone(), lang);
-    let interface_page = interface::build_interface_tab(paths.clone(), status_cb.clone(), lang);
+    let (displays_page, save_displays) = displays::build_displays_tab(win.clone(), paths.clone(), status_cb.clone(), lang);
+    let (interface_page, save_interface) = interface::build_interface_tab(paths.clone(), status_cb.clone(), lang);
     let integrations_page = integrations::build_integrations_tab(
         paths.clone(),
         initial_steps,
@@ -318,6 +319,30 @@ fn build_shell(
         select_tab("displays");
     }
 
+    // Unified Save & Apply Action Button
+    let save_all_btn = Button::with_label(tr(lang, "✓ Save & Apply", "✓ Сохранить и применить"));
+    save_all_btn.add_css_class("btn-primary");
+    {
+        let save_displays = save_displays.clone();
+        let save_interface = save_interface.clone();
+        let status_cb = status_cb.clone();
+        save_all_btn.connect_clicked(move |_| {
+            if let Err(e) = save_displays() {
+                status_cb.error(&e);
+                return;
+            }
+            if let Err(e) = save_interface() {
+                status_cb.error(&e);
+                return;
+            }
+            status_cb.ok(tr(
+                lang,
+                "All settings saved and applied",
+                "Все настройки успешно сохранены и применены",
+            ));
+        });
+    }
+
     // Footer buttons
     if autostart_mode {
         let later_btn = Button::with_label(tr(lang, "Setup Later", "Настроить позже"));
@@ -327,12 +352,17 @@ fn build_shell(
             win_c.close();
         });
         footer.append(&later_btn);
+        footer.append(&save_all_btn);
 
         let finish_btn = Button::with_label(tr(lang, "Finish Setup", "Завершить настройку"));
-        finish_btn.add_css_class("btn-primary");
+        finish_btn.add_css_class("btn-secondary");
         let win_c = win.clone();
         let paths_c = paths.clone();
+        let save_displays = save_displays.clone();
+        let save_interface = save_interface.clone();
         finish_btn.connect_clicked(move |_| {
+            let _ = save_displays();
+            let _ = save_interface();
             let _ = apply_system_language(&paths_c, lang);
             let _ = mark_setup_done(&paths_c);
             win_c.close();
@@ -346,6 +376,7 @@ fn build_shell(
             win_c.close();
         });
         footer.append(&close_btn);
+        footer.append(&save_all_btn);
     }
 
     shell.append(&footer);
