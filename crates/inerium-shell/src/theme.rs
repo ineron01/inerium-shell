@@ -144,8 +144,13 @@ pub const LOTUS_VARS: &str = r#"
 "#;
 
 pub const POPUP_CSS_RULES: &str = r#"
-window.popup-window {
+window.popup-window,
+window.popup-window.background,
+window.popup-window decoration {
     background: transparent;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 .popup-container, .cc {
@@ -153,7 +158,7 @@ window.popup-window {
     border: 1px solid @cc_line;
     border-radius: 16px;
     padding: 14px;
-    box-shadow: 0 12px 36px @cc_shadow;
+    box-shadow: none;
     font-family: "JetBrainsMono Nerd Font", monospace;
     color: @cc_fg;
 }
