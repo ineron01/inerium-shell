@@ -44,11 +44,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Script syntax check
         run: |
-          bash -n *.sh
-          bash -n scripts/install/*.sh
-          for f in local/bin/* first-login.d/* system/novpn/bin/* system/usr/local/bin/*; do
+          for f in *.sh scripts/install/*.sh local/bin/* first-login.d/* system/novpn/bin/* system/usr/local/bin/*; do
             [[ -f "$f" ]] || continue
-            if head -n 1 "$f" | grep -qE "bash|sh"; then
+            if head -n 1 "$f" | grep -qE "bash|sh" || [[ "$f" == *.sh ]]; then
               bash -n "$f"
             elif head -n 1 "$f" | grep -q "python"; then
               python3 -c "import ast; ast.parse(open('$f').read())"

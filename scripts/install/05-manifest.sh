@@ -336,8 +336,6 @@ run_uninstall() {
             fi
         fi
     done
-        fi
-    fi
     log "Inerium Shell uninstallation complete."
 }
 
