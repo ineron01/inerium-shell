@@ -965,6 +965,7 @@ fn populate_setup_themes(
                         .status()
                 }).await;
                 if let Ok(Ok(s)) = res && s.success() {
+                    crate::theme::reload_theme();
                     status_local.ok(&match lang {
                         Lang::En => format!("Theme '{name_local}' applied"),
                         Lang::Ru => format!("Тема '{name_local}' успешно применена"),
@@ -981,4 +982,34 @@ fn populate_setup_themes(
         buttons.borrow_mut().push((id, btn.clone()));
         flow.append(&btn);
     }
+
+    let btns_weak = Rc::downgrade(&buttons);
+    let sel_id_weak = Rc::downgrade(selected_id);
+    let sel_name_weak = Rc::downgrade(selected_name);
+    crate::theme::add_theme_listener(move || {
+        let (Some(btns), Some(sel_id), Some(sel_name)) = (
+            btns_weak.upgrade(),
+            sel_id_weak.upgrade(),
+            sel_name_weak.upgrade(),
+        ) else {
+            return;
+        };
+        let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+        if let Ok(content) = std::fs::read_to_string(home.join(".config/inerium/current.json"))
+            && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(active_id) = val.get("id").and_then(|v| v.as_str())
+        {
+            sel_id.replace(active_id.to_string());
+            if let Some(active_name) = val.get("name").and_then(|v| v.as_str()) {
+                sel_name.replace(active_name.to_string());
+            }
+            for (bid, b) in btns.borrow().iter() {
+                if bid == active_id {
+                    b.add_css_class("active");
+                } else {
+                    b.remove_css_class("active");
+                }
+            }
+        }
+    });
 }

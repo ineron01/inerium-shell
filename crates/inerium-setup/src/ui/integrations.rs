@@ -16,7 +16,6 @@ use crate::model::{
     FirstLoginStep, SetupPaths, StepMode, StepStatus, mark_step_done,
 };
 use crate::system::{evaluate_steps, run_step_check};
-use crate::theme::vte_palette;
 use crate::ui::StatusCallback;
 
 #[derive(serde::Deserialize, Clone)]
@@ -116,9 +115,16 @@ where
     terminal.set_scrollback_lines(2000);
     let font_desc = pango::FontDescription::from_string("JetBrainsMono Nerd Font 11");
     terminal.set_font(Some(&font_desc));
-    let (fg, bg, pal) = vte_palette();
-    let pal_refs: Vec<&gdk4::RGBA> = pal.iter().collect();
-    terminal.set_colors(Some(&fg), Some(&bg), &pal_refs);
+    crate::theme::update_terminal_palette(&terminal);
+
+    {
+        let terminal_weak = terminal.downgrade();
+        crate::theme::add_theme_listener(move || {
+            if let Some(term) = terminal_weak.upgrade() {
+                crate::theme::update_terminal_palette(&term);
+            }
+        });
+    }
 
     let vte_scroll = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never)

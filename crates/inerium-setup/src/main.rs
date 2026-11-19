@@ -6,7 +6,7 @@ mod ui;
 mod update;
 
 use gtk4::prelude::*;
-use gtk4::{Application, CssProvider, Settings, glib};
+use gtk4::{Application, CssProvider, glib};
 
 use crate::model::{SetupPaths, reset_all_markers};
 use crate::system::should_open_autostart;
@@ -91,13 +91,10 @@ fn main() -> glib::ExitCode {
             return;
         }
 
-        if let Some(settings) = Settings::default() {
-            settings.set_gtk_application_prefer_dark_theme(true);
-        }
+        let provider = CssProvider::new();
+        theme::init_theme(&provider);
 
         if let Some(display) = gdk4::Display::default() {
-            let provider = CssProvider::new();
-            provider.load_from_data(theme::SETUP_CSS);
             gtk4::style_context_add_provider_for_display(
                 &display,
                 &provider,
