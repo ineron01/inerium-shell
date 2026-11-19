@@ -1516,6 +1516,7 @@ fn main() {
             let input_id = args[1].to_lowercase();
             let target_id = resolve_theme_alias(&input_id);
 
+            let all_themes = load_all_themes();
             if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
@@ -1525,10 +1526,10 @@ fn main() {
                 if let Some(upstream) = &target.theme.upstream {
                     println!("Оригинальный репозиторий: {}", upstream);
                 }
-            } else if let Ok(target) = install_extra_theme(target_id) {
-                apply_theme(&target);
+            } else if let Some(target) = all_themes.get(target_id) {
+                apply_theme(target);
                 println!(
-                    "Палитра '{}' перенесена из дополнительных в постоянные и применена (автор: {}).",
+                    "Применена палитра: {} (автор: {}, extra)",
                     target.theme.name, target.theme.author
                 );
                 if let Some(upstream) = &target.theme.upstream {
@@ -1536,7 +1537,7 @@ fn main() {
                 }
             } else {
                 eprintln!("Ошибка: тема '{}' не найдена.", target_id);
-                println!("Запустите 'inerium-theme list' для просмотра всех доступных палитр.");
+                println!("Запустите 'inerium-theme list --all' для просмотра всех доступных палитр.");
                 std::process::exit(1);
             }
         }
