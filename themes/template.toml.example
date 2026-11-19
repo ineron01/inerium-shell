@@ -30,6 +30,10 @@ text_muted        = "#737c73"                # Secondary information, disabled i
 text_subtle       = "#a6a69c"                # Tertiary text, timestamps
 text_inverted     = "#181616"                # Text on bright accent badges
 
+# Dominant theme accents (Optional, falls back cleanly to blue/amber)
+accent_primary    = "#8ba4b0"                # Primary brand accent for GTK, Dolphin focus & window border
+accent_orange     = "#b6927b"                # Dedicated orange accent (for Waybar & hardware widgets)
+
 # Accent colors (Used for badges, highlights, graphs and Waybar indicators)
 accent_green      = "#87a987"
 accent_green_bg   = "rgba(135, 169, 135, 0.16)"

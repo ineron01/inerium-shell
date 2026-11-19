@@ -23,9 +23,9 @@ IntensityEffect=0
 [Colors:Button]
 BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -37,9 +37,9 @@ ForegroundVisited=137,146,167
 [Colors:Complementary]
 BackgroundAlternate=45,42,42
 BackgroundNormal=24,22,22
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -51,9 +51,9 @@ ForegroundVisited=137,146,167
 [Colors:Header]
 BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -65,9 +65,9 @@ ForegroundVisited=137,146,167
 [Colors:Selection]
 BackgroundAlternate=45,42,42
 BackgroundNormal=45,42,42
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -79,9 +79,9 @@ ForegroundVisited=137,146,167
 [Colors:Tooltip]
 BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -93,9 +93,9 @@ ForegroundVisited=137,146,167
 [Colors:View]
 BackgroundAlternate=34,31,31
 BackgroundNormal=24,22,22
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -107,9 +107,9 @@ ForegroundVisited=137,146,167
 [Colors:Window]
 BackgroundAlternate=45,42,42
 BackgroundNormal=34,31,31
-DecorationFocus=135,169,135
-DecorationHover=135,169,135
-ForegroundActive=135,169,135
+DecorationFocus=139,164,176
+DecorationHover=139,164,176
+ForegroundActive=139,164,176
 ForegroundInactive=115,124,115
 ForegroundLink=139,164,176
 ForegroundNegative=196,116,110
@@ -120,7 +120,7 @@ ForegroundVisited=137,146,167
 
 [General]
 ColorScheme=Inerium-kanagawa-dragon
-ColorSchemeHash=e89f001b8554da715ab789ec93d9bba5f273af83
+ColorSchemeHash=688feba330b68459d55f523c0f04cf1e2ac23c7d
 Name=Kanagawa Dragon
 TerminalApplication=kitty
 

@@ -14,14 +14,17 @@ bg_surface_alt    = "#ded7bc"
 bg_surface_hover  = "#ded7bc"
 bg_surface_active = "#d5cdb0"
 
-border_subtle     = "rgba(84, 84, 100, 0.14)"
-border_active     = "rgba(84, 84, 100, 0.26)"
+border_subtle     = "rgba(84, 84, 100, 0.16)"
+border_active     = "rgba(77, 105, 155, 0.50)"
 
 text_primary      = "#545464"
 text_heading      = "#43436c"
 text_muted        = "#8a8980"
 text_subtle       = "#716e61"
 text_inverted     = "#f2ecbc"
+
+accent_primary    = "#4d699b"
+accent_orange     = "#e98a00"
 
 accent_green      = "#6f894e"
 accent_green_bg   = "rgba(111, 137, 78, 0.18)"
@@ -54,4 +57,3 @@ slider_thumb      = "#43436c"
 
 [display]
 temperature = 5500
-

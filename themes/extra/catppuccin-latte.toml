@@ -14,14 +14,17 @@ bg_surface_alt    = "#dce0e8"
 bg_surface_hover  = "#dfe2ea"
 bg_surface_active = "#ccd0da"
 
-border_subtle     = "rgba(76, 79, 105, 0.12)"
-border_active     = "rgba(30, 102, 245, 0.35)"
+border_subtle     = "rgba(76, 79, 105, 0.16)"
+border_active     = "rgba(30, 102, 245, 0.55)"
 
 text_primary      = "#4c4f69"
 text_heading      = "#4c4f69"
 text_muted        = "#8c8fa1"
 text_subtle       = "#6c6f85"
 text_inverted     = "#eff1f5"
+
+accent_primary    = "#1e66f5"
+accent_orange     = "#fe640b"
 
 accent_green      = "#40a02b"
 accent_green_bg   = "rgba(64, 160, 43, 0.16)"
@@ -31,9 +34,9 @@ accent_blue       = "#1e66f5"
 accent_blue_bg    = "rgba(30, 102, 245, 0.16)"
 accent_blue_border = "rgba(30, 102, 245, 0.38)"
 
-accent_amber      = "#fe640b"
-accent_amber_bg   = "rgba(254, 100, 11, 0.16)"
-accent_amber_border = "rgba(254, 100, 11, 0.38)"
+accent_amber      = "#df8e1d"
+accent_amber_bg   = "rgba(223, 142, 29, 0.16)"
+accent_amber_border = "rgba(223, 142, 29, 0.38)"
 
 accent_red        = "#d20f39"
 accent_red_bg     = "rgba(210, 15, 57, 0.16)"

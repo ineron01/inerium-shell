@@ -1,9 +1,9 @@
 -- Look and feel configuration - Inerium aesthetic
 
-local border_active_1 = INERIUM_DRAGON_GRAY or INERIUM_BORDER or "rgba(727169ff)"
-local border_active_2 = INERIUM_DRAGON_BLUE or INERIUM_BLUE or "rgba(7fb4caff)"
+local border_active_1 = INERIUM_BORDER_ACTIVE or INERIUM_DRAGON_GRAY or INERIUM_BORDER or "rgba(727169ff)"
+local border_active_2 = INERIUM_ACCENT_PRIMARY or INERIUM_DRAGON_BLUE or INERIUM_BLUE or "rgba(7fb4caff)"
 local border_inactive = INERIUM_BORDER or "rgba(454444cc)"
-local blue = INERIUM_BLUE or "rgba(7fb4caff)"
+local primary = INERIUM_ACCENT_PRIMARY or INERIUM_BLUE or "rgba(7fb4caff)"
 local purple = INERIUM_PURPLE or "rgba(938aa9ff)"
 
 hl.config({
@@ -23,7 +23,7 @@ hl.config({
     },
     group = {
         col = {
-            border_active = blue,
+            border_active = primary,
             border_inactive = border_inactive,
             border_locked_active = purple,
             border_locked_inactive = border_inactive,

@@ -8,20 +8,23 @@ license = "MIT"
 description = "Dark Kanagawa variant with warm dragon tones and sumi ink"
 
 [palette]
-bg_canvas         = "rgba(24, 22, 22, 0.97)"
+bg_canvas         = "rgba(24, 22, 22, 0.98)"
 bg_surface        = "#221f1f"
 bg_surface_alt    = "#1c1a1a"
 bg_surface_hover  = "#2d2a2a"
 bg_surface_active = "#363434"
 
-border_subtle     = "rgba(197, 201, 197, 0.10)"
-border_active     = "rgba(197, 201, 197, 0.25)"
+border_subtle     = "rgba(197, 201, 197, 0.12)"
+border_active     = "rgba(139, 164, 176, 0.45)"
 
 text_primary      = "#c5c9c5"
 text_heading      = "#e6e2cc"
 text_muted        = "#737c73"
 text_subtle       = "#a6a69c"
 text_inverted     = "#181616"
+
+accent_primary    = "#8ba4b0"
+accent_orange     = "#b6927b"
 
 accent_green      = "#87a987"
 accent_green_bg   = "rgba(135, 169, 135, 0.16)"
@@ -53,5 +56,4 @@ slider_trough     = "rgba(197, 201, 197, 0.10)"
 slider_thumb      = "#e6e2cc"
 
 [display]
-temperature = 6500
-
+temperature = 5200

@@ -14,14 +14,17 @@ bg_surface_alt    = "#f1f5f9"
 bg_surface_hover  = "#f1f5f9"
 bg_surface_active = "#e2e8f0"
 
-border_subtle     = "rgba(15, 23, 42, 0.10)"
-border_active     = "rgba(15, 23, 42, 0.25)"
+border_subtle     = "rgba(15, 23, 42, 0.12)"
+border_active     = "rgba(37, 99, 235, 0.55)"
 
 text_primary      = "#1e293b"
 text_heading      = "#0f172a"
 text_muted        = "#475569"
 text_subtle       = "#64748b"
 text_inverted     = "#f8f9fa"
+
+accent_primary    = "#2563eb"
+accent_orange     = "#ea580c"
 
 accent_green      = "#16a34a"
 accent_green_bg   = "rgba(22, 163, 74, 0.14)"
