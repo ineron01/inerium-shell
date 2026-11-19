@@ -11,6 +11,7 @@ pub use inerium_hw::battery;
 pub use inerium_hw::cooling;
 pub use inerium_hw::power;
 pub use inerium_hw::sysfs;
+pub use inerium_hw::open_folder;
 
 // Re-export common structs
 pub use audio::{AudioSink, AudioSource};

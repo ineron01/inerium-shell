@@ -291,9 +291,7 @@ impl SimpleComponent for AppearanceModel {
                 let home = hw::home_dir();
                 let path = home.join(".config/inerium/themes");
                 std::thread::spawn(move || {
-                    if let Ok(mut child) = Command::new("xdg-open").arg(path).spawn() {
-                        let _ = child.wait();
-                    }
+                    let _ = hw::open_folder(&path);
                 });
             }
             AppearanceMsg::SelectMonitor(target) => {
@@ -328,9 +326,7 @@ impl SimpleComponent for AppearanceModel {
             AppearanceMsg::OpenWallpapersFolder => {
                 let dir = hw::inerium_wallpapers_dir();
                 std::thread::spawn(move || {
-                    if let Ok(mut child) = Command::new("xdg-open").arg(dir).spawn() {
-                        let _ = child.wait();
-                    }
+                    let _ = hw::open_folder(&dir);
                 });
             }
             AppearanceMsg::AddWallpapersDialog => {

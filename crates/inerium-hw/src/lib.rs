@@ -6,8 +6,10 @@ pub mod battery;
 pub mod cooling;
 pub mod power;
 pub mod wallpaper;
+pub mod desktop;
 
 pub use sysfs::*;
 pub use battery::{discover_power_supplies, BatteryBackend};
 pub use cooling::{CoolingSubsystem, FanSensor, FanTelemetry, PlatformControl};
 pub use power::PowerBackend;
+pub use desktop::open_folder;
