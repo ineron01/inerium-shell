@@ -17,7 +17,7 @@ ExecStart=/usr/bin/rclone mount gdrive: %h/GoogleDrive \
   --vfs-cache-max-size=10G \
   --vfs-cache-max-age=24h \
   --vfs-cache-poll-interval=1m \
-  --vfs-write-back=3s \
+  --vfs-write-back=5s \
   --dir-cache-time=30m \
   --poll-interval=15s \
   --rc \
