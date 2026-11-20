@@ -569,19 +569,24 @@ fn populate_list(
         main_box.set_hexpand(true);
         main_box.set_cursor_from_name(Some("pointer"));
 
-        let ico_str = if dev.name.to_lowercase().contains("buds")
+        let (ico_str, ico_class) = if dev.name.to_lowercase().contains("buds")
             || dev.name.to_lowercase().contains("head")
         {
-            "󰋋"
+            ("󰋋", "audio")
         } else if dev.name.to_lowercase().contains("mouse") {
-            "󰍽"
+            ("󰍽", "input")
         } else if dev.name.to_lowercase().contains("key") {
-            "󰌌"
+            ("󰌌", "input")
         } else {
-            "󰂯"
+            ("󰂯", "default")
         };
         let ico = Label::new(Some(ico_str));
         ico.add_css_class("card-icon");
+        if dev.connected {
+            ico.add_css_class("connected");
+        } else if ico_class != "default" {
+            ico.add_css_class(ico_class);
+        }
         main_box.append(&ico);
 
         let txt = gtk4::Box::new(Orientation::Vertical, 1);
@@ -616,6 +621,13 @@ fn populate_list(
         };
         let badge = Label::new(Some(badge_text));
         badge.add_css_class("card-badge");
+        if dev.connected {
+            badge.add_css_class("connected");
+        } else if dev.paired {
+            badge.add_css_class("paired");
+        } else {
+            badge.add_css_class("new");
+        }
         badge.set_visible(true);
         main_box.append(&badge);
 

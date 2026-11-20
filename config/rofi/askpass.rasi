@@ -1,5 +1,6 @@
 /**
- * Inerium Dragon — Askpass Theme (SUDO / SSH / подтверждение действий)
+ * Inerium Desktop — Askpass Theme (SUDO / SSH / подтверждение действий)
+ * Наследует текущую цветовую палитру из inerium.rasi / colors.rasi.
  **/
 
 @theme "~/.config/rofi/inerium.rasi"
@@ -7,10 +8,10 @@
 window {
     width: 440px;
     border: 1px;
-    border-color: rgba(197, 201, 197, 0.12);
+    border-color: @line-soft;
     border-radius: 16px;
     padding: 16px;
-    background-color: rgba(24, 22, 22, 0.97);
+    background-color: @bg;
 }
 
 mainbox {
@@ -25,8 +26,7 @@ message {
 }
 
 textbox {
-    text-color: #c5c9c5;
-    font: "JetBrainsMono Nerd Font 10.5";
+    text-color: @fg;
     horizontal-align: 0.5;
 }
 
@@ -34,20 +34,21 @@ inputbar {
     children: [ prompt, entry ];
     padding: 10px 14px;
     border-radius: 10px;
-    background-color: #221f1f;
+    background-color: @surface;
     border: 1px;
-    border-color: rgba(197, 201, 197, 0.10);
+    border-color: @line-soft;
 }
 
 prompt {
-    text-color: #87a987;
+    text-color: @primary;
     margin: 0 8px 0 0;
     vertical-align: 0.5;
 }
 
 entry {
-    text-color: #e6e2cc;
-    placeholder-color: #737c73;
+    text-color: @fg-bright;
+    placeholder-color: @muted;
     vertical-align: 0.5;
     cursor: text;
 }
+

@@ -1,22 +1,3 @@
-#[allow(dead_code)]
-pub mod palette {
-    pub const BG: &str = "rgba(24, 22, 22, 0.97)";
-    pub const SURFACE: &str = "#282727";
-    pub const LINE: &str = "rgba(197, 201, 197, 0.12)";
-    pub const HOVER: &str = "rgba(197, 201, 197, 0.08)";
-    pub const FG: &str = "#c5c9c5";
-    pub const FG_BRIGHT: &str = "#e6e2cc";
-    pub const MUTED: &str = "#737c73";
-    pub const SUBTLE: &str = "#a6a69c";
-    pub const GREEN: &str = "#87a987";
-    pub const BLUE: &str = "#8ba4b0";
-    pub const AQUA: &str = "#8ea4a2";
-    pub const YELLOW: &str = "#c4b28a";
-    pub const ORANGE: &str = "#b6927b";
-    pub const RED: &str = "#c4746e";
-    pub const VIOLET: &str = "#8992a7";
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeMode {
     Dark,
@@ -169,7 +150,6 @@ window.popup-window decoration {
     border-radius: 16px;
     padding: 14px;
     box-shadow: none;
-    font-family: "JetBrainsMono Nerd Font", monospace;
     color: @cc_fg;
 }
 
@@ -533,13 +513,43 @@ window.popup-window decoration {
     border-color: @cc_line_light;
     background-color: @cc_surface_hover;
 }
+.card-item.active.expanded {
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+}
 .card-item:disabled {
     opacity: 0.70;
 }
 .card-icon {
     font-size: 15px;
     margin-right: 8px;
-    color: @cc_primary;
+    color: @cc_fg_subtle;
+    transition: color 150ms ease;
+}
+.card-icon.active {
+    color: @cc_green;
+}
+.card-icon.connected {
+    color: @cc_blue;
+}
+.card-icon.signal-high {
+    color: @cc_green;
+}
+.card-icon.signal-mid {
+    color: @cc_aqua;
+}
+.card-icon.signal-low {
+    color: @cc_amber;
+}
+.card-icon.audio {
+    color: @cc_aqua;
+}
+.card-icon.input {
+    color: @cc_violet;
+}
+.card-icon.phone,
+.card-icon.computer {
+    color: @cc_blue;
 }
 .card-title {
     font-size: 11.5px;
@@ -550,21 +560,39 @@ window.popup-window decoration {
     font-size: 9.5px;
     color: @cc_fg_muted;
 }
+.card-sub.warning {
+    color: @cc_amber;
+    font-weight: 600;
+}
 .card-badge {
     font-size: 9.5px;
     font-weight: 600;
     border-radius: 6px;
     padding: 1.5px 6px;
-    background-color: @cc_primary_bg;
-    color: @cc_primary;
+    background-color: @cc_surface_hover;
+    color: @cc_fg_subtle;
+    border: 1px solid @cc_line;
 }
 .card-badge.active {
-    background-color: @cc_primary_bg;
-    color: @cc_primary;
+    background-color: @cc_green_bg;
+    border-color: @cc_green_border;
+    color: @cc_green;
 }
-.card-badge.saved {
+.card-badge.connected {
     background-color: @cc_blue_bg;
+    border-color: @cc_blue_border;
     color: @cc_blue;
+}
+.card-badge.saved,
+.card-badge.paired {
+    background-color: @cc_surface_hover;
+    border-color: @cc_line;
+    color: @cc_fg_subtle;
+}
+.card-badge.new {
+    background-color: @cc_amber_bg;
+    border-color: @cc_amber_border;
+    color: @cc_amber;
 }
 
 /* Inline Card Drawer & Quick Actions */
@@ -586,8 +614,7 @@ window.popup-window decoration {
 }
 .card-drawer-sep {
     margin: 6px 0 6px 0;
-    opacity: 0.15;
-    background-color: @cc_fg;
+    background-color: @cc_line;
 }
 .card-drawer-inner {
     padding: 3px 0 2px 0;

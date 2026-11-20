@@ -1,9 +1,10 @@
-/* SwayOSD - Inerium Dragon Theme */
+/* SwayOSD — Thematic Style for Inerium Desktop */
+@import "../waybar/colors.css";
 
 window#osd {
     border-radius: 16px;
-    border: 1px solid rgba(197, 201, 197, 0.10);
-    background: rgba(24, 22, 22, 0.97);
+    border: 1px solid @line;
+    background: @bg;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
 }
 
@@ -13,7 +14,7 @@ window#osd #container {
 
 window#osd image,
 window#osd label {
-    color: #c5c9c5;
+    color: @fg;
     font-family: "JetBrainsMono Nerd Font", monospace;
     font-weight: 600;
 }
@@ -21,7 +22,7 @@ window#osd label {
 /* Выключенное состояние (Caps/Num Lock off, mute) — нейтральный серый без красного */
 window#osd image:disabled,
 window#osd label:disabled {
-    color: #727169;
+    color: @muted;
 }
 
 window#osd progressbar {
@@ -42,9 +43,10 @@ window#osd progress {
     min-height: inherit;
     border-radius: inherit;
     border: none;
-    background: #87a987;
+    background: @slider_fill;
 }
 
 window#osd progressbar:disabled progress {
-    background: #727169;
+    background: @muted;
 }
+

@@ -64,6 +64,10 @@ border_active     = "#938aa9"                   # Active window border
 # slider_trough         = "rgba(207, 210, 221, 0.10)" # (optional)
 # slider_thumb          = "#e6e8ee"  # (optional, defaults to text_heading)
 
+# Shadows & Modal Backdrops (Popups, Power menu, OSD)
+# shadow            = "rgba(0, 0, 0, 0.85)"      # (optional, popup & window drop-shadows)
+# modal_backdrop    = "rgba(18, 16, 16, 0.75)"   # (optional, power menu fullscreen backdrop)
+
 # Dominant theme accents
 accent_primary    = "#938aa9"        # Primary system accent (buttons, focus, badges)
 # accent_orange     = "#e6c384"      # (optional, defaults to accent_amber)

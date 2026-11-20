@@ -997,6 +997,15 @@ fn populate_wifi_list(
         };
         let ico = Label::new(Some(sig_ico));
         ico.add_css_class("card-icon");
+        if net.is_active {
+            ico.add_css_class("active");
+        } else if net.signal > 75 {
+            ico.add_css_class("signal-high");
+        } else if net.signal > 35 {
+            ico.add_css_class("signal-mid");
+        } else {
+            ico.add_css_class("signal-low");
+        }
         main_box.append(&ico);
 
         let txt = gtk4::Box::new(Orientation::Vertical, 1);
@@ -1041,6 +1050,9 @@ fn populate_wifi_list(
         };
         let sec_lbl = Label::new(Some(&sec_str));
         sec_lbl.add_css_class("card-sub");
+        if !net.is_active && net.security.is_empty() {
+            sec_lbl.add_css_class("warning");
+        }
         sec_lbl.set_xalign(0.0);
         sec_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         txt.append(&sec_lbl);

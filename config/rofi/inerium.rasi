@@ -115,5 +115,5 @@ element-text {
     vertical-align: 0.5;
     background-color: transparent;
     text-color: inherit;
-    highlight: bold #87a987;
+    highlight: bold;
 }
