@@ -158,9 +158,12 @@ fn parse_cmd_output(res: Result<std::process::Output, std::io::Error>) -> (bool,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct PasswordPromptState {
+pub struct AuthFormState {
     pub ssid: String,
+    pub identity: String,
     pub password: String,
+    pub no_ca_cert: bool,
+    pub is_enterprise: bool,
     pub error_msg: Option<String>,
     pub is_connecting: bool,
 }
@@ -174,8 +177,7 @@ pub struct NetworkModel {
     pub saved_connections: HashMap<String, SavedConn>,
     pub expanded_ssid: Option<String>,
     pub networks: Vec<WifiAp>,
-    pub password_prompt: Option<PasswordPromptState>,
-    pub focus_pass_entry: Cell<bool>,
+    pub auth_state: Option<AuthFormState>,
     pub needs_list_rebuild: Cell<bool>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
@@ -230,10 +232,10 @@ pub enum NetworkMsg {
     SavedConnectionsUpdated(HashMap<String, SavedConn>),
     ForgetSavedNetwork(String),
     SelectAp(WifiAp),
+    IdentityInput(String),
     PasswordInput(String),
-    SubmitPassword,
-    CancelPassword,
-    ForgetPromptNetwork,
+    ToggleNoCaCert,
+    SubmitAuth(String),
     ConnectFinished {
         ssid: String,
         success: bool,
@@ -352,114 +354,6 @@ impl SimpleComponent for NetworkModel {
                 },
             },
 
-            // Inline Password Auth Box (visible when password prompt is open)
-            #[name = "auth_box"]
-            gtk4::Box {
-                add_css_class: "cc-card",
-                set_orientation: Orientation::Vertical,
-                set_spacing: 6,
-                #[watch]
-                set_visible: model.password_prompt.is_some(),
-
-                #[name = "auth_target_lbl"]
-                gtk4::Label {
-                    add_css_class: "card-title",
-                    set_xalign: 0.0,
-                    set_ellipsize: gtk4::pango::EllipsizeMode::End,
-                    set_max_width_chars: 28,
-                    #[watch]
-                    set_label: &if let Some(ref p) = model.password_prompt {
-                        tr_fmt!("Connecting to «{ssid}»", "Подключение к «{ssid}»", ssid = p.ssid)
-                    } else {
-                        String::new()
-                    },
-                },
-
-                #[name = "pass_entry"]
-                gtk4::PasswordEntry {
-                    set_placeholder_text: Some(tr("Wi-Fi password", "Пароль Wi-Fi сети")),
-                    set_show_peek_icon: true,
-                    connect_changed[sender] => move |e| {
-                        sender.input(NetworkMsg::PasswordInput(e.text().to_string()));
-                    },
-                    connect_activate => NetworkMsg::SubmitPassword,
-                },
-
-                #[name = "error_lbl"]
-                gtk4::Label {
-                    add_css_class: "auth-error",
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    #[watch]
-                    set_visible: model
-                        .password_prompt
-                        .as_ref()
-                        .and_then(|p| p.error_msg.as_ref())
-                        .is_some(),
-                    #[watch]
-                    set_label: &model
-                        .password_prompt
-                        .as_ref()
-                        .and_then(|p| p.error_msg.as_ref())
-                        .cloned()
-                        .unwrap_or_default(),
-                },
-
-                gtk4::Box {
-                    set_orientation: Orientation::Horizontal,
-                    set_spacing: 8,
-
-                    gtk4::Button {
-                        add_css_class: "cc-chip",
-                        add_css_class: "on",
-                        #[watch]
-                        set_sensitive: {
-                            let is_connecting = model
-                                .password_prompt
-                                .as_ref()
-                                .is_some_and(|p| p.is_connecting);
-                            let is_valid = model
-                                .password_prompt
-                                .as_ref()
-                                .is_some_and(|p| p.password.trim().len() >= 8);
-                            !is_connecting && is_valid
-                        },
-                        #[watch]
-                        set_label: if model
-                            .password_prompt
-                            .as_ref()
-                            .is_some_and(|p| p.is_connecting)
-                        {
-                            tr("󰑐 Connecting...", "󰑐 Подключение...")
-                        } else {
-                            tr("Connect", "Подключить")
-                        },
-                        connect_clicked => NetworkMsg::SubmitPassword,
-                    },
-
-                    gtk4::Button {
-                        add_css_class: "cc-chip",
-                        set_label: tr("Cancel", "Отмена"),
-                        connect_clicked => NetworkMsg::CancelPassword,
-                    },
-
-                    #[name = "forget_btn"]
-                    gtk4::Button {
-                        add_css_class: "cc-chip",
-                        #[watch]
-                        set_visible: {
-                            if let Some(ref p) = model.password_prompt {
-                                model.networks.iter().any(|n| n.ssid == p.ssid && n.is_saved)
-                            } else {
-                                false
-                            }
-                        },
-                        set_label: tr("Forget", "Забыть"),
-                        connect_clicked => NetworkMsg::ForgetPromptNetwork,
-                    },
-                },
-            },
-
             // Scrolled Network List
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
@@ -513,8 +407,7 @@ impl SimpleComponent for NetworkModel {
             saved_connections,
             expanded_ssid: None,
             networks,
-            password_prompt: None,
-            focus_pass_entry: Cell::new(false),
+            auth_state: None,
             needs_list_rebuild: Cell::new(false),
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
@@ -528,6 +421,7 @@ impl SimpleComponent for NetworkModel {
             &model.saved_connections,
             model.active_details.as_ref(),
             model.expanded_ssid.as_deref(),
+            model.auth_state.as_ref(),
             model.hotspot_active,
             model.wifi_enabled,
             model.is_scanning,
@@ -548,13 +442,6 @@ impl SimpleComponent for NetworkModel {
     }
 
     fn post_view() {
-        if self.focus_pass_entry.get() {
-            self.focus_pass_entry.set(false);
-            pass_entry.grab_focus();
-        }
-        if self.password_prompt.is_none() && !pass_entry.text().is_empty() {
-            pass_entry.set_text("");
-        }
         if self.needs_list_rebuild.get() {
             self.needs_list_rebuild.set(false);
             populate_wifi_list(
@@ -563,6 +450,7 @@ impl SimpleComponent for NetworkModel {
                 &self.saved_connections,
                 self.active_details.as_ref(),
                 self.expanded_ssid.as_deref(),
+                self.auth_state.as_ref(),
                 self.hotspot_active,
                 self.wifi_enabled,
                 self.is_scanning,
@@ -646,8 +534,27 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::ToggleExpandAp(ssid) => {
                 if self.expanded_ssid.as_ref() == Some(&ssid) {
                     self.expanded_ssid = None;
+                    self.auth_state = None;
                 } else {
-                    self.expanded_ssid = Some(ssid);
+                    self.expanded_ssid = Some(ssid.clone());
+                    if let Some(net) = self.networks.iter().find(|n| n.ssid == ssid) {
+                        if !net.is_saved && !net.security.is_empty() && !net.security.contains("--") {
+                            let is_ent = net.security.contains("802.1X") || net.security.contains("EAP");
+                            self.auth_state = Some(AuthFormState {
+                                ssid: ssid.clone(),
+                                identity: String::new(),
+                                password: String::new(),
+                                no_ca_cert: true,
+                                is_enterprise: is_ent,
+                                error_msg: None,
+                                is_connecting: false,
+                            });
+                        } else {
+                            self.auth_state = None;
+                        }
+                    } else {
+                        self.auth_state = None;
+                    }
                 }
                 self.needs_list_rebuild.set(true);
             }
@@ -668,6 +575,7 @@ impl SimpleComponent for NetworkModel {
             }
             NetworkMsg::ForgetSavedNetwork(uuid) => {
                 self.expanded_ssid = None;
+                self.auth_state = None;
                 let s = sender.clone();
                 thread::spawn(move || {
                     hw::delete_connection(&uuid);
@@ -713,11 +621,13 @@ impl SimpleComponent for NetworkModel {
                         let saved_map = query_saved_wifi_connections();
                         let res = if let Some(conn) = saved_map.get(&ssid) {
                             Command::new("nmcli")
-                                .args(["connection", "up", "uuid", &conn.uuid])
+                                .args(["--ask", "connection", "up", "uuid", &conn.uuid])
+                                .stdin(std::process::Stdio::null())
                                 .output()
                         } else {
                             Command::new("nmcli")
-                                .args(["connection", "up", "id", &ssid])
+                                .args(["--ask", "connection", "up", "id", &ssid])
+                                .stdin(std::process::Stdio::null())
                                 .output()
                         };
                         let (success, err_msg) = parse_cmd_output(res);
@@ -730,20 +640,15 @@ impl SimpleComponent for NetworkModel {
                         });
                     });
                 } else if !net.security.is_empty() && !net.security.contains("--") {
-                    crate::set_modal_dialog_active(true);
-                    self.focus_pass_entry.set(true);
-                    self.password_prompt = Some(PasswordPromptState {
-                        ssid: net.ssid,
-                        password: String::new(),
-                        error_msg: None,
-                        is_connecting: false,
-                    });
+                    let ssid = net.ssid.clone();
+                    sender.input(NetworkMsg::ToggleExpandAp(ssid));
                 } else {
                     let s_fin = sender.clone();
                     let ssid = net.ssid.clone();
                     thread::spawn(move || {
                         let res = Command::new("nmcli")
-                            .args(["dev", "wifi", "connect", &ssid])
+                            .args(["--ask", "dev", "wifi", "connect", &ssid])
+                            .stdin(std::process::Stdio::null())
                             .output();
                         let (success, err_msg) = parse_cmd_output(res);
                         let fresh = query_wifi_networks(false);
@@ -754,71 +659,117 @@ impl SimpleComponent for NetworkModel {
                             networks: fresh,
                         });
                     });
+                }
+            }
+            NetworkMsg::IdentityInput(text) => {
+                if let Some(ref mut auth) = self.auth_state {
+                    auth.identity = text;
+                    auth.error_msg = None;
                 }
             }
             NetworkMsg::PasswordInput(text) => {
-                if let Some(ref mut p) = self.password_prompt {
-                    p.password = text;
-                    p.error_msg = None;
+                if let Some(ref mut auth) = self.auth_state {
+                    auth.password = text;
+                    auth.error_msg = None;
                 }
             }
-            NetworkMsg::SubmitPassword => {
-                if let Some(ref mut prompt) = self.password_prompt {
-                    if prompt.password.trim().len() < 8 {
+            NetworkMsg::ToggleNoCaCert => {
+                if let Some(ref mut auth) = self.auth_state {
+                    auth.no_ca_cert = !auth.no_ca_cert;
+                }
+                self.needs_list_rebuild.set(true);
+            }
+            NetworkMsg::SubmitAuth(ssid) => {
+                if let Some(ref mut auth) = self.auth_state {
+                    if auth.ssid != ssid || auth.password.trim().is_empty() {
                         return;
                     }
-                    prompt.is_connecting = true;
-                    prompt.error_msg = None;
-                    let ssid = prompt.ssid.clone();
-                    let pass = prompt.password.clone();
-                    let s_fin = sender.clone();
-                    thread::spawn(move || {
-                        let saved_map = query_saved_wifi_connections();
-                        if let Some(conn) = saved_map.get(&ssid) {
-                            let _ = Command::new("nmcli")
-                                .args(["connection", "delete", "uuid", &conn.uuid])
-                                .output();
-                        }
-                        let _ = Command::new("nmcli")
-                            .args(["connection", "delete", "id", &ssid])
-                            .output();
+                    if auth.is_enterprise && auth.identity.trim().is_empty() {
+                        return;
+                    }
+                    auth.is_connecting = true;
+                    auth.error_msg = None;
+                    self.needs_list_rebuild.set(true);
 
-                        let res = Command::new("nmcli")
-                            .args(["dev", "wifi", "connect", &ssid, "password", &pass])
-                            .output();
+                    let is_ent = auth.is_enterprise;
+                    let identity = auth.identity.clone();
+                    let pass = auth.password.clone();
+                    let no_ca = auth.no_ca_cert;
+                    let s_fin = sender.clone();
+                    let ssid_task = ssid.clone();
+
+                    thread::spawn(move || {
+                        let res = if is_ent {
+                            // Clean up any stale profile with this SSID name first
+                            let _ = Command::new("nmcli")
+                                .args(["connection", "delete", "id", &ssid_task])
+                                .output();
+
+                            let mut add_args = vec![
+                                "--ask".to_string(),
+                                "connection".to_string(),
+                                "add".to_string(),
+                                "type".to_string(),
+                                "wifi".to_string(),
+                                "con-name".to_string(),
+                                ssid_task.clone(),
+                                "ssid".to_string(),
+                                ssid_task.clone(),
+                                "wifi-sec.key-mgmt".to_string(),
+                                "wpa-eap".to_string(),
+                                "802-1x.eap".to_string(),
+                                "peap".to_string(),
+                                "802-1x.phase2-auth".to_string(),
+                                "mschapv2".to_string(),
+                                "802-1x.identity".to_string(),
+                                identity,
+                                "802-1x.password".to_string(),
+                                pass,
+                            ];
+                            if no_ca {
+                                add_args.push("802-1x.ca-cert".to_string());
+                                add_args.push("".to_string());
+                            }
+
+                            let add_res = Command::new("nmcli")
+                                .args(&add_args)
+                                .stdin(std::process::Stdio::null())
+                                .output();
+
+                            let (add_ok, add_err) = parse_cmd_output(add_res);
+                            if !add_ok {
+                                Err(std::io::Error::other(add_err))
+                            } else {
+                                let up_res = Command::new("nmcli")
+                                    .args(["--ask", "connection", "up", "id", &ssid_task])
+                                    .stdin(std::process::Stdio::null())
+                                    .output();
+                                let (up_ok, _) = match &up_res {
+                                    Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                                    Err(e) => (false, e.to_string()),
+                                };
+                                if !up_ok {
+                                    let _ = Command::new("nmcli")
+                                        .args(["connection", "delete", "id", &ssid_task])
+                                        .output();
+                                }
+                                up_res
+                            }
+                        } else {
+                            Command::new("nmcli")
+                                .args(["--ask", "dev", "wifi", "connect", &ssid_task, "password", &pass])
+                                .stdin(std::process::Stdio::null())
+                                .output()
+                        };
+
                         let (success, err_msg) = parse_cmd_output(res);
                         let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
-                            ssid,
+                            ssid: ssid_task,
                             success,
                             error: if !success { Some(err_msg) } else { None },
                             networks: fresh,
                         });
-                    });
-                }
-            }
-            NetworkMsg::CancelPassword => {
-                crate::set_modal_dialog_active(false);
-                self.password_prompt = None;
-            }
-            NetworkMsg::ForgetPromptNetwork => {
-                if let Some(ref p) = self.password_prompt {
-                    let ssid = p.ssid.clone();
-                    crate::set_modal_dialog_active(false);
-                    self.password_prompt = None;
-                    let s_fin = sender.clone();
-                    thread::spawn(move || {
-                        let saved_map = query_saved_wifi_connections();
-                        if let Some(conn) = saved_map.get(&ssid) {
-                            let _ = Command::new("nmcli")
-                                .args(["connection", "delete", "uuid", &conn.uuid])
-                                .output();
-                        }
-                        let _ = Command::new("nmcli")
-                            .args(["connection", "delete", "id", &ssid])
-                            .output();
-                        let fresh = query_wifi_networks(false);
-                        s_fin.input(NetworkMsg::RescanFinished(fresh));
                     });
                 }
             }
@@ -832,34 +783,38 @@ impl SimpleComponent for NetworkModel {
                 self.active_ssid = hw::get_active_wifi_ssid();
                 self.sync_active_network();
                 if success {
-                    crate::set_modal_dialog_active(false);
-                    self.password_prompt = None;
-                } else if let Some(ref mut prompt) = self.password_prompt {
-                    prompt.is_connecting = false;
-                    let err_text = error.unwrap_or_else(|| {
-                        tr("Connection error", "Ошибка подключения").to_string()
-                    });
-                    let clean = err_text
-                        .trim_start_matches("Error: ")
-                        .trim_start_matches("Ошибка: ");
-                    prompt.error_msg = Some(format!("󰅖 {}", clean));
-                    prompt.ssid = ssid;
+                    self.expanded_ssid = None;
+                    self.auth_state = None;
                 } else {
-                    crate::set_modal_dialog_active(true);
-                    self.focus_pass_entry.set(true);
                     let err_text = error.unwrap_or_else(|| {
                         tr("Connection error", "Ошибка подключения").to_string()
                     });
                     let clean = err_text
                         .trim_start_matches("Error: ")
                         .trim_start_matches("Ошибка: ");
-                    self.password_prompt = Some(PasswordPromptState {
-                        ssid,
-                        password: String::new(),
-                        error_msg: Some(format!("󰅖 {}", clean)),
-                        is_connecting: false,
-                    });
+                    self.expanded_ssid = Some(ssid.clone());
+                    if let Some(ref mut auth) = self.auth_state {
+                        auth.is_connecting = false;
+                        auth.error_msg = Some(format!("󰅖 {}", clean));
+                    } else {
+                        let is_ent = self
+                            .networks
+                            .iter()
+                            .find(|n| n.ssid == ssid)
+                            .map(|n| n.security.contains("802.1X") || n.security.contains("EAP"))
+                            .unwrap_or(false);
+                        self.auth_state = Some(AuthFormState {
+                            ssid,
+                            identity: String::new(),
+                            password: String::new(),
+                            no_ca_cert: true,
+                            is_enterprise: is_ent,
+                            error_msg: Some(format!("󰅖 {}", clean)),
+                            is_connecting: false,
+                        });
+                    }
                 }
+                self.needs_list_rebuild.set(true);
             }
             NetworkMsg::DisconnectFinished(fresh) => {
                 self.networks = fresh;
@@ -902,6 +857,7 @@ fn populate_wifi_list(
     saved_conns: &HashMap<String, SavedConn>,
     active_details: Option<&hw::network::ActiveWifiDetails>,
     expanded_ssid: Option<&str>,
+    auth_state: Option<&AuthFormState>,
     hotspot_active: bool,
     wifi_enabled: bool,
     is_scanning: bool,
@@ -1189,12 +1145,12 @@ fn populate_wifi_list(
             sep.add_css_class("card-drawer-sep");
             card.append(&sep);
 
-            let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
-            drawer.add_css_class("card-drawer-inner");
-            drawer.set_hexpand(true);
-            drawer.set_homogeneous(true);
-
             if let Some(conn) = saved_conns.get(&net.ssid) {
+                let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
+                drawer.add_css_class("card-drawer-inner");
+                drawer.set_hexpand(true);
+                drawer.set_homogeneous(true);
+
                 // 1. Autoconnect chip
                 let auto_btn = Button::new();
                 auto_btn.add_css_class("drawer-chip");
@@ -1273,9 +1229,14 @@ fn populate_wifi_list(
                     });
                     drawer.append(&conn_btn);
                 }
-            } else {
-                // Unsaved network actions
-                // 1. Connect chip
+                card.append(&drawer);
+            } else if net.security.is_empty() || net.security.contains("--") {
+                // Open network actions
+                let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
+                drawer.add_css_class("card-drawer-inner");
+                drawer.set_hexpand(true);
+                drawer.set_homogeneous(true);
+
                 let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
                 conn_btn.add_css_class("drawer-chip");
                 conn_btn.set_hexpand(true);
@@ -1289,21 +1250,119 @@ fn populate_wifi_list(
                 });
                 drawer.append(&conn_btn);
 
-                // 2. Technical info chip
-                let sec_desc = if net.security.is_empty() {
-                    tr("Open", "Открытая").to_string()
-                } else {
-                    net.security.clone()
-                };
-                let info_label = format!("󰋼 {} • {}%", sec_desc, net.signal);
+                let info_label = format!("󰋼 {} • {}%", tr("Open", "Открытая"), net.signal);
                 let info_chip = Label::new(Some(&info_label));
                 info_chip.add_css_class("drawer-chip");
                 info_chip.add_css_class("info");
                 info_chip.set_hexpand(true);
                 drawer.append(&info_chip);
-            }
 
-            card.append(&drawer);
+                card.append(&drawer);
+            } else {
+                // In-Place Authentication Drawer (WPA2/WPA3-Personal or 802.1X Enterprise)
+                let drawer = gtk4::Box::new(Orientation::Vertical, 6);
+                drawer.add_css_class("card-drawer-inner");
+                drawer.set_hexpand(true);
+
+                let is_ent = net.security.contains("802.1X") || net.security.contains("EAP");
+                let cur_identity = auth_state.map(|a| a.identity.as_str()).unwrap_or("");
+                let cur_pass = auth_state.map(|a| a.password.as_str()).unwrap_or("");
+                let cur_no_ca = auth_state.map(|a| a.no_ca_cert).unwrap_or(true);
+                let cur_err = auth_state.and_then(|a| a.error_msg.as_deref());
+                let is_connecting = auth_state.map(|a| a.is_connecting).unwrap_or(false);
+
+                // 1. Identity field (Enterprise only)
+                if is_ent {
+                    let id_entry = gtk4::Entry::new();
+                    id_entry.add_css_class("drawer-entry");
+                    id_entry.set_placeholder_text(Some(tr("Username / Student ID", "Логин / ID студента")));
+                    id_entry.set_text(cur_identity);
+                    let s_id = sender.clone();
+                    id_entry.connect_changed(move |e| {
+                        s_id.input(NetworkMsg::IdentityInput(e.text().to_string()));
+                    });
+                    let s_act = sender.clone();
+                    let ssid_act = net.ssid.clone();
+                    id_entry.connect_activate(move |_| {
+                        s_act.input(NetworkMsg::SubmitAuth(ssid_act.clone()));
+                    });
+                    drawer.append(&id_entry);
+                }
+
+                // 2. Password field (Personal & Enterprise)
+                let pass_entry = gtk4::PasswordEntry::new();
+                pass_entry.add_css_class("drawer-entry");
+                pass_entry.set_placeholder_text(Some(tr("Password", "Пароль сети")));
+                pass_entry.set_show_peek_icon(true);
+                pass_entry.set_text(cur_pass);
+                let s_pass = sender.clone();
+                pass_entry.connect_changed(move |e| {
+                    s_pass.input(NetworkMsg::PasswordInput(e.text().to_string()));
+                });
+                let s_act = sender.clone();
+                let ssid_act = net.ssid.clone();
+                pass_entry.connect_activate(move |_| {
+                    s_act.input(NetworkMsg::SubmitAuth(ssid_act.clone()));
+                });
+                drawer.append(&pass_entry);
+
+                // 3. CA bypass toggle (Enterprise only)
+                if is_ent {
+                    let ca_btn = Button::new();
+                    ca_btn.add_css_class("drawer-chip");
+                    ca_btn.set_hexpand(true);
+                    if cur_no_ca {
+                        ca_btn.add_css_class("on");
+                        ca_btn.set_label(tr("󰄬 No CA cert required", "󰄬 Без проверки CA"));
+                    } else {
+                        ca_btn.set_label(tr("󰄬 Validate CA cert", "󰄬 Проверять CA"));
+                    }
+                    ca_btn.set_tooltip_text(Some(tr(
+                        "Skip CA server certificate validation (recommended for university networks)",
+                        "Не проверять сертификат CA (рекомендуется для университетских сетей)",
+                    )));
+                    let s_ca = sender.clone();
+                    ca_btn.connect_clicked(move |_| {
+                        s_ca.input(NetworkMsg::ToggleNoCaCert);
+                    });
+                    drawer.append(&ca_btn);
+                }
+
+                // 4. Error label (if any)
+                if let Some(err) = cur_err {
+                    let err_lbl = Label::new(Some(err));
+                    err_lbl.add_css_class("auth-error");
+                    err_lbl.set_xalign(0.0);
+                    err_lbl.set_wrap(true);
+                    drawer.append(&err_lbl);
+                }
+
+                // 5. Connect Button
+                let is_valid = if is_ent {
+                    !cur_identity.trim().is_empty() && !cur_pass.trim().is_empty()
+                } else {
+                    cur_pass.trim().len() >= 8
+                };
+                let conn_btn = Button::new();
+                conn_btn.add_css_class("drawer-chip");
+                conn_btn.add_css_class("on");
+                conn_btn.set_hexpand(true);
+                if is_connecting {
+                    conn_btn.set_sensitive(false);
+                    conn_btn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
+                } else {
+                    conn_btn.set_sensitive(is_valid);
+                    conn_btn.set_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                }
+                let s_sub = sender.clone();
+                let ssid_sub = net.ssid.clone();
+                conn_btn.connect_clicked(move |_| {
+                    s_sub.input(NetworkMsg::SubmitAuth(ssid_sub.clone()));
+                });
+                drawer.append(&conn_btn);
+
+                card.append(&drawer);
+            }
         }
 
         list_box.append(&card);

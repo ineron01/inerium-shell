@@ -98,6 +98,11 @@ pub const DRAGON_VARS: &str = r#"
 @define-color cc_modal_backdrop   rgba(18, 16, 16, 0.48);
 @define-color cc_slider_trough    rgba(197, 201, 197, 0.10);
 @define-color cc_slider_thumb     #e6e2cc;
+@define-color cc_primary          #8ba4b0;
+@define-color cc_primary_bg       rgba(139, 164, 176, 0.16);
+@define-color cc_primary_border   rgba(139, 164, 176, 0.35);
+@define-color cc_slider_fill      #87a987;
+@define-color cc_slider_fill_secondary #c4b28a;
 "#;
 
 pub const LOTUS_VARS: &str = r#"
@@ -141,6 +146,11 @@ pub const LOTUS_VARS: &str = r#"
 @define-color cc_modal_backdrop   rgba(84, 84, 100, 0.35);
 @define-color cc_slider_trough    rgba(84, 84, 100, 0.15);
 @define-color cc_slider_thumb     #43436c;
+@define-color cc_primary          #4d699b;
+@define-color cc_primary_bg       rgba(77, 105, 155, 0.18);
+@define-color cc_primary_border   rgba(77, 105, 155, 0.40);
+@define-color cc_slider_fill      #6f894e;
+@define-color cc_slider_fill_secondary #cc6d00;
 "#;
 
 pub const POPUP_CSS_RULES: &str = r#"
@@ -248,13 +258,13 @@ window.popup-window decoration {
     background-image: none;
     box-shadow: none;
     background-color: @cc_surface_hover;
-    color: @cc_green;
+    color: @cc_primary;
     font-size: 12px;
     font-weight: 600;
 }
 .back-btn:hover {
-    background-color: @cc_green_bg;
-    border-color: @cc_green_border;
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
     color: @cc_fg_bright;
 }
 
@@ -309,15 +319,24 @@ window.popup-window decoration {
 }
 
 .cc-tile.on {
-    background-color: @cc_green_bg;
-    border-color: @cc_green_border;
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
 }
 .cc-tile.on .cc-tile-ico {
-    background-color: @cc_green;
+    background-color: @cc_primary;
     color: @cc_fg_on_accent;
 }
 .cc-tile.on .cc-tile-sub {
     color: @cc_fg_subtle;
+}
+
+.cc-tile.on.green {
+    background-color: @cc_green_bg;
+    border-color: @cc_green_border;
+}
+.cc-tile.on.green .cc-tile-ico {
+    background-color: @cc_green;
+    color: @cc_fg_on_accent;
 }
 
 .cc-tile.on.blue {
@@ -398,10 +417,10 @@ window.popup-window decoration {
 }
 .cc-scale highlight {
     border-radius: 99px;
-    background-color: @cc_green;
+    background-color: @cc_slider_fill;
 }
 .cc-scale.amber highlight {
-    background-color: @cc_amber;
+    background-color: @cc_slider_fill_secondary;
 }
 .cc-scale slider {
     min-width: 14px;
@@ -435,7 +454,7 @@ window.popup-window decoration {
     color: @cc_fg_bright;
 }
 .cc-seg button.active {
-    background-color: @cc_green_bg;
+    background-color: @cc_primary_bg;
     color: @cc_fg_bright;
 }
 .cc-seg button.active.eco {
@@ -507,8 +526,8 @@ window.popup-window decoration {
     border-color: @cc_line_light;
 }
 .card-item.active {
-    background-color: @cc_green_bg;
-    border-color: @cc_green_border;
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
 }
 .card-item.expanded {
     border-color: @cc_line_light;
@@ -520,7 +539,7 @@ window.popup-window decoration {
 .card-icon {
     font-size: 15px;
     margin-right: 8px;
-    color: @cc_green;
+    color: @cc_primary;
 }
 .card-title {
     font-size: 11.5px;
@@ -536,12 +555,12 @@ window.popup-window decoration {
     font-weight: 600;
     border-radius: 6px;
     padding: 1.5px 6px;
-    background-color: @cc_green_bg;
-    color: @cc_green;
+    background-color: @cc_primary_bg;
+    color: @cc_primary;
 }
 .card-badge.active {
-    background-color: @cc_green_bg;
-    color: @cc_green;
+    background-color: @cc_primary_bg;
+    color: @cc_primary;
 }
 .card-badge.saved {
     background-color: @cc_blue_bg;
@@ -590,13 +609,13 @@ window.popup-window decoration {
     color: @cc_fg_bright;
 }
 .drawer-chip.on {
-    background-color: @cc_green_bg;
-    border-color: @cc_green_border;
-    color: @cc_green;
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+    color: @cc_primary;
 }
 .drawer-chip.on:hover {
-    background-color: @cc_green_bg;
-    border-color: @cc_green;
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary;
     color: @cc_fg_bright;
 }
 .drawer-chip.danger {
@@ -619,11 +638,28 @@ window.popup-window decoration {
     font-weight: 600;
 }
 .auth-error {
-    font-size: 11px;
+    font-size: 10.5px;
     color: @cc_red;
     font-weight: 600;
-    margin-top: 4px;
+    margin-top: 3px;
     margin-bottom: 2px;
+}
+
+.drawer-entry {
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 7px;
+    background-color: @cc_bg;
+    border: 1px solid @cc_line;
+    color: @cc_fg_bright;
+    font-size: 11px;
+    font-family: inherit;
+}
+.drawer-entry:focus-within,
+.drawer-entry:focus {
+    background-color: @cc_surface;
+    border-color: @cc_primary_border;
+    color: @cc_fg_bright;
 }
 
 .auth-input {
@@ -636,7 +672,7 @@ window.popup-window decoration {
 }
 .auth-input:focus {
     background-color: @cc_surface_hover;
-    border-color: @cc_green_border;
+    border-color: @cc_primary_border;
     color: @cc_fg_bright;
 }
 
@@ -683,7 +719,7 @@ window.power-window {
 
 .power-card:hover {
     background-color: @cc_surface_hover;
-    border-color: @cc_green_border;
+    border-color: @cc_primary_border;
     color: @cc_fg_bright;
     box-shadow: 0 4px 16px @cc_shadow;
 }
@@ -764,11 +800,11 @@ window.power-window {
 }
 .wall-card:hover {
     background-color: @cc_surface_hover;
-    border-color: @cc_green_border;
+    border-color: @cc_primary_border;
 }
 .wall-card.active {
-    border-color: @cc_green;
-    background-color: @cc_green_bg;
+    border-color: @cc_primary;
+    background-color: @cc_primary_bg;
 }
 .wall-thumb {
     border-radius: 8px;
@@ -787,17 +823,17 @@ window.power-window {
 .media-badge {
     font-size: 11px;
     font-weight: 600;
-    color: @cc_green;
-    background-color: @cc_green_bg;
-    border: 1px solid @cc_green_border;
+    color: @cc_primary;
+    background-color: @cc_primary_bg;
+    border: 1px solid @cc_primary_border;
     border-radius: 8px;
     padding: 3px 8px;
 }
 .media-status-pill {
     font-size: 10.5px;
     font-weight: 600;
-    color: @cc_green;
-    background-color: @cc_green_bg;
+    color: @cc_primary;
+    background-color: @cc_primary_bg;
     border-radius: 8px;
     padding: 3px 8px;
 }
@@ -823,7 +859,7 @@ window.power-window {
 }
 .media-art-fallback {
     font-size: 26px;
-    color: @cc_green;
+    color: @cc_primary;
 }
 .media-title {
     font-size: 13px;
@@ -847,7 +883,7 @@ window.power-window {
 .media-progress progress {
     min-height: 5px;
     border-radius: 3px;
-    background-color: @cc_green;
+    background-color: @cc_slider_fill;
 }
 .media-time {
     font-size: 10px;
@@ -872,13 +908,13 @@ window.power-window {
     min-height: 40px;
     border-radius: 20px;
     border: none;
-    background-color: @cc_green;
+    background-color: @cc_primary;
     color: @cc_fg_on_accent;
     font-size: 16px;
     font-weight: 700;
 }
 .play-btn:hover {
-    background-color: @cc_green_border;
+    background-color: @cc_primary_border;
     color: @cc_fg_on_accent;
 }
 
@@ -894,7 +930,7 @@ scrollbar slider {
     background-color: @cc_surface_active;
 }
 scrollbar slider:hover {
-    background-color: @cc_green_border;
+    background-color: @cc_primary_border;
 }
 "#;
 
