@@ -70,7 +70,7 @@ impl SimpleComponent for AudioViewModel {
 
                 gtk4::Button {
                     add_css_class: "cc-chip",
-                    set_label: &tr("󰕾 Mixer", "󰕾 Микшер"),
+                    set_label: &tr("󰕾  Mixer", "󰕾  Микшер"),
                     set_valign: Align::Center,
                     connect_clicked => AudioMsg::OpenMixer,
                 },
@@ -229,12 +229,14 @@ impl SimpleComponent for AudioViewModel {
             txt.append(&name_lbl);
             inner.append(&txt);
 
-            let badge = Label::new(Some(if sink.is_default {
-                tr("󰄬 Active", "󰄬 Активен")
+            let is_def = sink.is_default;
+            let badge = Label::new(Some(if is_def {
+                tr("󰄬  Active", "󰄬  Активен")
             } else {
                 ""
             }));
             badge.add_css_class("card-badge");
+            badge.set_visible(is_def);
             inner.append(&badge);
 
             row.set_child(Some(&inner));
@@ -278,12 +280,14 @@ impl SimpleComponent for AudioViewModel {
             txt.append(&name_lbl);
             inner.append(&txt);
 
-            let badge = Label::new(Some(if source.is_default {
-                tr("󰄬 Active", "󰄬 Активен")
+            let is_def = source.is_default;
+            let badge = Label::new(Some(if is_def {
+                tr("󰄬  Active", "󰄬  Активен")
             } else {
                 ""
             }));
             badge.add_css_class("card-badge");
+            badge.set_visible(is_def);
             inner.append(&badge);
 
             row.set_child(Some(&inner));
@@ -328,10 +332,12 @@ impl SimpleComponent for AudioViewModel {
                 for (s_id, row, badge) in &self.sink_rows {
                     if *s_id == id {
                         row.add_css_class("active");
-                        badge.set_label(tr("󰄬 Active", "󰄬 Активен"));
+                        badge.set_label(tr("󰄬  Active", "󰄬  Активен"));
+                        badge.set_visible(true);
                     } else {
                         row.remove_css_class("active");
                         badge.set_label("");
+                        badge.set_visible(false);
                     }
                 }
             }
@@ -340,10 +346,12 @@ impl SimpleComponent for AudioViewModel {
                 for (s_id, row, badge) in &self.source_rows {
                     if *s_id == id {
                         row.add_css_class("active");
-                        badge.set_label(tr("󰄬 Active", "󰄬 Активен"));
+                        badge.set_label(tr("󰄬  Active", "󰄬  Активен"));
+                        badge.set_visible(true);
                     } else {
                         row.remove_css_class("active");
                         badge.set_label("");
+                        badge.set_visible(false);
                     }
                 }
             }

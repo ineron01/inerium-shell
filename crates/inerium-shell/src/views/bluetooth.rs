@@ -233,7 +233,7 @@ impl SimpleComponent for BluetoothModel {
                     #[watch]
                     set_sensitive: model.enabled,
                     set_tooltip_text: Some(tr("Open Bluetooth Manager", "Открыть менеджер Bluetooth")),
-                    set_label: tr("󰒓 Manager", "󰒓 Менеджер"),
+                    set_label: tr("󰒓  Manager", "󰒓  Менеджер"),
                     connect_clicked => BtMsg::OpenManager,
                 },
 
@@ -244,9 +244,9 @@ impl SimpleComponent for BluetoothModel {
                     set_sensitive: model.enabled && !model.scanning,
                     #[watch]
                     set_label: if model.scanning {
-                        tr("󰑐 Scanning...", "󰑐 Поиск...")
+                        tr("󰑐  Scanning...", "󰑐  Поиск...")
                     } else {
-                        tr("󰑐 Scan", "󰑐 Поиск")
+                        tr("󰑐  Scan", "󰑐  Поиск")
                     },
                     connect_clicked => BtMsg::StartScan,
                 },
@@ -619,7 +619,7 @@ fn populate_list(
         let badge = Label::new(None);
         badge.add_css_class("card-badge");
         if dev.connected {
-            badge.set_label(tr("󰄬 Connected", "󰄬 Подключено"));
+            badge.set_label(tr("󰄬  Connected", "󰄬  Подключено"));
             badge.add_css_class("connected");
             badge.set_visible(true);
         } else if dev.paired {
@@ -728,9 +728,9 @@ fn populate_list(
                 trust_btn.set_hexpand(true);
                 if dev.trusted {
                     trust_btn.add_css_class("on");
-                    trust_btn.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                    trust_btn.set_label(tr("󰑐  Auto: On", "󰑐  Авто: Вкл"));
                 } else {
-                    trust_btn.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                    trust_btn.set_label(tr("󰑐  Auto: Off", "󰑐  Авто: Выкл"));
                 }
                 trust_btn.set_tooltip_text(Some(tr(
                     "Allow automatic connection from this device",
@@ -744,17 +744,17 @@ fn populate_list(
                     b_trust.set_sensitive(false);
                     if cur_trust {
                         b_trust.remove_css_class("on");
-                        b_trust.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                        b_trust.set_label(tr("󰑐  Auto: Off", "󰑐  Авто: Выкл"));
                     } else {
                         b_trust.add_css_class("on");
-                        b_trust.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                        b_trust.set_label(tr("󰑐  Auto: On", "󰑐  Авто: Вкл"));
                     }
                     s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
                 });
                 drawer.append(&trust_btn);
 
                 // 2. Forget device chip
-                let forget_btn = Button::with_label(tr("󰆴 Forget", "󰆴 Забыть"));
+                let forget_btn = Button::with_label(tr("󰆴  Forget", "󰆴  Забыть"));
                 forget_btn.add_css_class("drawer-chip");
                 forget_btn.add_css_class("danger");
                 forget_btn.set_hexpand(true);
@@ -767,14 +767,14 @@ fn populate_list(
                 let b_forget = forget_btn.clone();
                 forget_btn.connect_clicked(move |_| {
                     b_forget.set_sensitive(false);
-                    b_forget.set_label(tr("󰑐 Forgetting...", "󰑐 Удаление..."));
+                    b_forget.set_label(tr("󰑐  Forgetting...", "󰑐  Удаление..."));
                     s_forget.input(BtMsg::ForgetDevice(mac_forget.clone()));
                 });
                 drawer.append(&forget_btn);
 
                 // 3. Connect / Disconnect chip
                 if dev.connected {
-                    let disc_btn = Button::with_label(tr("󰑐 Disconnect", "󰑐 Отключить"));
+                    let disc_btn = Button::with_label(tr("󰑐  Disconnect", "󰑐  Отключить"));
                     disc_btn.add_css_class("drawer-chip");
                     disc_btn.set_hexpand(true);
                     let s_d = sender.clone();
@@ -782,12 +782,12 @@ fn populate_list(
                     let b_disc = disc_btn.clone();
                     disc_btn.connect_clicked(move |_| {
                         b_disc.set_sensitive(false);
-                        b_disc.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
+                        b_disc.set_label(tr("󰑐  Disconnecting...", "󰑐  Отключение..."));
                         s_d.input(BtMsg::ConnectDevice(m_d.clone(), true, true));
                     });
                     drawer.append(&disc_btn);
                 } else {
-                    let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                    let conn_btn = Button::with_label(tr("󰄬  Connect", "󰄬  Подключить"));
                     conn_btn.add_css_class("drawer-chip");
                     conn_btn.set_hexpand(true);
                     let s_c = sender.clone();
@@ -795,14 +795,14 @@ fn populate_list(
                     let b_conn = conn_btn.clone();
                     conn_btn.connect_clicked(move |_| {
                         b_conn.set_sensitive(false);
-                        b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
+                        b_conn.set_label(tr("󰑐  Connecting...", "󰑐  Подключение..."));
                         s_c.input(BtMsg::ConnectDevice(m_c.clone(), false, true));
                     });
                     drawer.append(&conn_btn);
                 }
             } else {
                 // New/unpaired device
-                let pair_btn = Button::with_label(tr("󰄬 Pair", "󰄬 Сопряжение"));
+                let pair_btn = Button::with_label(tr("󰄬  Pair", "󰄬  Сопряжение"));
                 pair_btn.add_css_class("drawer-chip");
                 pair_btn.set_hexpand(true);
                 let s_p = sender.clone();

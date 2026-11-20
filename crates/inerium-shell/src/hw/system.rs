@@ -56,9 +56,9 @@ pub fn list_connected_monitors() -> Vec<MonitorTarget> {
                             || name.starts_with("LVDS")
                             || name.starts_with("DSI");
                         let label = if is_laptop {
-                            format!("󰌢 {}", name)
+                            format!("󰌢  {}", name)
                         } else {
-                            format!("󰍹 {}", name)
+                            format!("󰍹  {}", name)
                         };
                         list.push(MonitorTarget {
                             name: name.to_string(),

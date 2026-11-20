@@ -323,9 +323,9 @@ impl SimpleComponent for NetworkModel {
                     set_sensitive: model.wifi_enabled && !model.is_scanning,
                     #[watch]
                     set_label: if model.is_scanning {
-                        tr("󰑐 Searching...", "󰑐 Поиск сетей...")
+                        tr("󰑐  Searching...", "󰑐  Поиск сетей...")
                     } else {
-                        tr("󰑐 Refresh", "󰑐 Обновить")
+                        tr("󰑐  Refresh", "󰑐  Обновить")
                     },
                     connect_clicked => NetworkMsg::StartRescan,
                 },
@@ -1041,7 +1041,7 @@ fn populate_wifi_list(
         let badge = Label::new(None);
         badge.add_css_class("card-badge");
         if net.is_active {
-            badge.set_label(tr("󰄬 Connected", "󰄬 В сети"));
+            badge.set_label(tr("󰄬  Connected", "󰄬  В сети"));
             badge.add_css_class("active");
             badge.set_visible(true);
         } else if net.is_saved {
@@ -1176,9 +1176,9 @@ fn populate_wifi_list(
                 auto_btn.set_hexpand(true);
                 if conn.autoconnect {
                     auto_btn.add_css_class("on");
-                    auto_btn.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                    auto_btn.set_label(tr("󰑐  Auto: On", "󰑐  Авто: Вкл"));
                 } else {
-                    auto_btn.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                    auto_btn.set_label(tr("󰑐  Auto: Off", "󰑐  Авто: Выкл"));
                 }
                 auto_btn.set_tooltip_text(Some(tr(
                     "Toggle automatic connection",
@@ -1192,17 +1192,17 @@ fn populate_wifi_list(
                     b_auto.set_sensitive(false);
                     if cur_auto {
                         b_auto.remove_css_class("on");
-                        b_auto.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                        b_auto.set_label(tr("󰑐  Auto: Off", "󰑐  Авто: Выкл"));
                     } else {
                         b_auto.add_css_class("on");
-                        b_auto.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                        b_auto.set_label(tr("󰑐  Auto: On", "󰑐  Авто: Вкл"));
                     }
                     s_auto.input(NetworkMsg::ToggleAutoconnect(u_auto.clone(), !cur_auto));
                 });
                 drawer.append(&auto_btn);
 
                 // 2. Forget network chip
-                let forget_btn = Button::with_label(tr("󰆴 Forget", "󰆴 Забыть"));
+                let forget_btn = Button::with_label(tr("󰆴  Forget", "󰆴  Забыть"));
                 forget_btn.add_css_class("drawer-chip");
                 forget_btn.add_css_class("danger");
                 forget_btn.set_hexpand(true);
@@ -1215,14 +1215,14 @@ fn populate_wifi_list(
                 let b_forget = forget_btn.clone();
                 forget_btn.connect_clicked(move |_| {
                     b_forget.set_sensitive(false);
-                    b_forget.set_label(tr("󰑐 Forgetting...", "󰑐 Удаление..."));
+                    b_forget.set_label(tr("󰑐  Forgetting...", "󰑐  Удаление..."));
                     s_forget.input(NetworkMsg::ForgetSavedNetwork(u_forget.clone()));
                 });
                 drawer.append(&forget_btn);
 
                 // 3. Connect / Disconnect chip
                 if net.is_active {
-                    let disc_btn = Button::with_label(tr("󱚼 Disconnect", "󱚼 Отключиться"));
+                    let disc_btn = Button::with_label(tr("󱚼  Disconnect", "󱚼  Отключиться"));
                     disc_btn.add_css_class("drawer-chip");
                     disc_btn.set_hexpand(true);
                     let s_disc = sender.clone();
@@ -1230,12 +1230,12 @@ fn populate_wifi_list(
                     let b_disc = disc_btn.clone();
                     disc_btn.connect_clicked(move |_| {
                         b_disc.set_sensitive(false);
-                        b_disc.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
+                        b_disc.set_label(tr("󰑐  Disconnecting...", "󰑐  Отключение..."));
                         s_disc.input(NetworkMsg::SelectAp(net_disc.clone()));
                     });
                     drawer.append(&disc_btn);
                 } else {
-                    let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                    let conn_btn = Button::with_label(tr("󰄬  Connect", "󰄬  Подключить"));
                     conn_btn.add_css_class("drawer-chip");
                     conn_btn.set_hexpand(true);
                     let s_c = sender.clone();
@@ -1243,7 +1243,7 @@ fn populate_wifi_list(
                     let b_conn = conn_btn.clone();
                     conn_btn.connect_clicked(move |_| {
                         b_conn.set_sensitive(false);
-                        b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
+                        b_conn.set_label(tr("󰑐  Connecting...", "󰑐  Подключение..."));
                         s_c.input(NetworkMsg::SelectAp(net_c.clone()));
                     });
                     drawer.append(&conn_btn);
@@ -1256,7 +1256,7 @@ fn populate_wifi_list(
                 drawer.set_hexpand(true);
                 drawer.set_homogeneous(true);
 
-                let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                let conn_btn = Button::with_label(tr("󰄬  Connect", "󰄬  Подключить"));
                 conn_btn.add_css_class("drawer-chip");
                 conn_btn.set_hexpand(true);
                 let s_c = sender.clone();

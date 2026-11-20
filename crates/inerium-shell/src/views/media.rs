@@ -189,10 +189,12 @@ impl SimpleComponent for MediaModel {
             gtk4::Box {
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
+                set_valign: Align::Center,
 
                 gtk4::Button {
                     add_css_class: "back-btn",
                     set_label: tr("‹ Back", "‹ Назад"),
+                    set_valign: Align::Center,
                     connect_clicked => MediaMsg::Back,
                 },
 
@@ -200,10 +202,11 @@ impl SimpleComponent for MediaModel {
                 gtk4::Label {
                     add_css_class: "media-badge",
                     set_halign: Align::Start,
+                    set_valign: Align::Center,
                     #[watch]
                     set_label: &{
                         let (ico, badge_text) = get_player_badge(&model.info.player_name);
-                        format!("{} {}", ico, badge_text)
+                        format!("{}  {}", ico, badge_text)
                     },
                 },
 
@@ -214,6 +217,7 @@ impl SimpleComponent for MediaModel {
 
                 #[name = "status_pill"]
                 gtk4::Label {
+                    set_valign: Align::Center,
                     #[watch]
                     set_css_classes: if model.info.is_playing {
                         &["media-status-pill"]
@@ -222,9 +226,9 @@ impl SimpleComponent for MediaModel {
                     },
                     #[watch]
                     set_label: if model.info.is_playing {
-                        tr("󰐊 Playing", "󰐊 Играет")
+                        tr("󰐊  Playing", "󰐊  Играет")
                     } else {
-                        tr("󰏤 Paused", "󰏤 Пауза")
+                        tr("󰏤  Paused", "󰏤  Пауза")
                     },
                 },
             },

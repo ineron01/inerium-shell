@@ -118,9 +118,9 @@ fn compute_fan_string(is_cb: bool) -> String {
         }
 
         if parts.is_empty() {
-            tr("󰈨 Fans: active", "󰈨 Кулеры: активный режим").to_string()
+            tr("󰈨  Fans: active", "󰈨  Кулеры: активный режим").to_string()
         } else {
-            format!("󰈨 {}: {}", tr("Fans", "Кулеры"), parts.join(" · "))
+            format!("󰈨  {}: {}", tr("Fans", "Кулеры"), parts.join(" · "))
         }
     }
 }
@@ -321,7 +321,7 @@ impl SimpleComponent for ControlCenterModel {
                                 set_label: &if model.is_updating_check {
                                     "󰑐 ...".to_string()
                                 } else {
-                                    format!("󰚰 {}", model.updates.total)
+                                    format!("󰚰  {}", model.updates.total)
                                 },
                             },
                         },
@@ -732,6 +732,10 @@ impl SimpleComponent for ControlCenterModel {
                                 #[watch]
                                 set_label: &format!("{}%", model.laptop_brightness),
                             },
+
+                            gtk4::Box {
+                                set_size_request: (28, 28),
+                            },
                         },
 
                         // External DDC Brightness Slider
@@ -771,6 +775,10 @@ impl SimpleComponent for ControlCenterModel {
                                 #[watch]
                                 set_label: &format!("{}%", model.ddc_brightness),
                             },
+
+                            gtk4::Box {
+                                set_size_request: (28, 28),
+                            },
                         },
                     },
 
@@ -807,7 +815,7 @@ impl SimpleComponent for ControlCenterModel {
                             } else {
                                 &["eco"]
                             },
-                            set_label: &format!("󰌪 {}", tr("Eco", "Эконом")),
+                            set_label: &format!("󰌪  {}", tr("Eco", "Эконом")),
                             connect_clicked[sender] => move |_| {
                                 sender.input(ControlCenterMsg::SetProfile("power-saver".to_string()));
                             },
@@ -821,7 +829,7 @@ impl SimpleComponent for ControlCenterModel {
                             } else {
                                 &[]
                             },
-                            set_label: &format!("󰾅 {}", tr("Balance", "Баланс")),
+                            set_label: &format!("󰾅  {}", tr("Balance", "Баланс")),
                             connect_clicked[sender] => move |_| {
                                 sender.input(ControlCenterMsg::SetProfile("balanced".to_string()));
                             },
@@ -836,7 +844,7 @@ impl SimpleComponent for ControlCenterModel {
                             } else {
                                 &["turbo"]
                             },
-                            set_label: &format!("󰓅 {}", tr("Turbo", "Турбо")),
+                            set_label: &format!("󰓅  {}", tr("Turbo", "Турбо")),
                             connect_clicked[sender] => move |_| {
                                 sender.input(ControlCenterMsg::SetProfile("performance".to_string()));
                             },
@@ -878,7 +886,7 @@ impl SimpleComponent for ControlCenterModel {
                             },
                             #[watch]
                             set_label: &format!(
-                                "󰈐 {}: {}",
+                                "󰈐  {}: {}",
                                 tr("Cooler Boost", "Cooler Boost"),
                                 if model.cooler_boost { tr("on", "вкл") } else { tr("off", "выкл") }
                             ),
@@ -898,9 +906,9 @@ impl SimpleComponent for ControlCenterModel {
                             },
                             #[watch]
                             set_label: &if model.battery_threshold < 100 {
-                                format!("󱈑 {}: {}%", tr("Battery Limit", "Лимит заряда"), model.battery_threshold)
+                                format!("󱈑  {}: {}%", tr("Battery Limit", "Лимит заряда"), model.battery_threshold)
                             } else {
-                                format!("󱈑 {}", tr("Charge to 100%", "Заряд до 100%"))
+                                format!("󱈑  {}", tr("Charge to 100%", "Заряд до 100%"))
                             },
                             connect_clicked => ControlCenterMsg::ToggleBatteryThreshold,
                         },
@@ -955,7 +963,7 @@ impl SimpleComponent for ControlCenterModel {
                                     } else {
                                         &[]
                                     },
-                                    set_label: "󰢮 iGPU",
+                                    set_label: "󰢮  iGPU",
                                     connect_clicked[sender] => move |_| {
                                         sender.input(ControlCenterMsg::SwitchGpuMode("integrated"));
                                     },
@@ -970,7 +978,7 @@ impl SimpleComponent for ControlCenterModel {
                                     } else {
                                         &[]
                                     },
-                                    set_label: "󰾲 Hybrid",
+                                    set_label: "󰾲  Hybrid",
                                     connect_clicked[sender] => move |_| {
                                         sender.input(ControlCenterMsg::SwitchGpuMode("hybrid"));
                                     },
