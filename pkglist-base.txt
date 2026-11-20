@@ -46,6 +46,8 @@ btop
 fastfetch
 gnome-text-editor
 gnome-calculator
+gnome-keyring
+seahorse
 dolphin
 python
 

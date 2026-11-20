@@ -432,8 +432,15 @@ configure_greeter() {
             log "Backing up existing /etc/greetd/config.toml -> /etc/greetd/config.toml.bak.${BACKUP_STAMP}"
             run "sudo cp -a /etc/greetd/config.toml '/etc/greetd/config.toml.bak.${BACKUP_STAMP}'"
         fi
+        if [[ -f /etc/pam.d/greetd ]] && ! cmp -s "$REPO_DIR/system/etc/pam.d/greetd" /etc/pam.d/greetd 2>/dev/null; then
+            log "Backing up existing /etc/pam.d/greetd -> /etc/pam.d/greetd.bak.${BACKUP_STAMP}"
+            run "sudo cp -a /etc/pam.d/greetd '/etc/pam.d/greetd.bak.${BACKUP_STAMP}'"
+        fi
         install_root_if_changed 644 "$REPO_DIR/system/etc/greetd/config.toml" /etc/greetd/config.toml
         install_root_if_changed 644 "$REPO_DIR/system/etc/greetd/environments" /etc/greetd/environments
+        if [[ -f "$REPO_DIR/system/etc/pam.d/greetd" ]]; then
+            install_root_if_changed 644 "$REPO_DIR/system/etc/pam.d/greetd" /etc/pam.d/greetd
+        fi
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] render %s -> /etc/greetd/inerium-greeter.json\n' "$REPO_DIR/system/etc/greetd/inerium-greeter.json.template"
         else
