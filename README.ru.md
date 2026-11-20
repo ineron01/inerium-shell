@@ -12,7 +12,20 @@
 
 Универсальное окружение рабочего стола для CachyOS / Arch Linux, построенное вокруг **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO** и нативного набора утилит на **Rust / GTK4** в фирменной цветовой палитре **Inerium Dragon**.
 
-![Витрина Inerium Desktop](assets/preview/desktop.png)
+<p align="center">
+  <img src="assets/preview/desktop.png" alt="Рабочий стол Inerium" width="100%" />
+</p>
+
+<p align="center">
+  <img src="assets/preview/control_center.png" alt="Центр управления" width="32%" />
+  <img src="assets/preview/appearance.png" alt="Темы и обои" width="32%" />
+  <img src="assets/preview/audio_menu.png" alt="Аудиоустройства" width="32%" />
+</p>
+<p align="center">
+  <img src="assets/preview/network_menu.png" alt="Сети и Wi-Fi" width="32%" />
+  <img src="assets/preview/power_menu.png" alt="Управление питанием" width="48%" />
+  <img src="assets/preview/lockscreen.png" alt="Экран блокировки" width="16%" />
+</p>
 
 ---
 
@@ -160,7 +173,11 @@ Inerium Desktop включает декларативный движок и ко
 - **>2 тем (при добавлении пользовательских тем)**: Как только в каталог `~/.config/inerium/themes/` добавляется хотя бы один файл, клик по плитке автоматически открывает интерактивную **Галерею тем** с карточками, именами авторов, цветовыми свотчами и индикатором активности. При этом правый клик (ПКМ) сохраняет возможность быстрого тоггла dark ↔ light.
 
 ### Создание пользовательской темы
-Создайте TOML-файл темы в каталоге `~/.config/inerium/themes/<id>.toml`:
+Создайте TOML-файл темы в каталоге `~/.config/inerium/themes/<id>.toml`. Создать подробный шаблон с подсказками можно командой:
+```bash
+inerium-theme new <id>
+```
+Или вручную. Парсер поддерживает универсальные форматы (`#hex`, `rgb(...)`, `rgba(...)`, `rgb(r g b / a)`) и автоматически вычисляет промежуточные состояния, обводки и цвета ползунков, если они не указаны:
 
 ```toml
 [theme]
@@ -168,49 +185,48 @@ id = "my-custom-theme"
 name = "My Custom Theme"
 author = "Ваше Имя"
 upstream = "https://github.com/your-username/my-theme"
-variant = "dark" # "dark" или "light"
+variant = "dark" # "dark" или "light" (управляет системным переключателем темы GTK)
 license = "MIT"
 description = "Краткое описание вашей палитры"
 
+[typography]
+font_ui = "Inter"                       # Шрифт интерфейса (GTK, попапы, Waybar, Rofi, Mako)
+font_mono = "JetBrainsMono Nerd Font"   # Моноширинный шрифт (терминал Kitty, редакторы)
+font_size = 11.0                        # Базовый размер шрифта (в пунктах)
+
 [palette]
+# Базовые фоновые слои (RGB или RGBA)
 bg_canvas         = "rgba(24, 22, 22, 0.97)"
 bg_surface        = "#221f1f"
+# Дополнительные слои (вычисляются автоматически, если опущены)
 bg_surface_alt    = "#1c1a1a"
 bg_surface_hover  = "#2d2a2a"
 bg_surface_active = "#363434"
 
+# Рамки окон и разделители
 border_subtle     = "rgba(197, 201, 197, 0.10)"
-border_active     = "rgba(197, 201, 197, 0.25)"
+border_active     = "#87a987"           # Основная обводка активного окна
+border_active_secondary = "#8ba4b0"     # Второй цвет 45° градиента рамок Hyprland
 
+# Цвета текста
 text_primary      = "#c5c9c5"
 text_heading      = "#e6e2cc"
 text_muted        = "#737c73"
 text_subtle       = "#a6a69c"
 text_inverted     = "#181616"
 
+# Цвета шкал в Центре управления
+slider_fill       = "#87a987"           # Шкалы громкости и яркости экрана ноутбука
+slider_fill_secondary = "#c4b28a"       # Шкала яркости внешнего монитора DDC/CI
+
+# Акцентные цвета
+accent_primary    = "#87a987"
 accent_green      = "#87a987"
-accent_green_bg   = "rgba(135, 169, 135, 0.16)"
-accent_green_border = "rgba(135, 169, 135, 0.35)"
-
 accent_blue       = "#8ba4b0"
-accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
-accent_blue_border = "rgba(139, 164, 176, 0.38)"
-
 accent_amber      = "#c4b28a"
-accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
-accent_amber_border = "rgba(196, 178, 138, 0.38)"
-
 accent_red        = "#c4746e"
-accent_red_bg     = "rgba(196, 116, 110, 0.15)"
-accent_red_border = "rgba(196, 116, 110, 0.38)"
-
 accent_aqua       = "#8ea4a2"
-accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
-accent_aqua_border = "rgba(142, 164, 162, 0.38)"
-
 accent_purple     = "#8992a7"
-accent_purple_bg  = "rgba(137, 146, 167, 0.16)"
-accent_purple_border = "rgba(137, 146, 167, 0.38)"
 
 shadow            = "rgba(0, 0, 0, 0.85)"
 modal_backdrop    = "rgba(18, 16, 16, 0.48)"
@@ -218,7 +234,7 @@ slider_trough     = "rgba(197, 201, 197, 0.10)"
 slider_thumb      = "#e6e2cc"
 
 [display]
-temperature = 6500 # Цветовая температура экрана в Кельвинах (6500 — нейтральный дневной, 5500 — теплая бумага)
+temperature = 6500 # Цветовая температура экрана в Кельвинах (6500 для нейтрального дня, 5500 для бумаги)
 ```
 
 ### Каталог дополнительных тем (`themes/extra/`)
@@ -235,10 +251,14 @@ temperature = 6500 # Цветовая температура экрана в К�
 Шаблон для создания собственной темы доступен в `~/.config/inerium/themes/template.toml.example`.
 
 ### Команды CLI
+- `inerium-theme new <id>` — Создать чистый шаблон темы с подробнейшими комментариями в `~/.config/inerium/themes/<id>.toml`.
+- `inerium-theme watch [id]` — Режим Live Watch: отслеживает сохранение файла и мгновенно перекомпилирует и применяет тему на лету.
+- `inerium-theme preview <id>` — Быстрый просмотр любой темы из пула extra без её копирования.
 - `inerium-theme list` — Показать активные темы (`--all` — показать все включая дополнительные, `--json` — машинный вывод).
-- `inerium-theme set <id>` — Применить тему по её идентификатору.
+- `inerium-theme set <id>` — Применить тему по её идентификатору (автоматически скопирует из extra, если нужно).
 - `inerium-theme install <id>` — Перенести тему из дополнительных в постоянные (`~/.config/inerium/themes/`) и применить.
 - `inerium-theme toggle` — Быстрое переключение между светлой и тёмной темой.
+- `inerium-theme cycle` — Циклически переключить на следующую тему по списку.
 - `inerium-theme status` — Вывести метаданные текущей активной темы в формате JSON.
 
 ### Пользовательские хуки (`~/.config/inerium/hooks.d/`)

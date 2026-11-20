@@ -39,8 +39,8 @@ window#waybar {
 
 #custom-launcher {
     margin-left: 0;
-    padding: 0 11px;
-    font-size: 1.25em;
+    padding: 0 10px;
+    font-size: 1.12em;
     color: @primary;
 }
 
@@ -59,7 +59,7 @@ window#waybar {
 #custom-control,
 #custom-power {
     padding: 0 9px;
-    margin: 4px 0;
+    margin: 2px 0;
     border-radius: 7px;
     font-size: 1.1em;
     transition: background 200ms ease, color 200ms ease;
@@ -99,7 +99,7 @@ window#waybar {
 #workspaces button {
     min-width: 22px;
     padding: 0 6px;
-    margin: 4px 1px;
+    margin: 2px 1px;
     border-radius: 7px;
     color: @muted;
     background: transparent;
@@ -178,9 +178,19 @@ window#waybar {
 #clock,
 #custom-clock {
     padding: 0 16px;
-    font-size: 1.05em;
+    font-size: 1.02em;
     font-weight: 700;
     color: @fg-bright;
+}
+
+window#waybar.eDP-2 #clock,
+window#waybar.eDP-2 #custom-clock {
+    font-size: 1.05em;
+}
+
+window#waybar.HDMI-A-1 #clock,
+window#waybar.HDMI-A-1 #custom-clock {
+    font-size: 0.96em;
 }
 
 #clock:hover,
@@ -215,7 +225,7 @@ window#waybar {
 #custom-battery,
 #battery {
     padding: 0 8px;
-    margin: 4px 0;
+    margin: 2px 0;
     border-radius: 7px;
     color: @fg;
     transition: background 200ms ease, color 200ms ease;

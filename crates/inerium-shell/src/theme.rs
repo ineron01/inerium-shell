@@ -932,6 +932,35 @@ scrollbar slider {
 scrollbar slider:hover {
     background-color: @cc_primary_border;
 }
+
+/* Custom Switches (Wi-Fi, Bluetooth) honoring theme primary accent */
+switch {
+    background-color: @cc_surface_hover;
+    border: 1px solid @cc_line_light;
+    border-radius: 14px;
+    min-width: 44px;
+    min-height: 24px;
+    transition: all 200ms ease;
+}
+switch:hover {
+    background-color: @cc_surface_active;
+}
+switch:checked {
+    background-color: @cc_primary;
+    border-color: @cc_primary;
+}
+switch slider {
+    background-color: @cc_fg_muted;
+    border-radius: 10px;
+    min-width: 18px;
+    min-height: 18px;
+    margin: 2px;
+    box-shadow: none;
+    border: none;
+}
+switch:checked slider {
+    background-color: @cc_fg_bright;
+}
 "#;
 
 #[allow(dead_code)]

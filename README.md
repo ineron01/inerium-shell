@@ -12,7 +12,20 @@
 
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
 
-![Inerium Desktop Preview](assets/preview/desktop.png)
+<p align="center">
+  <img src="assets/preview/desktop.png" alt="Inerium Desktop" width="100%" />
+</p>
+
+<p align="center">
+  <img src="assets/preview/control_center.png" alt="Control Center" width="32%" />
+  <img src="assets/preview/appearance.png" alt="Appearance & Themes" width="32%" />
+  <img src="assets/preview/audio_menu.png" alt="Audio Mixer" width="32%" />
+</p>
+<p align="center">
+  <img src="assets/preview/network_menu.png" alt="Network & Wi-Fi" width="32%" />
+  <img src="assets/preview/power_menu.png" alt="Power Menu" width="48%" />
+  <img src="assets/preview/lockscreen.png" alt="Lockscreen" width="16%" />
+</p>
 
 ---
 
@@ -160,7 +173,11 @@ Inerium Desktop includes a declarative, Single Source of Truth theme compiler an
 - **>2 Themes (Custom User Themes)**: As soon as you add custom themes to `~/.config/inerium/themes/`, clicking the tile opens the interactive **Theme Gallery** with theme cards, author attribution, color swatches, and active badges. Right-clicking the tile always performs a quick dark ↔ light toggle.
 
 ### Adding Custom Themes
-Save your custom theme as a TOML file in `~/.config/inerium/themes/<id>.toml`:
+Save your custom theme as a TOML file in `~/.config/inerium/themes/<id>.toml`. You can generate a pristine commented template with:
+```bash
+inerium-theme new <id>
+```
+Or create it manually. The parser supports universal formats (`#hex`, `rgb(...)`, `rgba(...)`, `rgb(r g b / a)`) and automatically computes hover/active states, borders, and slider tones if omitted:
 
 ```toml
 [theme]
@@ -168,49 +185,48 @@ id = "my-custom-theme"
 name = "My Custom Theme"
 author = "Your Name"
 upstream = "https://github.com/your-username/my-theme"
-variant = "dark" # or "light"
+variant = "dark" # "dark" or "light" (controls GTK/Portal system theme switch)
 license = "MIT"
 description = "A short description of your theme palette"
 
+[typography]
+font_ui = "Inter"                       # UI font family (GTK, Popups, Waybar, Rofi, Mako)
+font_mono = "JetBrainsMono Nerd Font"   # Monospace font (Kitty, editors, terminals)
+font_size = 11.0                        # Base UI font size (points)
+
 [palette]
+# Canvas and background layers (RGB or RGBA)
 bg_canvas         = "rgba(24, 22, 22, 0.97)"
 bg_surface        = "#221f1f"
+# Optional surface states (automatically derived if omitted)
 bg_surface_alt    = "#1c1a1a"
 bg_surface_hover  = "#2d2a2a"
 bg_surface_active = "#363434"
 
+# Window borders and outlines
 border_subtle     = "rgba(197, 201, 197, 0.10)"
-border_active     = "rgba(197, 201, 197, 0.25)"
+border_active     = "#87a987"           # Primary active window border
+border_active_secondary = "#8ba4b0"     # 45° Hyprland gradient second stop
 
+# Typography colors
 text_primary      = "#c5c9c5"
 text_heading      = "#e6e2cc"
 text_muted        = "#737c73"
 text_subtle       = "#a6a69c"
 text_inverted     = "#181616"
 
+# Dedicated Control Center slider colors
+slider_fill       = "#87a987"           # Volume & internal brightness scales
+slider_fill_secondary = "#c4b28a"       # External DDC/CI monitor scale
+
+# Accent colors
+accent_primary    = "#87a987"
 accent_green      = "#87a987"
-accent_green_bg   = "rgba(135, 169, 135, 0.16)"
-accent_green_border = "rgba(135, 169, 135, 0.35)"
-
 accent_blue       = "#8ba4b0"
-accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
-accent_blue_border = "rgba(139, 164, 176, 0.38)"
-
 accent_amber      = "#c4b28a"
-accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
-accent_amber_border = "rgba(196, 178, 138, 0.38)"
-
 accent_red        = "#c4746e"
-accent_red_bg     = "rgba(196, 116, 110, 0.15)"
-accent_red_border = "rgba(196, 116, 110, 0.38)"
-
 accent_aqua       = "#8ea4a2"
-accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
-accent_aqua_border = "rgba(142, 164, 162, 0.38)"
-
 accent_purple     = "#8992a7"
-accent_purple_bg  = "rgba(137, 146, 167, 0.16)"
-accent_purple_border = "rgba(137, 146, 167, 0.38)"
 
 shadow            = "rgba(0, 0, 0, 0.85)"
 modal_backdrop    = "rgba(18, 16, 16, 0.48)"
@@ -218,7 +234,7 @@ slider_trough     = "rgba(197, 201, 197, 0.10)"
 slider_thumb      = "#e6e2cc"
 
 [display]
-temperature = 6500 # Screen temperature in Kelvins (6500 for neutral daylight, 5500 for warm paper)
+temperature = 6500 # Screen temperature in Kelvins (6500 for daylight, 5500 for warm paper)
 ```
 
 ### Extra Themes Pool (`themes/extra/`)
@@ -235,10 +251,14 @@ In addition to the two primary base themes, Inerium includes a pool of popular c
 A template for crafting your own theme is available at `~/.config/inerium/themes/template.toml.example`.
 
 ### CLI Commands
-- `inerium-theme list` — List active themes (`--all` to list all including extra, `--json` for machine output).
-- `inerium-theme set <id>` — Apply a theme by ID.
+- `inerium-theme new <id>` — Scaffold a clean, fully-commented theme template in `~/.config/inerium/themes/<id>.toml`.
+- `inerium-theme watch [id]` — Live monitor theme file changes for instant hot-reloading while editing in any text editor.
+- `inerium-theme preview <id>` — Instantly preview any extra palette without copying it to user themes.
+- `inerium-theme list` — List user themes (`--all` to list all including extra, `--json` for machine output).
+- `inerium-theme set <id>` — Apply a theme by ID (automatically installs from extra pool if needed).
 - `inerium-theme install <id>` — Move an extra theme into permanent user themes (`~/.config/inerium/themes/`) and apply it.
-- `inerium-theme toggle` — Toggle between the primary dark and light themes.
+- `inerium-theme toggle` — Toggle between primary dark and light themes.
+- `inerium-theme cycle` — Cycle forward through all available user themes.
 - `inerium-theme status` — Output active theme metadata in JSON.
 
 ### User Hooks (`~/.config/inerium/hooks.d/`)
