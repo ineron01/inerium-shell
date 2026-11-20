@@ -583,7 +583,6 @@ window.popup-window decoration {
     font-weight: 600;
     color: @cc_fg_subtle;
     box-shadow: none;
-    text-align: center;
 }
 .drawer-chip:hover {
     background-color: @cc_surface_hover;
