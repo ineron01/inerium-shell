@@ -11,7 +11,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use inerium_i18n::{Lang, tr};
+use inerium_i18n::Lang;
 use inerium_tools::format::escape_json;
 use inerium_tools::ipc::{PidRegistry, SelfPipe};
 use inerium_tools::sys::posix::*;
@@ -280,11 +280,17 @@ fn format_tooltip() -> String {
         output.push('\n');
     }
 
-    let footer_text = tr(
-        "LMB: Date · MMB: Seconds · RMB: Reset · Wheel: Months",
-        "ЛКМ: Дата · СКМ: Секунды · ПКМ: Сброс · Колесо: Месяцы",
-    );
-    output.push_str(&format!("\n<span size='small' color='#727169'>{}</span>", footer_text));
+    let (f1, f2) = match lang {
+        Lang::Ru => ("ЛКМ: Дата · СКМ: Секунды", "ПКМ: Сброс · Колесо: Месяцы"),
+        Lang::En => ("LMB: Date · MMB: Seconds", "RMB: Reset · Wheel: Months"),
+    };
+    let pad_f1 = " ".repeat(total_w.saturating_sub(f1.chars().count()) / 2);
+    let pad_f2 = " ".repeat(total_w.saturating_sub(f2.chars().count()) / 2);
+
+    output.push_str(&format!(
+        "\n<span size='small' color='#727169'>{}{}\n{}{}</span>",
+        pad_f1, f1, pad_f2, f2
+    ));
     output.push_str("</span>");
     output
 }
