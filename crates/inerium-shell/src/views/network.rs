@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation, PolicyType};
@@ -52,7 +52,7 @@ pub fn query_saved_wifi_connections() -> HashMap<String, SavedConn> {
     saved
 }
 
-pub fn query_wifi_networks() -> Vec<WifiAp> {
+pub fn query_wifi_networks(rescan: bool) -> Vec<WifiAp> {
     if hw::is_hotspot_active() {
         return Vec::new();
     }
@@ -60,8 +60,21 @@ pub fn query_wifi_networks() -> Vec<WifiAp> {
     let active_ssid = hw::get_active_wifi_ssid();
     let mut networks: Vec<WifiAp> = Vec::new();
 
-    if let Ok(out) = Command::new("nmcli")
-        .args(["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list"])
+    let rescan_arg = if rescan { "yes" } else { "no" };
+    if let Ok(out) = Command::new("timeout")
+        .args([
+            "10",
+            "nmcli",
+            "-t",
+            "-f",
+            "IN-USE,SSID,SIGNAL,SECURITY",
+            "dev",
+            "wifi",
+            "list",
+            "--rescan",
+            rescan_arg,
+        ])
+        .stdin(Stdio::null())
         .output()
     {
         let text = String::from_utf8_lossy(&out.stdout);
@@ -166,6 +179,7 @@ pub struct NetworkModel {
 pub enum NetworkMsg {
     ToggleWifi(bool),
     StartRescan,
+    ScanProgress(Vec<WifiAp>),
     RescanFinished(Vec<WifiAp>),
     SelectAp(WifiAp),
     PasswordInput(String),
@@ -277,7 +291,7 @@ impl SimpleComponent for NetworkModel {
                     #[watch]
                     set_visible: !model.hotspot_active,
                     #[watch]
-                    set_sensitive: !model.is_scanning,
+                    set_sensitive: model.wifi_enabled && !model.is_scanning,
                     #[watch]
                     set_label: if model.is_scanning {
                         tr("󰑐 Searching...", "󰑐 Поиск сетей...")
@@ -421,7 +435,7 @@ impl SimpleComponent for NetworkModel {
         let hotspot_active = hw::is_hotspot_active();
         let active_ssid = hw::get_active_wifi_ssid();
         let networks = if wifi_enabled && !hotspot_active {
-            query_wifi_networks()
+            query_wifi_networks(false)
         } else {
             Vec::new()
         };
@@ -446,6 +460,7 @@ impl SimpleComponent for NetworkModel {
             &model.networks,
             model.hotspot_active,
             model.wifi_enabled,
+            model.is_scanning,
             &sender,
         );
 
@@ -467,6 +482,7 @@ impl SimpleComponent for NetworkModel {
                 &self.networks,
                 self.hotspot_active,
                 self.wifi_enabled,
+                self.is_scanning,
                 &sender,
             );
         }
@@ -476,22 +492,64 @@ impl SimpleComponent for NetworkModel {
         match msg {
             NetworkMsg::ToggleWifi(state) => {
                 self.wifi_enabled = state;
-                hw::toggle_wifi(state);
+                if !state {
+                    self.is_scanning = false;
+                    self.networks.clear();
+                    self.needs_list_rebuild.set(true);
+                    hw::toggle_wifi(false);
+                } else {
+                    self.is_scanning = true;
+                    self.networks.clear();
+                    self.needs_list_rebuild.set(true);
+                    let s = sender.clone();
+                    thread::spawn(move || {
+                        let start = Instant::now();
+                        hw::set_wifi_enabled_sync(true);
 
-                let s = sender.clone();
-                glib::timeout_add_local_once(Duration::from_millis(500), move || {
-                    let nets = if state { query_wifi_networks() } else { Vec::new() };
-                    s.input(NetworkMsg::RescanFinished(nets));
-                });
+                        let ready = hw::wait_for_wifi_ready(Duration::from_secs(4));
+                        if ready {
+                            let cached = query_wifi_networks(false);
+                            if !cached.is_empty() {
+                                s.input(NetworkMsg::ScanProgress(cached));
+                            }
+
+                            let fresh = query_wifi_networks(true);
+                            let min_scan_time = Duration::from_millis(1500);
+                            let elapsed = start.elapsed();
+                            if elapsed < min_scan_time {
+                                thread::sleep(min_scan_time - elapsed);
+                            }
+                            s.input(NetworkMsg::RescanFinished(fresh));
+                        } else {
+                            s.input(NetworkMsg::RescanFinished(Vec::new()));
+                        }
+                    });
+                }
             }
             NetworkMsg::StartRescan => {
+                if !self.wifi_enabled {
+                    return;
+                }
                 self.is_scanning = true;
+                self.needs_list_rebuild.set(true);
                 let s = sender.clone();
                 thread::spawn(move || {
-                    let _ = Command::new("nmcli").args(["dev", "wifi", "rescan"]).output();
-                    let fresh = query_wifi_networks();
+                    let start = Instant::now();
+                    let _ = hw::wait_for_wifi_ready(Duration::from_secs(2));
+                    let fresh = query_wifi_networks(true);
+                    let min_scan_time = Duration::from_millis(1500);
+                    let elapsed = start.elapsed();
+                    if elapsed < min_scan_time {
+                        thread::sleep(min_scan_time - elapsed);
+                    }
                     s.input(NetworkMsg::RescanFinished(fresh));
                 });
+            }
+            NetworkMsg::ScanProgress(fresh) => {
+                self.networks = fresh;
+                self.active_ssid = hw::get_active_wifi_ssid();
+                self.hotspot_active = hw::is_hotspot_active();
+                self.needs_list_rebuild.set(true);
             }
             NetworkMsg::RescanFinished(fresh) => {
                 self.is_scanning = false;
@@ -515,7 +573,7 @@ impl SimpleComponent for NetworkModel {
                                 .args(["connection", "down", "id", &ssid])
                                 .output();
                         }
-                        let fresh = query_wifi_networks();
+                        let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::DisconnectFinished(fresh));
                     });
                 } else if net.is_saved {
@@ -533,7 +591,7 @@ impl SimpleComponent for NetworkModel {
                                 .output()
                         };
                         let (success, err_msg) = parse_cmd_output(res);
-                        let fresh = query_wifi_networks();
+                        let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid,
                             success,
@@ -558,7 +616,7 @@ impl SimpleComponent for NetworkModel {
                             .args(["dev", "wifi", "connect", &ssid])
                             .output();
                         let (success, err_msg) = parse_cmd_output(res);
-                        let fresh = query_wifi_networks();
+                        let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid,
                             success,
@@ -599,7 +657,7 @@ impl SimpleComponent for NetworkModel {
                             .args(["dev", "wifi", "connect", &ssid, "password", &pass])
                             .output();
                         let (success, err_msg) = parse_cmd_output(res);
-                        let fresh = query_wifi_networks();
+                        let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid,
                             success,
@@ -629,7 +687,7 @@ impl SimpleComponent for NetworkModel {
                         let _ = Command::new("nmcli")
                             .args(["connection", "delete", "id", &ssid])
                             .output();
-                        let fresh = query_wifi_networks();
+                        let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::RescanFinished(fresh));
                     });
                 }
@@ -689,7 +747,7 @@ impl SimpleComponent for NetworkModel {
                     };
                     let _ = cmd.arg("toggle").output();
                     thread::sleep(Duration::from_millis(800));
-                    let fresh = query_wifi_networks();
+                    let fresh = query_wifi_networks(false);
                     s_fin.input(NetworkMsg::RescanFinished(fresh));
                 });
             }
@@ -716,6 +774,7 @@ fn populate_wifi_list(
     networks: &[WifiAp],
     hotspot_active: bool,
     wifi_enabled: bool,
+    is_scanning: bool,
     sender: &ComponentSender<NetworkModel>,
 ) {
     while let Some(child) = list_box.first_child() {
@@ -775,7 +834,12 @@ fn populate_wifi_list(
     }
 
     if networks.is_empty() {
-        let empty_lbl = Label::new(Some(if wifi_enabled {
+        let empty_lbl = Label::new(Some(if is_scanning {
+            tr(
+                "󰑐 Searching for Wi-Fi networks...",
+                "󰑐 Поиск беспроводных сетей...",
+            )
+        } else if wifi_enabled {
             tr(
                 "No networks found. Click «Refresh»",
                 "Сети не найдены. Нажмите «Обновить»",

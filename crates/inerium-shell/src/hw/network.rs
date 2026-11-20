@@ -50,11 +50,49 @@ pub fn get_active_wifi_ssid() -> Option<String> {
     None
 }
 
+pub fn set_wifi_enabled_sync(enable: bool) {
+    let val = if enable { "on" } else { "off" };
+    let _ = Command::new("nmcli")
+        .args(["radio", "wifi", val])
+        .stdin(Stdio::null())
+        .output();
+}
+
 pub fn toggle_wifi(enable: bool) {
     thread::spawn(move || {
-        let val = if enable { "on" } else { "off" };
-        let _ = Command::new("nmcli").args(["radio", "wifi", val]).output();
+        set_wifi_enabled_sync(enable);
     });
+}
+
+pub fn is_wifi_device_ready() -> bool {
+    if let Ok(out) = Command::new("nmcli")
+        .args(["-t", "-f", "TYPE,STATE", "dev", "status"])
+        .stdin(Stdio::null())
+        .output()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 2 && parts[0] == "wifi" {
+                let state = parts[1].trim();
+                if state != "unavailable" && state != "unmanaged" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn wait_for_wifi_ready(timeout: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if is_wifi_device_ready() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+    is_wifi_device_ready()
 }
 
 pub fn is_hotspot_active() -> bool {

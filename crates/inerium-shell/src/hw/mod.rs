@@ -214,6 +214,19 @@ pub fn is_wifi_enabled() -> bool {
     network::is_wifi_enabled()
 }
 
+pub fn set_wifi_enabled_sync(enable: bool) {
+    network::set_wifi_enabled_sync(enable);
+}
+
+#[allow(dead_code)]
+pub fn is_wifi_device_ready() -> bool {
+    network::is_wifi_device_ready()
+}
+
+pub fn wait_for_wifi_ready(timeout: std::time::Duration) -> bool {
+    network::wait_for_wifi_ready(timeout)
+}
+
 pub fn get_active_wifi_ssid() -> Option<String> {
     network::get_active_wifi_ssid()
 }
