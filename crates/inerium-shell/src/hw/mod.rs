@@ -247,6 +247,14 @@ pub fn is_bluetooth_enabled() -> bool {
     network::is_bluetooth_enabled()
 }
 
+pub fn set_bluetooth_enabled_sync(enable: bool) {
+    network::set_bluetooth_enabled_sync(enable);
+}
+
+pub fn wait_for_bluetooth_ready(timeout: std::time::Duration) -> bool {
+    network::wait_for_bluetooth_ready(timeout)
+}
+
 pub fn toggle_bluetooth(enable: bool) {
     network::toggle_bluetooth(enable);
 }

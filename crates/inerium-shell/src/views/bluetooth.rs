@@ -1,5 +1,6 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
+use std::time::Duration;
 
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation};
@@ -209,6 +210,8 @@ impl SimpleComponent for BluetoothModel {
                 #[name = "mgr_btn"]
                 gtk4::Button {
                     add_css_class: "cc-chip",
+                    #[watch]
+                    set_sensitive: model.enabled,
                     set_tooltip_text: Some(tr("Open Bluetooth Manager", "Открыть менеджер Bluetooth")),
                     set_label: tr("󰒓 Manager", "󰒓 Менеджер"),
                     connect_clicked => BtMsg::OpenManager,
@@ -218,7 +221,7 @@ impl SimpleComponent for BluetoothModel {
                 gtk4::Button {
                     add_css_class: "cc-chip",
                     #[watch]
-                    set_sensitive: !model.scanning,
+                    set_sensitive: model.enabled && !model.scanning,
                     #[watch]
                     set_label: if model.scanning {
                         tr("󰑐 Scanning...", "󰑐 Поиск...")
@@ -266,49 +269,100 @@ impl SimpleComponent for BluetoothModel {
 
         let widgets = view_output!();
 
-        populate_list(&widgets.list_box, &devices, enabled, &sender);
+        populate_list(&widgets.list_box, &devices, enabled, false, &sender);
 
         ComponentParts { model, widgets }
     }
 
     fn post_view() {
-        populate_list(list_box, &self.devices, self.enabled, &sender);
+        populate_list(list_box, &self.devices, self.enabled, self.scanning, &sender);
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             BtMsg::TogglePower(state) => {
                 self.enabled = state;
-                hw::toggle_bluetooth(state);
+                if !state {
+                    self.scanning = false;
+                    self.devices.clear();
+                    hw::toggle_bluetooth(false);
+                } else {
+                    self.scanning = true;
+                    self.devices.clear();
+                    let s = sender.clone();
+                    thread::spawn(move || {
+                        let start = std::time::Instant::now();
+                        hw::set_bluetooth_enabled_sync(true);
 
-                let s = sender.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-                    let devs = if state { query_devices() } else { Vec::new() };
-                    s.input(BtMsg::ScanFinished(devs));
-                });
+                        let ready = hw::wait_for_bluetooth_ready(Duration::from_secs(3));
+                        if ready {
+                            let cached = query_devices();
+                            if !cached.is_empty() {
+                                s.input(BtMsg::ScanProgress(cached));
+                            }
+
+                            let mut child = Command::new("timeout")
+                                .args(["10", "bluetoothctl", "--timeout", "7", "scan", "on"])
+                                .stdin(Stdio::null())
+                                .stdout(Stdio::null())
+                                .stderr(Stdio::null())
+                                .spawn();
+
+                            for _ in 0..3 {
+                                thread::sleep(Duration::from_secs(2));
+                                let interim = query_devices();
+                                s.input(BtMsg::ScanProgress(interim));
+                            }
+
+                            if let Ok(ref mut proc) = child {
+                                let _ = proc.wait();
+                            }
+
+                            let min_scan_time = Duration::from_millis(1500);
+                            let elapsed = start.elapsed();
+                            if elapsed < min_scan_time {
+                                thread::sleep(min_scan_time - elapsed);
+                            }
+
+                            let fresh = query_devices();
+                            s.input(BtMsg::ScanFinished(fresh));
+                        } else {
+                            s.input(BtMsg::ScanFinished(Vec::new()));
+                        }
+                    });
+                }
             }
             BtMsg::StartScan => {
+                if !self.enabled {
+                    return;
+                }
                 self.scanning = true;
                 let s = sender.clone();
                 thread::spawn(move || {
-                    // Non-interactive discovery requires passing --timeout to bluetoothctl,
-                    // otherwise it exits immediately in 5ms without discovering devices.
+                    let start = std::time::Instant::now();
+                    let _ = hw::wait_for_bluetooth_ready(Duration::from_secs(2));
+
                     let mut child = Command::new("timeout")
                         .args(["10", "bluetoothctl", "--timeout", "7", "scan", "on"])
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
                         .spawn();
 
-                    // Periodically query devices so discovered hardware pops up live
                     for _ in 0..3 {
-                        thread::sleep(std::time::Duration::from_secs(2));
+                        thread::sleep(Duration::from_secs(2));
                         let interim = query_devices();
                         s.input(BtMsg::ScanProgress(interim));
                     }
 
                     if let Ok(ref mut proc) = child {
                         let _ = proc.wait();
+                    }
+
+                    let min_scan_time = Duration::from_millis(1500);
+                    let elapsed = start.elapsed();
+                    if elapsed < min_scan_time {
+                        thread::sleep(min_scan_time - elapsed);
                     }
 
                     let fresh = query_devices();
@@ -377,6 +431,7 @@ fn populate_list(
     list_box: &gtk4::Box,
     devices: &[BtDevice],
     enabled: bool,
+    scanning: bool,
     sender: &ComponentSender<BluetoothModel>,
 ) {
     while let Some(child) = list_box.first_child() {
@@ -384,7 +439,12 @@ fn populate_list(
     }
 
     if devices.is_empty() {
-        let empty_lbl = Label::new(Some(if enabled {
+        let empty_lbl = Label::new(Some(if scanning {
+            tr(
+                "󰑐 Searching for Bluetooth devices...",
+                "󰑐 Поиск Bluetooth-устройств...",
+            )
+        } else if enabled {
             tr(
                 "No devices found. Click «Scan»",
                 "Устройства не найдены. Нажмите «Поиск»",

@@ -165,22 +165,50 @@ pub fn is_bluetooth_enabled() -> bool {
     false
 }
 
+pub fn wait_for_bluetooth_ready(timeout: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if is_bluetooth_enabled() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+    is_bluetooth_enabled()
+}
+
+pub fn set_bluetooth_enabled_sync(enable: bool) {
+    if enable {
+        let _ = Command::new("rfkill")
+            .args(["unblock", "bluetooth"])
+            .stdin(Stdio::null())
+            .output();
+        for _ in 0..10 {
+            if let Ok(out) = Command::new("timeout")
+                .args(["2", "bluetoothctl", "show"])
+                .stdin(Stdio::null())
+                .output()
+                && String::from_utf8_lossy(&out.stdout).contains("Powered: yes")
+            {
+                break;
+            }
+            let _ = Command::new("timeout")
+                .args(["2", "bluetoothctl", "power", "on"])
+                .stdin(Stdio::null())
+                .output();
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }
+    } else {
+        let _ = Command::new("timeout")
+            .args(["2", "bluetoothctl", "power", "off"])
+            .stdin(Stdio::null())
+            .output();
+    }
+    // Linux TASK_COMM_LEN is 15 chars: inerium-bluetooth is stored as inerium-bluetoo in comm
+    let _ = Command::new("pkill").args(["-SIGUSR1", "-x", "inerium-bluetoo"]).output();
+}
+
 pub fn toggle_bluetooth(enable: bool) {
     thread::spawn(move || {
-        if enable {
-            let _ = Command::new("rfkill").args(["unblock", "bluetooth"]).output();
-            for _ in 0..10 {
-                if let Ok(out) = Command::new("bluetoothctl").arg("show").output()
-                    && String::from_utf8_lossy(&out.stdout).contains("Powered: yes") {
-                        break;
-                    }
-                let _ = Command::new("bluetoothctl").args(["power", "on"]).output();
-                thread::sleep(std::time::Duration::from_millis(100));
-            }
-        } else {
-            let _ = Command::new("bluetoothctl").args(["power", "off"]).output();
-        }
-        // Linux TASK_COMM_LEN is 15 chars: inerium-bluetooth is stored as inerium-bluetoo in comm
-        let _ = Command::new("pkill").args(["-SIGUSR1", "-x", "inerium-bluetoo"]).output();
+        set_bluetooth_enabled_sync(enable);
     });
 }
