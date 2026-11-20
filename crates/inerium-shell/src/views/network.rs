@@ -23,26 +23,29 @@ pub struct WifiAp {
 #[derive(Clone, Debug)]
 pub struct SavedConn {
     pub uuid: String,
-    pub _name: String,
+    pub name: String,
+    pub autoconnect: bool,
 }
 
 pub fn query_saved_wifi_connections() -> HashMap<String, SavedConn> {
     let mut saved = HashMap::new();
     if let Ok(out) = Command::new("nmcli")
-        .args(["-t", "-f", "UUID,TYPE,NAME", "connection", "show"])
+        .args(["-t", "-f", "UUID,TYPE,AUTOCONNECT,NAME", "connection", "show"])
         .output()
     {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
             let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 3 {
+            if parts.len() >= 4 {
                 let uuid = parts[0].trim().to_string();
                 let ctype = parts[1].trim();
-                let name = parts[2].replace("\\:", ":").trim().to_string();
+                let autoconnect = parts[2].trim().eq_ignore_ascii_case("yes");
+                let name = parts[3..].join(":").replace("\\:", ":").trim().to_string();
                 if ctype == "802-11-wireless" || ctype == "wifi" {
                     let conn = SavedConn {
-                        uuid: uuid.clone(),
-                        _name: name.clone(),
+                        uuid,
+                        name: name.clone(),
+                        autoconnect,
                     };
                     saved.insert(name, conn);
                 }
@@ -819,9 +822,7 @@ impl SimpleComponent for NetworkModel {
                 });
             }
             NetworkMsg::Back => {
-                if self.password_prompt.is_some() {
-                    crate::set_modal_dialog_active(false);
-                }
+                crate::set_modal_dialog_active(false);
                 (self.nav_cb)("control");
             }
         }
@@ -830,9 +831,7 @@ impl SimpleComponent for NetworkModel {
 
 impl Drop for NetworkModel {
     fn drop(&mut self) {
-        if self.password_prompt.is_some() {
-            crate::set_modal_dialog_active(false);
-        }
+        crate::set_modal_dialog_active(false);
     }
 }
 

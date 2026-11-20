@@ -126,6 +126,10 @@ struct SafeZone {
     pad: i32,
     opened_at: std::time::Instant,
     has_entered: bool,
+    mx: i32,
+    my: i32,
+    mw: i32,
+    mh: i32,
 }
 
 struct AppState {
@@ -237,7 +241,7 @@ fn main() {
                             let mut st = s.borrow_mut();
                             if st.is_visible && !st.current_view.is_empty() {
                                 let cur = st.current_view.clone();
-                                show_view(&mut st, &cur);
+                                show_view(&mut st, &cur, true);
                             }
                         });
                     }
@@ -321,7 +325,7 @@ fn handle_command(cmd: &str) {
             }
             if is_vis && !cur_view.is_empty() {
                 let cur = cur_view.clone();
-                show_view(&mut state, &cur);
+                show_view(&mut state, &cur, true);
             }
             return;
         }
@@ -332,7 +336,7 @@ fn handle_command(cmd: &str) {
         }
 
         state.current_view = target.clone();
-        show_view(&mut state, &target);
+        show_view(&mut state, &target, false);
     });
 }
 
@@ -343,11 +347,16 @@ fn hide_window(state: &mut AppState) {
     state.is_visible = false;
     state.current_view.clear();
     state.safe_zone = None;
+    state.modal_dialog_active = false;
 }
 
-fn show_view(state: &mut AppState, view_name: &str) {
+fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
     if let Some(old_win) = state.window.take() {
         old_win.close();
+    }
+
+    if !preserve_position {
+        state.modal_dialog_active = false;
     }
 
     let app = match state.app.as_ref() {
@@ -404,7 +413,7 @@ fn show_view(state: &mut AppState, view_name: &str) {
         STATE.with(|s| {
             let mut st = s.borrow_mut();
             st.current_view = n.clone();
-            show_view(&mut st, &n);
+            show_view(&mut st, &n, true);
         });
     };
 
@@ -443,7 +452,7 @@ fn show_view(state: &mut AppState, view_name: &str) {
 
         win.set_keyboard_mode(KeyboardMode::OnDemand);
         let max_margin_left = (mw - req_w - 8).max(8);
-        let margin_left = if state.is_visible {
+        let margin_left = if preserve_position && state.is_visible {
             if let Some(sz) = &state.safe_zone {
                 (sz.x - mx).clamp(8, max_margin_left)
             } else {
@@ -485,6 +494,10 @@ fn show_view(state: &mut AppState, view_name: &str) {
         pad,
         opened_at: std::time::Instant::now(),
         has_entered: init_inside,
+        mx,
+        my,
+        mw,
+        mh,
     });
 
     win.present();
@@ -499,15 +512,14 @@ fn show_view(state: &mut AppState, view_name: &str) {
                 if !st.is_visible || st.session_id != current_session {
                     return glib::ControlFlow::Break;
                 }
-                if st.modal_dialog_active {
-                    return glib::ControlFlow::Continue;
-                }
 
                 let (alloc_w, alloc_h) = if let Some(ref w) = st.window {
                     (w.allocated_width(), w.allocated_height())
                 } else {
                     (0, 0)
                 };
+
+                let is_modal = st.modal_dialog_active;
 
                 if let Some(ref mut sz) = st.safe_zone {
                     if alloc_w > 50 {
@@ -518,6 +530,13 @@ fn show_view(state: &mut AppState, view_name: &str) {
                     }
 
                     let (cx, cy) = get_cursor_pos();
+
+                    // If cursor moved to a different monitor, allow closing even if modal_dialog_active was set
+                    let cursor_on_other_monitor = cx < sz.mx || cx >= sz.mx + sz.mw || cy < sz.my || cy >= sz.my + sz.mh;
+                    if is_modal && !cursor_on_other_monitor {
+                        return glib::ControlFlow::Continue;
+                    }
+
                     let x_min = sz.x - sz.pad;
                     let x_max = sz.x + sz.w + sz.pad;
                     let y_min = sz.y - sz.pad - 40; // include top bar area
