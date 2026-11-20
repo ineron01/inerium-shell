@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "dolphin-convert"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "image",
  "ort",
@@ -1029,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-camera"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "gdk4",
  "glib",
@@ -1044,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-greeter"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "gdk4",
  "glib",
@@ -1055,7 +1055,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-hw"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "inerium-i18n",
  "serde",
@@ -1064,11 +1064,11 @@ dependencies = [
 
 [[package]]
 name = "inerium-i18n"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "inerium-polkit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "etc-passwd",
  "eyre",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-setup"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "gdk4",
  "gio",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-shell"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "gdk4",
  "gio",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-tools"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "inerium-hw",
  "inerium-i18n",
