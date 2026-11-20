@@ -498,8 +498,9 @@ window.popup-window decoration {
     background-color: @cc_surface;
     border: 1px solid @cc_line;
     border-radius: 9px;
-    padding: 6px 10px;
-    margin-bottom: 4px;
+    padding: 7px 10px;
+    margin-bottom: 5px;
+    transition: background-color 100ms ease, border-color 100ms ease;
 }
 .card-item:hover {
     background-color: @cc_surface_hover;
@@ -508,6 +509,10 @@ window.popup-window decoration {
 .card-item.active {
     background-color: @cc_green_bg;
     border-color: @cc_green_border;
+}
+.card-item.expanded {
+    border-color: @cc_line_light;
+    background-color: @cc_surface_hover;
 }
 .card-item:disabled {
     opacity: 0.70;
@@ -544,52 +549,42 @@ window.popup-window decoration {
 }
 
 /* Inline Card Drawer & Quick Actions */
-.card-more-btn {
-    background-color: @cc_surface;
-    border: 1px solid @cc_line;
-    border-radius: 9px;
-    padding: 0 9px;
+.card-chevron {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 2px 4px;
+    margin: 0;
     color: @cc_fg_muted;
-    font-size: 13px;
-    min-width: 28px;
+    font-size: 11px;
+    border-radius: 5px;
+    min-height: 20px;
+    min-width: 20px;
 }
-.card-more-btn:hover {
-    background-color: @cc_surface_hover;
-    border-color: @cc_line_light;
-    color: @cc_fg;
+.card-chevron:hover {
+    background-color: alpha(@cc_fg, 0.08);
+    color: @cc_fg_bright;
 }
-.card-item.expanded {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    border-bottom-color: transparent;
+.card-drawer-sep {
+    margin: 6px 0 6px 0;
+    opacity: 0.15;
+    background-color: @cc_fg;
 }
-.card-more-btn.expanded {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    border-bottom-color: transparent;
-    background-color: @cc_surface_hover;
-    color: @cc_fg;
-}
-.card-drawer {
-    background-color: @cc_surface;
-    border: 1px solid @cc_line;
-    border-top: 1px dashed @cc_line;
-    border-bottom-left-radius: 9px;
-    border-bottom-right-radius: 9px;
-    padding: 6px 8px;
-    margin-top: -1px;
+.card-drawer-inner {
+    padding: 1px 0 2px 0;
 }
 .drawer-chip {
     background-color: @cc_bg;
     border: 1px solid @cc_line;
-    border-radius: 7px;
-    padding: 3px 9px;
+    border-radius: 6px;
+    padding: 3px 8px;
     font-size: 10px;
     font-weight: 500;
-    color: @cc_fg_muted;
+    color: @cc_fg_subtle;
+    box-shadow: none;
 }
 .drawer-chip:hover {
-    background-color: @cc_surface_hover;
+    background-color: @cc_surface_active;
     border-color: @cc_line_light;
     color: @cc_fg;
 }
@@ -606,6 +601,11 @@ window.popup-window decoration {
     background-color: @cc_red_bg;
     border-color: @cc_red;
     color: @cc_red;
+}
+.drawer-chip.info {
+    color: @cc_fg_muted;
+    border-color: transparent;
+    background-color: alpha(@cc_line, 0.08);
 }
 .auth-error {
     font-size: 11px;

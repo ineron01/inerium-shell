@@ -973,23 +973,24 @@ fn populate_wifi_list(
     }
 
     for net in networks {
-        let item_box = gtk4::Box::new(Orientation::Vertical, 0);
-        item_box.set_margin_bottom(4);
-
-        let row_box = gtk4::Box::new(Orientation::Horizontal, 4);
-
-        let row = Button::new();
-        row.add_css_class("card-item");
-        row.set_hexpand(true);
+        let card = gtk4::Box::new(Orientation::Vertical, 0);
+        card.add_css_class("card-item");
         if net.is_active {
-            row.add_css_class("active");
+            card.add_css_class("active");
         }
         let is_exp = expanded_ssid == Some(net.ssid.as_str());
         if is_exp {
-            row.add_css_class("expanded");
+            card.add_css_class("expanded");
         }
 
-        let inner = gtk4::Box::new(Orientation::Horizontal, 8);
+        // Header row
+        let header_row = gtk4::Box::new(Orientation::Horizontal, 8);
+
+        // Clickable main content (icon + text + badge)
+        let main_box = gtk4::Box::new(Orientation::Horizontal, 8);
+        main_box.set_hexpand(true);
+        main_box.set_cursor_from_name(Some("pointer"));
+
         let sig_ico = if net.signal > 75 {
             "󰤨"
         } else if net.signal > 50 {
@@ -1001,7 +1002,7 @@ fn populate_wifi_list(
         };
         let ico = Label::new(Some(sig_ico));
         ico.add_css_class("card-icon");
-        inner.append(&ico);
+        main_box.append(&ico);
 
         let txt = gtk4::Box::new(Orientation::Vertical, 1);
         txt.set_hexpand(true);
@@ -1047,9 +1048,9 @@ fn populate_wifi_list(
         sec_lbl.add_css_class("card-sub");
         sec_lbl.set_xalign(0.0);
         txt.append(&sec_lbl);
-        inner.append(&txt);
+        main_box.append(&txt);
 
-        // Badge: Active ("󰄬 В сети") or Saved ("󰄬 Сохранено")
+        // Badge: Active ("󰄬 В сети") or Saved ("Сохранено")
         let badge = Label::new(None);
         badge.add_css_class("card-badge");
         if net.is_active {
@@ -1063,11 +1064,28 @@ fn populate_wifi_list(
         } else {
             badge.set_visible(false);
         }
-        inner.append(&badge);
+        main_box.append(&badge);
 
-        row.set_child(Some(&inner));
+        header_row.append(&main_box);
 
-        // Rich Tooltip
+        // Chevron expand button on the right inside the card
+        let chevron_btn = Button::new();
+        chevron_btn.add_css_class("card-chevron");
+        let chev_lbl = Label::new(Some(if is_exp { "󰅃" } else { "󰅀" }));
+        chevron_btn.set_child(Some(&chev_lbl));
+        chevron_btn.set_cursor_from_name(Some("pointer"));
+        chevron_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
+
+        let s_chev = sender.clone();
+        let ssid_chev = net.ssid.clone();
+        chevron_btn.connect_clicked(move |_| {
+            s_chev.input(NetworkMsg::ToggleExpandAp(ssid_chev.clone()));
+        });
+        header_row.append(&chevron_btn);
+
+        card.append(&header_row);
+
+        // Tooltip on the entire card
         let tooltip_text = if net.is_active {
             let sec_desc = if net.security.is_empty() {
                 tr("Open", "Открытая").to_string()
@@ -1120,67 +1138,49 @@ fn populate_wifi_list(
                 net.signal
             )
         };
-        row.set_tooltip_text(Some(&tooltip_text));
+        card.set_tooltip_text(Some(&tooltip_text));
 
+        // Primary click on main_box -> connect / disconnect / password prompt
         let s_click = sender.clone();
         let net_item = net.clone();
-        let r_ui = row.clone();
         let b_ui = badge.clone();
-        row.connect_clicked(move |_| {
+        let main_gesture = gtk4::GestureClick::new();
+        main_gesture.set_button(gdk4::BUTTON_PRIMARY);
+        main_gesture.connect_released(move |_, _, _, _| {
             if net_item.is_active {
                 b_ui.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
                 b_ui.set_visible(true);
-                r_ui.set_sensitive(false);
             } else if net_item.is_saved
                 || net_item.security.is_empty()
                 || net_item.security.contains("--")
             {
                 b_ui.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                 b_ui.set_visible(true);
-                r_ui.set_sensitive(false);
             }
             s_click.input(NetworkMsg::SelectAp(net_item.clone()));
         });
+        main_box.add_controller(main_gesture);
 
-        // Right-click gesture (ПКМ)
-        if net.is_saved {
-            let s_right = sender.clone();
-            let ssid_right = net.ssid.clone();
-            let gesture = gtk4::GestureClick::new();
-            gesture.set_button(BUTTON_SECONDARY);
-            gesture.connect_pressed(move |_, _, _, _| {
-                s_right.input(NetworkMsg::ToggleExpandAp(ssid_right.clone()));
-            });
-            row.add_controller(gesture);
-        }
+        // Right-click gesture (ПКМ) on the entire card -> toggle expand
+        let s_right = sender.clone();
+        let ssid_right = net.ssid.clone();
+        let right_gesture = gtk4::GestureClick::new();
+        right_gesture.set_button(BUTTON_SECONDARY);
+        right_gesture.connect_pressed(move |_, _, _, _| {
+            s_right.input(NetworkMsg::ToggleExpandAp(ssid_right.clone()));
+        });
+        card.add_controller(right_gesture);
 
-        row_box.append(&row);
+        // Integrated Accordion Drawer INSIDE the card (for ALL networks!)
+        if is_exp {
+            let sep = gtk4::Separator::new(Orientation::Horizontal);
+            sep.add_css_class("card-drawer-sep");
+            card.append(&sep);
 
-        // ⋮ Quick actions button
-        if net.is_saved {
-            let more_btn = Button::with_label("⋮");
-            more_btn.add_css_class("card-more-btn");
-            if is_exp {
-                more_btn.add_css_class("expanded");
-            }
-            more_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
-            let s_more = sender.clone();
-            let ssid_more = net.ssid.clone();
-            more_btn.connect_clicked(move |_| {
-                s_more.input(NetworkMsg::ToggleExpandAp(ssid_more.clone()));
-            });
-            row_box.append(&more_btn);
-        }
+            let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
+            drawer.add_css_class("card-drawer-inner");
 
-        item_box.append(&row_box);
-
-        // Accordion Drawer
-        if is_exp
-            && let Some(conn) = saved_conns.get(&net.ssid)
-        {
-            let drawer = gtk4::Box::new(Orientation::Horizontal, 8);
-            drawer.add_css_class("card-drawer");
-
+            if let Some(conn) = saved_conns.get(&net.ssid) {
                 // 1. Autoconnect chip
                 let auto_btn = Button::new();
                 auto_btn.add_css_class("drawer-chip");
@@ -1217,10 +1217,55 @@ fn populate_wifi_list(
                 });
                 drawer.append(&forget_btn);
 
-                item_box.append(&drawer);
+                // 3. Connect / Disconnect chip
+                if net.is_active {
+                    let disc_btn = Button::with_label(tr("󱚼 Disconnect", "󱚼 Отключиться"));
+                    disc_btn.add_css_class("drawer-chip");
+                    let s_disc = sender.clone();
+                    let net_disc = net.clone();
+                    disc_btn.connect_clicked(move |_| {
+                        s_disc.input(NetworkMsg::SelectAp(net_disc.clone()));
+                    });
+                    drawer.append(&disc_btn);
+                } else {
+                    let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                    conn_btn.add_css_class("drawer-chip");
+                    let s_c = sender.clone();
+                    let net_c = net.clone();
+                    conn_btn.connect_clicked(move |_| {
+                        s_c.input(NetworkMsg::SelectAp(net_c.clone()));
+                    });
+                    drawer.append(&conn_btn);
+                }
+            } else {
+                // Unsaved network actions
+                // 1. Connect chip
+                let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                conn_btn.add_css_class("drawer-chip");
+                let s_c = sender.clone();
+                let net_c = net.clone();
+                conn_btn.connect_clicked(move |_| {
+                    s_c.input(NetworkMsg::SelectAp(net_c.clone()));
+                });
+                drawer.append(&conn_btn);
+
+                // 2. Technical info chip
+                let sec_desc = if net.security.is_empty() {
+                    tr("Open", "Открытая").to_string()
+                } else {
+                    net.security.clone()
+                };
+                let info_label = format!("󰋼 {} • {}%", sec_desc, net.signal);
+                let info_chip = Label::new(Some(&info_label));
+                info_chip.add_css_class("drawer-chip");
+                info_chip.add_css_class("info");
+                drawer.append(&info_chip);
+            }
+
+            card.append(&drawer);
         }
 
-        list_box.append(&item_box);
+        list_box.append(&card);
     }
 }
 

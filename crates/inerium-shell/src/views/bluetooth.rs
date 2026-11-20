@@ -526,23 +526,24 @@ fn populate_list(
     }
 
     for dev in devices {
-        let item_box = gtk4::Box::new(Orientation::Vertical, 0);
-        item_box.set_margin_bottom(4);
-
-        let row_box = gtk4::Box::new(Orientation::Horizontal, 4);
-
-        let row = Button::new();
-        row.add_css_class("card-item");
-        row.set_hexpand(true);
+        let card = gtk4::Box::new(Orientation::Vertical, 0);
+        card.add_css_class("card-item");
         if dev.connected {
-            row.add_css_class("active");
+            card.add_css_class("active");
         }
         let is_exp = expanded_mac == Some(dev.mac.as_str());
         if is_exp {
-            row.add_css_class("expanded");
+            card.add_css_class("expanded");
         }
 
-        let inner = gtk4::Box::new(Orientation::Horizontal, 8);
+        // Header row
+        let header_row = gtk4::Box::new(Orientation::Horizontal, 8);
+
+        // Clickable main area (icon + text + badge)
+        let main_box = gtk4::Box::new(Orientation::Horizontal, 8);
+        main_box.set_hexpand(true);
+        main_box.set_cursor_from_name(Some("pointer"));
+
         let ico_str = if dev.name.to_lowercase().contains("buds")
             || dev.name.to_lowercase().contains("head")
         {
@@ -556,7 +557,7 @@ fn populate_list(
         };
         let ico = Label::new(Some(ico_str));
         ico.add_css_class("card-icon");
-        inner.append(&ico);
+        main_box.append(&ico);
 
         let txt = gtk4::Box::new(Orientation::Vertical, 1);
         txt.set_hexpand(true);
@@ -579,7 +580,7 @@ fn populate_list(
         sub_lbl.add_css_class("card-sub");
         sub_lbl.set_xalign(0.0);
         txt.append(&sub_lbl);
-        inner.append(&txt);
+        main_box.append(&txt);
 
         let badge_text = if dev.connected {
             tr("󰄬 Connected", "󰄬 Подключено")
@@ -591,11 +592,28 @@ fn populate_list(
         let badge = Label::new(Some(badge_text));
         badge.add_css_class("card-badge");
         badge.set_visible(true);
-        inner.append(&badge);
+        main_box.append(&badge);
 
-        row.set_child(Some(&inner));
+        header_row.append(&main_box);
 
-        // Tooltip
+        // Chevron expand button on the right inside the card
+        let chevron_btn = Button::new();
+        chevron_btn.add_css_class("card-chevron");
+        let chev_lbl = Label::new(Some(if is_exp { "󰅃" } else { "󰅀" }));
+        chevron_btn.set_child(Some(&chev_lbl));
+        chevron_btn.set_cursor_from_name(Some("pointer"));
+        chevron_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
+
+        let s_chev = sender.clone();
+        let mac_chev = dev.mac.clone();
+        chevron_btn.connect_clicked(move |_| {
+            s_chev.input(BtMsg::ToggleExpandDevice(mac_chev.clone()));
+        });
+        header_row.append(&chevron_btn);
+
+        card.append(&header_row);
+
+        // Tooltip on the entire card
         let mut tip = format!(
             "{}: {}\nMAC: {}\n{}: {}",
             tr("Device", "Устройство"),
@@ -624,17 +642,17 @@ fn populate_list(
                 }
             ));
         }
-        row.set_tooltip_text(Some(&tip));
+        card.set_tooltip_text(Some(&tip));
 
+        // Primary click on main_box -> connect / disconnect / pair
         let mac = dev.mac.clone();
         let is_conn = dev.connected;
         let is_paired = dev.paired;
         let s = sender.clone();
-        let r_ui = row.clone();
         let b_ui = badge.clone();
-
-        row.connect_clicked(move |_| {
-            r_ui.set_sensitive(false);
+        let main_gesture = gtk4::GestureClick::new();
+        main_gesture.set_button(gdk4::BUTTON_PRIMARY);
+        main_gesture.connect_released(move |_, _, _, _| {
             b_ui.set_label(if is_conn {
                 tr("󰑐 Disconnecting...", "󰑐 Отключение...")
             } else {
@@ -643,86 +661,105 @@ fn populate_list(
             b_ui.set_visible(true);
             s.input(BtMsg::ConnectDevice(mac.clone(), is_conn, is_paired));
         });
+        main_box.add_controller(main_gesture);
 
-        let can_manage = dev.paired || dev.connected;
+        // Right-click gesture (ПКМ) on the entire card -> toggle expand
+        let s_right = sender.clone();
+        let mac_right = dev.mac.clone();
+        let right_gesture = gtk4::GestureClick::new();
+        right_gesture.set_button(BUTTON_SECONDARY);
+        right_gesture.connect_pressed(move |_, _, _, _| {
+            s_right.input(BtMsg::ToggleExpandDevice(mac_right.clone()));
+        });
+        card.add_controller(right_gesture);
 
-        // Right-click gesture (ПКМ)
-        if can_manage {
-            let s_right = sender.clone();
-            let mac_right = dev.mac.clone();
-            let gesture = gtk4::GestureClick::new();
-            gesture.set_button(BUTTON_SECONDARY);
-            gesture.connect_pressed(move |_, _, _, _| {
-                s_right.input(BtMsg::ToggleExpandDevice(mac_right.clone()));
-            });
-            row.add_controller(gesture);
-        }
+        // Integrated Accordion Drawer INSIDE the card (for ALL devices!)
+        if is_exp {
+            let sep = gtk4::Separator::new(Orientation::Horizontal);
+            sep.add_css_class("card-drawer-sep");
+            card.append(&sep);
 
-        row_box.append(&row);
+            let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
+            drawer.add_css_class("card-drawer-inner");
 
-        // ⋮ Quick actions button
-        if can_manage {
-            let more_btn = Button::with_label("⋮");
-            more_btn.add_css_class("card-more-btn");
-            if is_exp {
-                more_btn.add_css_class("expanded");
-            }
-            more_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
-            let s_more = sender.clone();
-            let mac_more = dev.mac.clone();
-            more_btn.connect_clicked(move |_| {
-                s_more.input(BtMsg::ToggleExpandDevice(mac_more.clone()));
-            });
-            row_box.append(&more_btn);
-        }
+            if dev.paired || dev.connected {
+                // 1. Trust toggle chip
+                let trust_btn = Button::new();
+                trust_btn.add_css_class("drawer-chip");
+                if dev.trusted {
+                    trust_btn.add_css_class("on");
+                    trust_btn.set_label(tr("󰒓 Trusted: Yes", "󰒓 Доверять: Да"));
+                } else {
+                    trust_btn.set_label(tr("󰒓 Trusted: No", "󰒓 Доверять: Нет"));
+                }
+                trust_btn.set_tooltip_text(Some(tr(
+                    "Allow automatic trusted connection from this device",
+                    "Разрешить автоматическое доверительное подключение",
+                )));
+                let s_trust = sender.clone();
+                let mac_trust = dev.mac.clone();
+                let cur_trust = dev.trusted;
+                trust_btn.connect_clicked(move |_| {
+                    s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
+                });
+                drawer.append(&trust_btn);
 
-        item_box.append(&row_box);
+                // 2. Forget device chip
+                let forget_btn = Button::with_label(tr("󰆴 Forget Device", "󰆴 Забыть"));
+                forget_btn.add_css_class("drawer-chip");
+                forget_btn.add_css_class("danger");
+                forget_btn.set_tooltip_text(Some(tr(
+                    "Remove and unpair this Bluetooth device",
+                    "Удалить сопряжение с устройством",
+                )));
+                let s_forget = sender.clone();
+                let mac_forget = dev.mac.clone();
+                forget_btn.connect_clicked(move |_| {
+                    s_forget.input(BtMsg::ForgetDevice(mac_forget.clone()));
+                });
+                drawer.append(&forget_btn);
 
-        // Accordion Drawer
-        if is_exp && can_manage {
-            let drawer = gtk4::Box::new(Orientation::Horizontal, 8);
-            drawer.add_css_class("card-drawer");
-
-            // 1. Trust toggle chip
-            let trust_btn = Button::new();
-            trust_btn.add_css_class("drawer-chip");
-            if dev.trusted {
-                trust_btn.add_css_class("on");
-                trust_btn.set_label(tr("󰒓 Trusted: Yes", "󰒓 Доверять: Да"));
+                // 3. Connect / Disconnect chip
+                if dev.connected {
+                    let disc_btn = Button::with_label(tr("󰑐 Disconnect", "󰑐 Отключить"));
+                    disc_btn.add_css_class("drawer-chip");
+                    let s_d = sender.clone();
+                    let m_d = dev.mac.clone();
+                    disc_btn.connect_clicked(move |_| {
+                        s_d.input(BtMsg::ConnectDevice(m_d.clone(), true, true));
+                    });
+                    drawer.append(&disc_btn);
+                } else {
+                    let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
+                    conn_btn.add_css_class("drawer-chip");
+                    let s_c = sender.clone();
+                    let m_c = dev.mac.clone();
+                    conn_btn.connect_clicked(move |_| {
+                        s_c.input(BtMsg::ConnectDevice(m_c.clone(), false, true));
+                    });
+                    drawer.append(&conn_btn);
+                }
             } else {
-                trust_btn.set_label(tr("󰒓 Trusted: No", "󰒓 Доверять: Нет"));
+                // New/unpaired device
+                let pair_btn = Button::with_label(tr("󰄬 Pair", "󰄬 Сопряжение"));
+                pair_btn.add_css_class("drawer-chip");
+                let s_p = sender.clone();
+                let m_p = dev.mac.clone();
+                pair_btn.connect_clicked(move |_| {
+                    s_p.input(BtMsg::ConnectDevice(m_p.clone(), false, false));
+                });
+                drawer.append(&pair_btn);
+
+                let info_chip = Label::new(Some(&format!("󰋼 MAC: {}", dev.mac)));
+                info_chip.add_css_class("drawer-chip");
+                info_chip.add_css_class("info");
+                drawer.append(&info_chip);
             }
-            trust_btn.set_tooltip_text(Some(tr(
-                "Allow automatic trusted connection from this device",
-                "Разрешить автоматическое доверительное подключение",
-            )));
-            let s_trust = sender.clone();
-            let mac_trust = dev.mac.clone();
-            let cur_trust = dev.trusted;
-            trust_btn.connect_clicked(move |_| {
-                s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
-            });
-            drawer.append(&trust_btn);
 
-            // 2. Forget device chip
-            let forget_btn = Button::with_label(tr("󰆴 Forget Device", "󰆴 Забыть"));
-            forget_btn.add_css_class("drawer-chip");
-            forget_btn.add_css_class("danger");
-            forget_btn.set_tooltip_text(Some(tr(
-                "Remove and unpair this Bluetooth device",
-                "Удалить сопряжение с устройством",
-            )));
-            let s_forget = sender.clone();
-            let mac_forget = dev.mac.clone();
-            forget_btn.connect_clicked(move |_| {
-                s_forget.input(BtMsg::ForgetDevice(mac_forget.clone()));
-            });
-            drawer.append(&forget_btn);
-
-            item_box.append(&drawer);
+            card.append(&drawer);
         }
 
-        list_box.append(&item_box);
+        list_box.append(&card);
     }
 }
 
