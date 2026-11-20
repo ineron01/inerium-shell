@@ -1,7 +1,13 @@
 MenuBar=Disabled
 
+[DetailsMode]
+PreviewSize=22
+
 [General]
 Version=202
+
+[IconsMode]
+PreviewSize=80
 
 [KFileDialog Settings]
 Places Icons Auto-resize=false
@@ -9,6 +15,9 @@ Places Icons Static Size=22
 
 [MainWindow]
 MenuBar=Disabled
+
+[Search]
+Location=Everywhere
 
 [UiSettings]
 ColorScheme=Inerium-ineron
