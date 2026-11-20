@@ -7,6 +7,11 @@ variant = "dark"
 license = "MIT"
 description = "An arctic, north-bluish clean and elegant color palette"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(46, 52, 64, 0.98)"
 bg_surface        = "#3b4252"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#434c5e"
 bg_surface_active = "#4c566a"
 
 border_subtle     = "rgba(76, 86, 106, 0.40)"
-border_active     = "rgba(136, 192, 208, 0.70)"
+border_active     = "#88c0d0"
+border_active_secondary = "#81a1c1"
 
 text_primary      = "#eceff4"
 text_heading      = "#eceff4"
 text_muted        = "#7b88a1"
 text_subtle       = "#d8dee9"
 text_inverted     = "#2e3440"
+
+slider_fill       = "#88c0d0"
+slider_fill_secondary = "#ebcb8b"
 
 accent_primary    = "#88c0d0"
 accent_orange     = "#d08770"

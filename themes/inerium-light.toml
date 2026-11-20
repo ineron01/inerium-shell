@@ -7,6 +7,11 @@ variant = "light"
 license = "MIT"
 description = "Modern neutral light theme with crisp contrast, clean surfaces, and slate accents"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(248, 249, 250, 0.98)"
 bg_surface        = "#ffffff"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#f1f5f9"
 bg_surface_active = "#e2e8f0"
 
 border_subtle     = "rgba(15, 23, 42, 0.12)"
-border_active     = "rgba(37, 99, 235, 0.55)"
+border_active     = "#2563eb"
+border_active_secondary = "#0891b2"
 
 text_primary      = "#1e293b"
 text_heading      = "#0f172a"
 text_muted        = "#475569"
 text_subtle       = "#64748b"
 text_inverted     = "#f8f9fa"
+
+slider_fill       = "#2563eb"
+slider_fill_secondary = "#d97706"
 
 accent_primary    = "#2563eb"
 accent_orange     = "#ea580c"

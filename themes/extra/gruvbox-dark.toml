@@ -7,6 +7,11 @@ variant = "dark"
 license = "MIT"
 description = "Retro groove color scheme with warm autumnal contrast"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(40, 40, 40, 0.98)"
 bg_surface        = "#32302f"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#3c3836"
 bg_surface_active = "#504945"
 
 border_subtle     = "rgba(146, 131, 116, 0.25)"
-border_active     = "rgba(254, 128, 25, 0.70)"
+border_active     = "#fe8019"
+border_active_secondary = "#fabd2f"
 
 text_primary      = "#ebdbb2"
 text_heading      = "#fbf1c7"
 text_muted        = "#928374"
 text_subtle       = "#d5c4a1"
 text_inverted     = "#282828"
+
+slider_fill       = "#fe8019"
+slider_fill_secondary = "#fabd2f"
 
 accent_primary    = "#fe8019"
 accent_orange     = "#fe8019"

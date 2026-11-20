@@ -7,6 +7,11 @@ variant = "dark"
 license = "MIT"
 description = "Classic dark Kanagawa variant inspired by the famous Great Wave off Kanagawa"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(31, 31, 40, 0.98)"
 bg_surface        = "#2a2a37"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#363646"
 bg_surface_active = "#43436c"
 
 border_subtle     = "rgba(114, 113, 105, 0.22)"
-border_active     = "rgba(126, 156, 216, 0.60)"
+border_active     = "#7e9cd8"
+border_active_secondary = "#957fb8"
 
 text_primary      = "#dcd7ba"
 text_heading      = "#e6e2cc"
 text_muted        = "#727169"
 text_subtle       = "#938aa9"
 text_inverted     = "#16161d"
+
+slider_fill       = "#7e9cd8"
+slider_fill_secondary = "#dca561"
 
 accent_primary    = "#7e9cd8"
 accent_orange     = "#ff9e3b"

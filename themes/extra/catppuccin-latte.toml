@@ -7,6 +7,11 @@ variant = "light"
 license = "MIT"
 description = "Crisp light pastel theme with soothing coffee and milk tones"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(239, 241, 245, 0.98)"
 bg_surface        = "#e6e9ef"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#dfe2ea"
 bg_surface_active = "#ccd0da"
 
 border_subtle     = "rgba(76, 79, 105, 0.16)"
-border_active     = "rgba(30, 102, 245, 0.55)"
+border_active     = "#8839ef"
+border_active_secondary = "#1e66f5"
 
 text_primary      = "#4c4f69"
 text_heading      = "#4c4f69"
 text_muted        = "#8c8fa1"
 text_subtle       = "#6c6f85"
 text_inverted     = "#eff1f5"
+
+slider_fill       = "#8839ef"
+slider_fill_secondary = "#fe640b"
 
 accent_primary    = "#1e66f5"
 accent_orange     = "#fe640b"

@@ -7,6 +7,11 @@ variant = "dark"
 license = "MIT"
 description = "A dark gothic theme with vibrant high-contrast neon accents"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(40, 42, 54, 0.98)"
 bg_surface        = "#343746"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#3f4356"
 bg_surface_active = "#44475a"
 
 border_subtle     = "rgba(98, 114, 164, 0.28)"
-border_active     = "rgba(255, 121, 198, 0.70)"
+border_active     = "#bd93f9"
+border_active_secondary = "#ff79c6"
 
 text_primary      = "#f8f8f2"
 text_heading      = "#f8f8f2"
 text_muted        = "#6272a4"
 text_subtle       = "#6272a4"
 text_inverted     = "#282a36"
+
+slider_fill       = "#bd93f9"
+slider_fill_secondary = "#ffb86c"
 
 accent_primary    = "#bd93f9"
 accent_orange     = "#ffb86c"

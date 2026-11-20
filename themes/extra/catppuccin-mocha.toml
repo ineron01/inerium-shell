@@ -7,6 +7,11 @@ variant = "dark"
 license = "MIT"
 description = "Soothing dark pastel theme with warm chocolate sumi tones"
 
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
 [palette]
 bg_canvas         = "rgba(30, 30, 46, 0.98)"
 bg_surface        = "#313244"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#45475a"
 bg_surface_active = "#585b70"
 
 border_subtle     = "rgba(69, 71, 90, 0.50)"
-border_active     = "rgba(203, 166, 247, 0.75)"
+border_active     = "#cba6f7"
+border_active_secondary = "#89b4fa"
 
 text_primary      = "#cdd6f4"
 text_heading      = "#cdd6f4"
 text_muted        = "#6c7086"
 text_subtle       = "#a6adc8"
 text_inverted     = "#11111b"
+
+slider_fill       = "#cba6f7"
+slider_fill_secondary = "#fab387"
 
 accent_primary    = "#89b4fa"
 accent_orange     = "#fab387"

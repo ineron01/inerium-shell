@@ -5,7 +5,12 @@ author = "rebelot"
 upstream = "https://github.com/rebelot/kanagawa.nvim"
 variant = "dark"
 license = "MIT"
-description = "Dark Kanagawa variant with warm dragon tones and sumi ink"
+description = "Dark Kanagawa variant with warm dragon tones, sumi ink, and balanced contrast"
+
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
 
 [palette]
 bg_canvas         = "rgba(24, 22, 22, 0.98)"
@@ -15,13 +20,17 @@ bg_surface_hover  = "#2d2a2a"
 bg_surface_active = "#363434"
 
 border_subtle     = "rgba(197, 201, 197, 0.12)"
-border_active     = "rgba(135, 169, 135, 0.70)"
+border_active     = "#87a987"
+border_active_secondary = "#8ba4b0"
 
 text_primary      = "#c5c9c5"
 text_heading      = "#e6e2cc"
 text_muted        = "#737c73"
 text_subtle       = "#a6a69c"
 text_inverted     = "#181616"
+
+slider_fill       = "#87a987"
+slider_fill_secondary = "#c4b28a"
 
 accent_primary    = "#87a987"
 accent_orange     = "#b6927b"
