@@ -11,12 +11,12 @@ hl.config({
     general = {
         gaps_in = 4,
         gaps_out = 4,
-        border_size = 2,
+        border_size = 1,
         extend_border_grab_area = 10,
         resize_on_border = true,
         col = {
             active_border = {
-                colors = { border_active_1, border_active_2 },
+                colors = { border_active_2, border_active_1 },
                 angle = 45,
             },
             inactive_border = border_inactive,
