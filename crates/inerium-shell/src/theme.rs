@@ -571,27 +571,34 @@ window.popup-window decoration {
     background-color: @cc_fg;
 }
 .card-drawer-inner {
-    padding: 1px 0 2px 0;
+    padding: 3px 0 2px 0;
 }
 .drawer-chip {
-    background-color: @cc_bg;
+    background-color: @cc_surface;
     border: 1px solid @cc_line;
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 10px;
-    font-weight: 500;
+    border-radius: 8px;
+    padding: 5px 4px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
     color: @cc_fg_subtle;
     box-shadow: none;
+    text-align: center;
 }
 .drawer-chip:hover {
-    background-color: @cc_surface_active;
+    background-color: @cc_surface_hover;
     border-color: @cc_line_light;
-    color: @cc_fg;
+    color: @cc_fg_bright;
 }
 .drawer-chip.on {
     background-color: @cc_green_bg;
     border-color: @cc_green_border;
     color: @cc_green;
+}
+.drawer-chip.on:hover {
+    background-color: @cc_green_bg;
+    border-color: @cc_green;
+    color: @cc_fg_bright;
 }
 .drawer-chip.danger {
     color: @cc_red;
@@ -600,12 +607,17 @@ window.popup-window decoration {
 .drawer-chip.danger:hover {
     background-color: @cc_red_bg;
     border-color: @cc_red;
-    color: @cc_red;
+    color: @cc_fg_bright;
 }
 .drawer-chip.info {
     color: @cc_fg_muted;
     border-color: transparent;
     background-color: alpha(@cc_line, 0.08);
+}
+.drawer-chip label {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
 }
 .auth-error {
     font-size: 11px;

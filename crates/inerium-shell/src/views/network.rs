@@ -227,6 +227,7 @@ pub enum NetworkMsg {
     PollStatus,
     ToggleExpandAp(String),
     ToggleAutoconnect(String, bool),
+    SavedConnectionsUpdated(HashMap<String, SavedConn>),
     ForgetSavedNetwork(String),
     SelectAp(WifiAp),
     PasswordInput(String),
@@ -652,8 +653,16 @@ impl SimpleComponent for NetworkModel {
                 let s = sender.clone();
                 thread::spawn(move || {
                     hw::set_connection_autoconnect(&uuid, enable);
-                    s.input(NetworkMsg::PollStatus);
+                    let fresh_saved = query_saved_wifi_connections();
+                    s.input(NetworkMsg::SavedConnectionsUpdated(fresh_saved));
                 });
+            }
+            NetworkMsg::SavedConnectionsUpdated(saved) => {
+                self.saved_connections = saved;
+                for net in &mut self.networks {
+                    net.is_saved = self.saved_connections.contains_key(&net.ssid);
+                }
+                self.needs_list_rebuild.set(true);
             }
             NetworkMsg::ForgetSavedNetwork(uuid) => {
                 self.expanded_ssid = None;
@@ -1179,11 +1188,14 @@ fn populate_wifi_list(
 
             let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
             drawer.add_css_class("card-drawer-inner");
+            drawer.set_hexpand(true);
+            drawer.set_homogeneous(true);
 
             if let Some(conn) = saved_conns.get(&net.ssid) {
                 // 1. Autoconnect chip
                 let auto_btn = Button::new();
                 auto_btn.add_css_class("drawer-chip");
+                auto_btn.set_hexpand(true);
                 if conn.autoconnect {
                     auto_btn.add_css_class("on");
                     auto_btn.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
@@ -1197,22 +1209,35 @@ fn populate_wifi_list(
                 let s_auto = sender.clone();
                 let u_auto = conn.uuid.clone();
                 let cur_auto = conn.autoconnect;
+                let b_auto = auto_btn.clone();
                 auto_btn.connect_clicked(move |_| {
+                    b_auto.set_sensitive(false);
+                    if cur_auto {
+                        b_auto.remove_css_class("on");
+                        b_auto.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                    } else {
+                        b_auto.add_css_class("on");
+                        b_auto.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                    }
                     s_auto.input(NetworkMsg::ToggleAutoconnect(u_auto.clone(), !cur_auto));
                 });
                 drawer.append(&auto_btn);
 
                 // 2. Forget network chip
-                let forget_btn = Button::with_label(tr("󰆴 Forget Network", "󰆴 Забыть сеть"));
+                let forget_btn = Button::with_label(tr("󰆴 Forget", "󰆴 Забыть"));
                 forget_btn.add_css_class("drawer-chip");
                 forget_btn.add_css_class("danger");
+                forget_btn.set_hexpand(true);
                 forget_btn.set_tooltip_text(Some(tr(
                     "Delete saved Wi-Fi profile and credentials",
                     "Удалить сохранённый профиль и пароль сети",
                 )));
                 let s_forget = sender.clone();
                 let u_forget = conn.uuid.clone();
+                let b_forget = forget_btn.clone();
                 forget_btn.connect_clicked(move |_| {
+                    b_forget.set_sensitive(false);
+                    b_forget.set_label(tr("󰑐 Forgetting...", "󰑐 Удаление..."));
                     s_forget.input(NetworkMsg::ForgetSavedNetwork(u_forget.clone()));
                 });
                 drawer.append(&forget_btn);
@@ -1221,18 +1246,26 @@ fn populate_wifi_list(
                 if net.is_active {
                     let disc_btn = Button::with_label(tr("󱚼 Disconnect", "󱚼 Отключиться"));
                     disc_btn.add_css_class("drawer-chip");
+                    disc_btn.set_hexpand(true);
                     let s_disc = sender.clone();
                     let net_disc = net.clone();
+                    let b_disc = disc_btn.clone();
                     disc_btn.connect_clicked(move |_| {
+                        b_disc.set_sensitive(false);
+                        b_disc.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
                         s_disc.input(NetworkMsg::SelectAp(net_disc.clone()));
                     });
                     drawer.append(&disc_btn);
                 } else {
                     let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
                     conn_btn.add_css_class("drawer-chip");
+                    conn_btn.set_hexpand(true);
                     let s_c = sender.clone();
                     let net_c = net.clone();
+                    let b_conn = conn_btn.clone();
                     conn_btn.connect_clicked(move |_| {
+                        b_conn.set_sensitive(false);
+                        b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                         s_c.input(NetworkMsg::SelectAp(net_c.clone()));
                     });
                     drawer.append(&conn_btn);
@@ -1242,9 +1275,13 @@ fn populate_wifi_list(
                 // 1. Connect chip
                 let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
                 conn_btn.add_css_class("drawer-chip");
+                conn_btn.set_hexpand(true);
                 let s_c = sender.clone();
                 let net_c = net.clone();
+                let b_conn = conn_btn.clone();
                 conn_btn.connect_clicked(move |_| {
+                    b_conn.set_sensitive(false);
+                    b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                     s_c.input(NetworkMsg::SelectAp(net_c.clone()));
                 });
                 drawer.append(&conn_btn);
@@ -1259,6 +1296,7 @@ fn populate_wifi_list(
                 let info_chip = Label::new(Some(&info_label));
                 info_chip.add_css_class("drawer-chip");
                 info_chip.add_css_class("info");
+                info_chip.set_hexpand(true);
                 drawer.append(&info_chip);
             }
 

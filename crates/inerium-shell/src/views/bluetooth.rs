@@ -681,16 +681,19 @@ fn populate_list(
 
             let drawer = gtk4::Box::new(Orientation::Horizontal, 6);
             drawer.add_css_class("card-drawer-inner");
+            drawer.set_hexpand(true);
+            drawer.set_homogeneous(true);
 
             if dev.paired || dev.connected {
                 // 1. Trust toggle chip
                 let trust_btn = Button::new();
                 trust_btn.add_css_class("drawer-chip");
+                trust_btn.set_hexpand(true);
                 if dev.trusted {
                     trust_btn.add_css_class("on");
-                    trust_btn.set_label(tr("󰒓 Trusted: Yes", "󰒓 Доверять: Да"));
+                    trust_btn.set_label(tr("󰒓 Trust: On", "󰒓 Доверие: Да"));
                 } else {
-                    trust_btn.set_label(tr("󰒓 Trusted: No", "󰒓 Доверять: Нет"));
+                    trust_btn.set_label(tr("󰒓 Trust: Off", "󰒓 Доверие: Нет"));
                 }
                 trust_btn.set_tooltip_text(Some(tr(
                     "Allow automatic trusted connection from this device",
@@ -699,22 +702,35 @@ fn populate_list(
                 let s_trust = sender.clone();
                 let mac_trust = dev.mac.clone();
                 let cur_trust = dev.trusted;
+                let b_trust = trust_btn.clone();
                 trust_btn.connect_clicked(move |_| {
+                    b_trust.set_sensitive(false);
+                    if cur_trust {
+                        b_trust.remove_css_class("on");
+                        b_trust.set_label(tr("󰒓 Trust: Off", "󰒓 Доверие: Нет"));
+                    } else {
+                        b_trust.add_css_class("on");
+                        b_trust.set_label(tr("󰒓 Trust: On", "󰒓 Доверие: Да"));
+                    }
                     s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
                 });
                 drawer.append(&trust_btn);
 
                 // 2. Forget device chip
-                let forget_btn = Button::with_label(tr("󰆴 Forget Device", "󰆴 Забыть"));
+                let forget_btn = Button::with_label(tr("󰆴 Forget", "󰆴 Забыть"));
                 forget_btn.add_css_class("drawer-chip");
                 forget_btn.add_css_class("danger");
+                forget_btn.set_hexpand(true);
                 forget_btn.set_tooltip_text(Some(tr(
                     "Remove and unpair this Bluetooth device",
                     "Удалить сопряжение с устройством",
                 )));
                 let s_forget = sender.clone();
                 let mac_forget = dev.mac.clone();
+                let b_forget = forget_btn.clone();
                 forget_btn.connect_clicked(move |_| {
+                    b_forget.set_sensitive(false);
+                    b_forget.set_label(tr("󰑐 Forgetting...", "󰑐 Удаление..."));
                     s_forget.input(BtMsg::ForgetDevice(mac_forget.clone()));
                 });
                 drawer.append(&forget_btn);
@@ -723,18 +739,26 @@ fn populate_list(
                 if dev.connected {
                     let disc_btn = Button::with_label(tr("󰑐 Disconnect", "󰑐 Отключить"));
                     disc_btn.add_css_class("drawer-chip");
+                    disc_btn.set_hexpand(true);
                     let s_d = sender.clone();
                     let m_d = dev.mac.clone();
+                    let b_disc = disc_btn.clone();
                     disc_btn.connect_clicked(move |_| {
+                        b_disc.set_sensitive(false);
+                        b_disc.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
                         s_d.input(BtMsg::ConnectDevice(m_d.clone(), true, true));
                     });
                     drawer.append(&disc_btn);
                 } else {
                     let conn_btn = Button::with_label(tr("󰄬 Connect", "󰄬 Подключить"));
                     conn_btn.add_css_class("drawer-chip");
+                    conn_btn.set_hexpand(true);
                     let s_c = sender.clone();
                     let m_c = dev.mac.clone();
+                    let b_conn = conn_btn.clone();
                     conn_btn.connect_clicked(move |_| {
+                        b_conn.set_sensitive(false);
+                        b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                         s_c.input(BtMsg::ConnectDevice(m_c.clone(), false, true));
                     });
                     drawer.append(&conn_btn);
@@ -743,9 +767,13 @@ fn populate_list(
                 // New/unpaired device
                 let pair_btn = Button::with_label(tr("󰄬 Pair", "󰄬 Сопряжение"));
                 pair_btn.add_css_class("drawer-chip");
+                pair_btn.set_hexpand(true);
                 let s_p = sender.clone();
                 let m_p = dev.mac.clone();
+                let b_pair = pair_btn.clone();
                 pair_btn.connect_clicked(move |_| {
+                    b_pair.set_sensitive(false);
+                    b_pair.set_label(tr("󰑐 Pairing...", "󰑐 Сопряжение..."));
                     s_p.input(BtMsg::ConnectDevice(m_p.clone(), false, false));
                 });
                 drawer.append(&pair_btn);
@@ -753,6 +781,7 @@ fn populate_list(
                 let info_chip = Label::new(Some(&format!("󰋼 MAC: {}", dev.mac)));
                 info_chip.add_css_class("drawer-chip");
                 info_chip.add_css_class("info");
+                info_chip.set_hexpand(true);
                 drawer.append(&info_chip);
             }
 
