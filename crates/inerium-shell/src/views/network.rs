@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use gdk4::BUTTON_SECONDARY;
 use gtk4::prelude::*;
-use gtk4::{Button, Label, Orientation, PolicyType};
+use gtk4::{Align, Button, Label, Orientation, PolicyType};
 use inerium_i18n::{tr, tr_fmt};
 use relm4::prelude::*;
 
@@ -264,52 +264,31 @@ impl SimpleComponent for NetworkModel {
             set_spacing: 10,
             set_size_request: (390, 420),
 
-            // Header (Back, Title & Status subtitle, Power switch)
+            // Header (Back, Title, Power switch)
             gtk4::Box {
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
+                set_valign: Align::Center,
 
                 gtk4::Button {
                     add_css_class: "back-btn",
                     set_label: tr("‹ Back", "‹ Назад"),
+                    set_valign: Align::Center,
                     connect_clicked => NetworkMsg::Back,
                 },
 
-                gtk4::Box {
-                    set_orientation: Orientation::Vertical,
-                    set_spacing: 1,
+                gtk4::Label {
+                    add_css_class: "cc-host",
+                    set_label: tr("Wi-Fi & Networks", "Wi-Fi и сети"),
                     set_hexpand: true,
-
-                    gtk4::Label {
-                        add_css_class: "cc-host",
-                        set_xalign: 0.0,
-                        set_label: tr("Wi-Fi & Networks", "Wi-Fi и сети"),
-                    },
-
-                    #[name = "status_sub"]
-                    gtk4::Label {
-                        add_css_class: "card-sub",
-                        set_xalign: 0.0,
-                        set_ellipsize: gtk4::pango::EllipsizeMode::End,
-                        set_max_width_chars: 24,
-                        #[watch]
-                        set_label: &{
-                            if model.hotspot_active {
-                                tr("󱜠 Hotspot is active", "󱜠 Раздача Wi-Fi активна").to_string()
-                            } else if !model.wifi_enabled {
-                                tr("Wi-Fi is turned off", "Беспроводная сеть выключена").to_string()
-                            } else if let Some(ref ssid) = model.active_ssid {
-                                tr_fmt!("󰄬 Connected: {ssid}", "󰄬 Подключено: {ssid}", ssid = ssid)
-                            } else {
-                                tr("Not connected", "Не подключено").to_string()
-                            }
-                        },
-                    },
+                    set_xalign: 0.0,
+                    set_valign: Align::Center,
                 },
 
                 #[name = "pwr_switch"]
                 gtk4::Switch {
                     set_active: model.wifi_enabled,
+                    set_valign: Align::Center,
                     connect_state_set[sender] => move |_, state| {
                         sender.input(NetworkMsg::ToggleWifi(state));
                         glib::Propagation::Proceed

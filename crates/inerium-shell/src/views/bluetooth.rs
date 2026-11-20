@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gdk4::BUTTON_SECONDARY;
 use gtk4::prelude::*;
-use gtk4::{Button, Label, Orientation};
+use gtk4::{Align, Button, Label, Orientation};
 use inerium_i18n::tr;
 use relm4::prelude::*;
 
@@ -187,10 +187,12 @@ impl SimpleComponent for BluetoothModel {
             gtk4::Box {
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
+                set_valign: Align::Center,
 
                 gtk4::Button {
                     add_css_class: "back-btn",
                     set_label: &tr("‹ Back", "‹ Назад"),
+                    set_valign: Align::Center,
                     connect_clicked => BtMsg::Back,
                 },
 
@@ -199,11 +201,13 @@ impl SimpleComponent for BluetoothModel {
                     set_label: "Bluetooth",
                     set_hexpand: true,
                     set_xalign: 0.0,
+                    set_valign: Align::Center,
                 },
 
                 #[name = "pwr_switch"]
                 gtk4::Switch {
                     set_active: model.enabled,
+                    set_valign: Align::Center,
                     connect_state_set[sender] => move |_, state| {
                         sender.input(BtMsg::TogglePower(state));
                         glib::Propagation::Proceed

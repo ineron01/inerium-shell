@@ -964,9 +964,10 @@ scrollbar slider:hover {
 switch {
     background-color: @cc_surface_hover;
     border: 1px solid @cc_line_light;
-    border-radius: 14px;
+    border-radius: 12px;
     min-width: 44px;
     min-height: 24px;
+    padding: 0;
     transition: all 200ms ease;
 }
 switch:hover {
@@ -978,7 +979,7 @@ switch:checked {
 }
 switch slider {
     background-color: @cc_fg_muted;
-    border-radius: 10px;
+    border-radius: 9px;
     min-width: 18px;
     min-height: 18px;
     margin: 2px;

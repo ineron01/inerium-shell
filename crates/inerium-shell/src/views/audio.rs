@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Button, Label, Orientation};
+use gtk4::{Align, Button, Label, Orientation};
 use inerium_i18n::tr;
 use relm4::prelude::*;
 
@@ -51,10 +51,12 @@ impl SimpleComponent for AudioViewModel {
             gtk4::Box {
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
+                set_valign: Align::Center,
 
                 gtk4::Button {
                     add_css_class: "back-btn",
                     set_label: &tr("‹ Back", "‹ Назад"),
+                    set_valign: Align::Center,
                     connect_clicked => AudioMsg::Back,
                 },
 
@@ -63,11 +65,13 @@ impl SimpleComponent for AudioViewModel {
                     set_label: &tr("Audio Devices", "Аудиоустройства"),
                     set_hexpand: true,
                     set_xalign: 0.0,
+                    set_valign: Align::Center,
                 },
 
                 gtk4::Button {
                     add_css_class: "cc-chip",
                     set_label: &tr("󰕾 Mixer", "󰕾 Микшер"),
+                    set_valign: Align::Center,
                     connect_clicked => AudioMsg::OpenMixer,
                 },
             },
