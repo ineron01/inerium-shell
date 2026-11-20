@@ -1,13 +1,13 @@
 [Appearance]
 color_scheme_path=__HOME__/.config/qt5ct/colors/Inerium-Dragon.conf
 custom_palette=true
-icon_theme=Papirus-Dark
+icon_theme=Colloid-Dark
 standard_dialogs=gtk3
 style=Fusion
 
 [Fonts]
 fixed="JetBrainsMono Nerd Font,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0"
-general="JetBrainsMono Nerd Font,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0"
+general="Inter,10.5,-1,5,400,0,0,0,0,0,0,0,0,0,0,1,,0,0"
 
 [Interface]
 activate_item_on_single_click=1

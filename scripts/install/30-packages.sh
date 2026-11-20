@@ -74,6 +74,10 @@ install_base_packages() {
         run_step "Installing Bibata cursor theme..." bash -c 'paru -S --needed --noconfirm bibata-cursor-theme-bin || true'
     fi
 
+    if [[ ! -d /usr/share/icons/Colloid-Dark && ! -d "$HOME/.local/share/icons/Colloid-Dark" ]]; then
+        run_step "Installing Colloid icon theme..." bash -c 'paru -S --needed --noconfirm colloid-icon-theme || true'
+    fi
+
     for svc in NetworkManager.service bluetooth.service power-profiles-daemon.service; do
         if ! systemctl is-enabled --quiet "$svc" 2>/dev/null && systemctl list-unit-files "$svc" >/dev/null 2>&1; then
             run "sudo systemctl enable '$svc' >/dev/null 2>&1 || true"

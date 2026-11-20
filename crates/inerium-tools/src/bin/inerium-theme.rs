@@ -1296,7 +1296,7 @@ Name={}
         bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
         bg_hover, bg_hover, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
         bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_surface, bg_canvas, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
+        bg_canvas, bg_canvas, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
         bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
         theme.theme.name, theme.theme.name,
     )
@@ -1558,10 +1558,22 @@ pub fn apply_theme(theme: &ThemeConfig) {
     let _ = fs::write(&theme_vars_css, emit_gtk_vars(theme));
 
     // 2. GSettings (Portal, Browsers, VS Code, GTK)
-    let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
-        ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark")
+    let has_colloid = home.join(".local/share/icons/Colloid-Dark").exists()
+        || std::path::Path::new("/usr/share/icons/Colloid-Dark").exists();
+    let dark_icon = if has_colloid { "Colloid-Dark" } else { "Papirus-Dark" };
+    let light_icon = if has_colloid
+        && (home.join(".local/share/icons/Colloid-Light").exists()
+            || std::path::Path::new("/usr/share/icons/Colloid-Light").exists())
+    {
+        "Colloid-Light"
     } else {
-        ("prefer-light", "adw-gtk3", "Papirus-Light")
+        "Papirus-Light"
+    };
+
+    let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
+        ("prefer-dark", "adw-gtk3-dark", dark_icon)
+    } else {
+        ("prefer-light", "adw-gtk3", light_icon)
     };
 
     let _ = Command::new("gsettings")
