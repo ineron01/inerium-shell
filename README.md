@@ -13,6 +13,10 @@
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
 
 <p align="center">
+  <img src="assets/preview/desktop.png" alt="Inerium Desktop" width="100%" />
+</p>
+
+<p align="center">
   <img src="assets/preview/control_center.png" alt="Control Center" width="32%" />
   <img src="assets/preview/appearance.png" alt="Appearance & Themes" width="32%" />
   <img src="assets/preview/audio_menu.png" alt="Audio Mixer" width="32%" />
@@ -22,6 +26,9 @@ Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua 
   <img src="assets/preview/power_menu.png" alt="Power Menu" width="48%" />
   <img src="assets/preview/lockscreen.png" alt="Lockscreen" width="16%" />
 </p>
+
+> [!NOTE]
+> Showcase previews feature the developer's personal theme (**Ineron**). Inerium Desktop ships out-of-the-box with **Inerium Dragon** and provides popular bundled upstream palettes via `inerium-theme list --all`.
 
 ---
 

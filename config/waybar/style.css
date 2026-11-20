@@ -178,19 +178,9 @@ window#waybar {
 #clock,
 #custom-clock {
     padding: 0 16px;
-    font-size: 1.02em;
+    font-size: 1em;
     font-weight: 700;
     color: @fg-bright;
-}
-
-window#waybar.eDP-2 #clock,
-window#waybar.eDP-2 #custom-clock {
-    font-size: 1.05em;
-}
-
-window#waybar.HDMI-A-1 #clock,
-window#waybar.HDMI-A-1 #custom-clock {
-    font-size: 0.96em;
 }
 
 #clock:hover,
