@@ -75,7 +75,19 @@ install_base_packages() {
     fi
 
     if [[ ! -d /usr/share/icons/Colloid-Dark && ! -d "$HOME/.local/share/icons/Colloid-Dark" ]]; then
-        run_step "Installing Colloid icon theme..." bash -c 'paru -S --needed --noconfirm colloid-icon-theme || true'
+        run_step "Installing Colloid icon theme..." bash -c '
+            tmp_colloid=$(mktemp -d)
+            if git clone --depth 1 https://github.com/vinceliuice/Colloid-icon-theme.git "$tmp_colloid" 2>/dev/null; then
+                "$tmp_colloid/install.sh" -d "$HOME/.local/share/icons" -notint
+                for t in Colloid Colloid-Dark Colloid-Light; do
+                    rm -rf "$HOME/.local/share/icons/$t"/apps*
+                    gtk-update-icon-cache -f "$HOME/.local/share/icons/$t" 2>/dev/null || true
+                done
+                rm -rf "$tmp_colloid"
+            else
+                paru -S --needed --noconfirm colloid-icon-theme-git || true
+            fi
+        '
     fi
 
     for svc in NetworkManager.service bluetooth.service power-profiles-daemon.service; do
