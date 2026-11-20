@@ -262,7 +262,7 @@ impl SimpleComponent for NetworkModel {
             add_css_class: "popup-container",
             set_orientation: Orientation::Vertical,
             set_spacing: 10,
-            set_size_request: (390, -1),
+            set_size_request: (390, 420),
 
             // Header (Back, Title & Status subtitle, Power switch)
             gtk4::Box {
@@ -290,6 +290,8 @@ impl SimpleComponent for NetworkModel {
                     gtk4::Label {
                         add_css_class: "card-sub",
                         set_xalign: 0.0,
+                        set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                        set_max_width_chars: 24,
                         #[watch]
                         set_label: &{
                             if model.hotspot_active {
@@ -363,6 +365,8 @@ impl SimpleComponent for NetworkModel {
                 gtk4::Label {
                     add_css_class: "card-title",
                     set_xalign: 0.0,
+                    set_ellipsize: gtk4::pango::EllipsizeMode::End,
+                    set_max_width_chars: 28,
                     #[watch]
                     set_label: &if let Some(ref p) = model.password_prompt {
                         tr_fmt!("Connecting to «{ssid}»", "Подключение к «{ssid}»", ssid = p.ssid)
@@ -460,9 +464,7 @@ impl SimpleComponent for NetworkModel {
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::Automatic),
-                set_propagate_natural_height: true,
-                set_min_content_height: 180,
-                set_max_content_height: 320,
+                set_propagate_natural_height: false,
                 set_vexpand: true,
 
                 #[name = "list_box"]
@@ -1056,6 +1058,7 @@ fn populate_wifi_list(
         let sec_lbl = Label::new(Some(&sec_str));
         sec_lbl.add_css_class("card-sub");
         sec_lbl.set_xalign(0.0);
+        sec_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         txt.append(&sec_lbl);
         main_box.append(&txt);
 
@@ -1323,5 +1326,5 @@ where
     let mut controller = NetworkModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 390, 380)
+    (root, 390, 420)
 }

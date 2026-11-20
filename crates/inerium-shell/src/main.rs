@@ -447,6 +447,7 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
         win.set_child(Some(&child));
         (mx, my)
     } else {
+        child.set_size_request(req_w, effective_h);
         win.set_size_request(req_w, effective_h);
         win.set_child(Some(&child));
 

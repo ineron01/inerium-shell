@@ -181,7 +181,7 @@ impl SimpleComponent for BluetoothModel {
             add_css_class: "popup-container",
             set_orientation: Orientation::Vertical,
             set_spacing: 10,
-            set_size_request: (380, -1),
+            set_size_request: (380, 400),
 
             // Header
             gtk4::Box {
@@ -252,9 +252,7 @@ impl SimpleComponent for BluetoothModel {
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
                 set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::Automatic),
-                set_propagate_natural_height: true,
-                set_min_content_height: 160,
-                set_max_content_height: 300,
+                set_propagate_natural_height: false,
                 set_vexpand: true,
 
                 #[name = "list_box"]
@@ -808,5 +806,5 @@ where
     let mut controller = BluetoothModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 380, 360)
+    (root, 380, 400)
 }
