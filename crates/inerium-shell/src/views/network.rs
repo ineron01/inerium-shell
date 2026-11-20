@@ -86,7 +86,7 @@ pub fn query_wifi_networks(rescan: bool) -> Vec<WifiAp> {
         for line in text.lines() {
             let parts: Vec<&str> = line.split(':').collect();
             if parts.len() >= 4 {
-                let in_use = parts[0] == "*";
+                let _in_use = parts[0] == "*";
                 let ssid = parts[1].replace("\\:", ":").trim().to_string();
                 if ssid.is_empty() {
                     continue;
@@ -94,13 +94,11 @@ pub fn query_wifi_networks(rescan: bool) -> Vec<WifiAp> {
                 let signal: u32 = parts[2].parse().unwrap_or(50);
                 let security = parts[3].to_string();
                 let is_saved = saved_map.contains_key(&ssid);
-                let is_active = in_use || active_ssid.as_deref() == Some(&ssid);
+                let is_active = active_ssid.as_deref() == Some(&ssid);
 
                 if let Some(existing) = networks.iter_mut().find(|n| n.ssid == ssid) {
                     existing.signal = existing.signal.max(signal);
-                    if is_active {
-                        existing.is_active = true;
-                    }
+                    existing.is_active = is_active;
                 } else {
                     networks.push(WifiAp {
                         ssid,
@@ -768,7 +766,7 @@ impl SimpleComponent for NetworkModel {
                                 Err(std::io::Error::other(add_err))
                             } else {
                                 let up_res = Command::new("nmcli")
-                                    .args(["--ask", "connection", "up", "id", &ssid_task])
+                                    .args(["--wait", "15", "--ask", "connection", "up", "id", &ssid_task])
                                     .stdin(std::process::Stdio::null())
                                     .output();
                                 let (up_ok, _) = match &up_res {
@@ -784,7 +782,7 @@ impl SimpleComponent for NetworkModel {
                             }
                         } else {
                             Command::new("nmcli")
-                                .args(["--ask", "dev", "wifi", "connect", &ssid_task, "password", &pass])
+                                .args(["--wait", "15", "--ask", "dev", "wifi", "connect", &ssid_task, "password", &pass])
                                 .stdin(std::process::Stdio::null())
                                 .output()
                         };

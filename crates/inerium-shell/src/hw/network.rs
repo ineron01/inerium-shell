@@ -10,29 +10,10 @@ pub fn is_wifi_enabled() -> bool {
 }
 
 pub fn get_active_wifi_ssid() -> Option<String> {
-    // 1. Fast direct check via iw link (2 ms)
-    if let Ok(entries) = fs::read_dir("/sys/class/net") {
-        for entry in entries.flatten() {
-            let iface = entry.file_name().to_string_lossy().into_owned();
-            if iface.starts_with("wl")
-                && let Ok(out) = Command::new("iw").args(["dev", &iface, "link"]).output() {
-                    let text = String::from_utf8_lossy(&out.stdout);
-                    for line in text.lines() {
-                        let trimmed = line.trim();
-                        if let Some(rest) = trimmed.strip_prefix("SSID: ") {
-                            let s = rest.trim();
-                            if !s.is_empty() {
-                                return Some(s.to_string());
-                            }
-                        }
-                    }
-                }
-        }
-    }
-
-    // 2. Fallback check via nmcli
+    // Check active connection via nmcli (Source of Truth: only fully activated connections)
     if let Ok(out) = Command::new("nmcli")
         .args(["-t", "-f", "TYPE,NAME", "connection", "show", "--active"])
+        .stdin(Stdio::null())
         .output()
     {
         let text = String::from_utf8_lossy(&out.stdout);
@@ -223,6 +204,7 @@ pub struct ActiveWifiDetails {
 }
 
 pub fn get_active_wifi_details() -> Option<ActiveWifiDetails> {
+    let _ = get_active_wifi_ssid()?;
     let mut iface_opt = None;
     if let Ok(entries) = fs::read_dir("/sys/class/net") {
         for entry in entries.flatten() {
