@@ -142,7 +142,7 @@ colorSchemeAccent=61,174,233
 font=Inter,10,-1,5,50,0,0,0,0,0
 
 [Icons]
-Theme=Colloid-Dark
+Theme=Papirus-Dark
 
 [KDE]
 contrast=7

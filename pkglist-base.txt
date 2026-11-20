@@ -56,7 +56,6 @@ adw-gtk-theme
 qt5ct
 qt6ct
 nwg-look
-colloid-icon-theme
 inter-font
 gtk4
 gtk4-layer-shell

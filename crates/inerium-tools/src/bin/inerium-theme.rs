@@ -1558,22 +1558,10 @@ pub fn apply_theme(theme: &ThemeConfig) {
     let _ = fs::write(&theme_vars_css, emit_gtk_vars(theme));
 
     // 2. GSettings (Portal, Browsers, VS Code, GTK)
-    let has_colloid = home.join(".local/share/icons/Colloid-Dark").exists()
-        || std::path::Path::new("/usr/share/icons/Colloid-Dark").exists();
-    let dark_icon = if has_colloid { "Colloid-Dark" } else { "Papirus-Dark" };
-    let light_icon = if has_colloid
-        && (home.join(".local/share/icons/Colloid-Light").exists()
-            || std::path::Path::new("/usr/share/icons/Colloid-Light").exists())
-    {
-        "Colloid-Light"
-    } else {
-        "Papirus-Light"
-    };
-
     let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
-        ("prefer-dark", "adw-gtk3-dark", dark_icon)
+        ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark")
     } else {
-        ("prefer-light", "adw-gtk3", light_icon)
+        ("prefer-light", "adw-gtk3", "Papirus-Light")
     };
 
     let _ = Command::new("gsettings")
