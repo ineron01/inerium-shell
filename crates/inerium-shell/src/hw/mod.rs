@@ -259,6 +259,30 @@ pub fn toggle_bluetooth(enable: bool) {
     network::toggle_bluetooth(enable);
 }
 
+pub fn get_active_wifi_details() -> Option<network::ActiveWifiDetails> {
+    network::get_active_wifi_details()
+}
+
+pub fn set_connection_autoconnect(uuid: &str, enable: bool) -> bool {
+    network::set_connection_autoconnect(uuid, enable)
+}
+
+pub fn delete_connection(uuid: &str) -> bool {
+    network::delete_connection(uuid)
+}
+
+pub fn get_bluetooth_device_meta(mac: &str) -> (bool, Option<u8>) {
+    network::get_bluetooth_device_meta(mac)
+}
+
+pub fn set_bluetooth_trusted(mac: &str, trust: bool) -> bool {
+    network::set_bluetooth_trusted(mac, trust)
+}
+
+pub fn remove_bluetooth_device(mac: &str) -> bool {
+    network::remove_bluetooth_device(mac)
+}
+
 // ============================================================================
 // 7. SYSTEM & SESSION FACADE
 // ============================================================================

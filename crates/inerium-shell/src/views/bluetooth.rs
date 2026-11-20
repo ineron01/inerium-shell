@@ -2,6 +2,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
+use gdk4::BUTTON_SECONDARY;
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation};
 use inerium_i18n::tr;
@@ -15,6 +16,8 @@ pub struct BtDevice {
     pub name: String,
     pub connected: bool,
     pub paired: bool,
+    pub trusted: bool,
+    pub battery: Option<u8>,
 }
 
 pub fn query_devices() -> Vec<BtDevice> {
@@ -75,11 +78,18 @@ pub fn query_devices() -> Vec<BtDevice> {
                 let name = parts[2..].join(" ");
                 let connected = connected_macs.contains(&mac);
                 let paired = paired_macs.contains(&mac);
+                let (trusted, battery) = if connected || paired {
+                    hw::get_bluetooth_device_meta(&mac)
+                } else {
+                    (false, None)
+                };
                 devices.push(BtDevice {
                     mac,
                     name,
                     connected,
                     paired,
+                    trusted,
+                    battery,
                 });
             }
         }
@@ -132,7 +142,9 @@ pub struct BluetoothModel {
     enabled: bool,
     scanning: bool,
     devices: Vec<BtDevice>,
+    expanded_mac: Option<String>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
 }
 
@@ -143,6 +155,9 @@ pub enum BtMsg {
     ScanProgress(Vec<BtDevice>),
     ScanFinished(Vec<BtDevice>),
     PollStatus,
+    ToggleExpandDevice(String),
+    ToggleTrusted(String, bool),
+    ForgetDevice(String),
     ConnectDevice(String, bool, bool),
     ConnectFinished(Vec<BtDevice>),
     OpenManager,
@@ -264,13 +279,14 @@ impl SimpleComponent for BluetoothModel {
             enabled,
             scanning: false,
             devices: devices.clone(),
+            expanded_mac: None,
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
 
         let widgets = view_output!();
 
-        populate_list(&widgets.list_box, &devices, enabled, false, &sender);
+        populate_list(&widgets.list_box, &devices, None, enabled, false, &sender);
 
         let root_ref = root.clone();
         let s_poll = sender.clone();
@@ -286,7 +302,14 @@ impl SimpleComponent for BluetoothModel {
     }
 
     fn post_view() {
-        populate_list(list_box, &self.devices, self.enabled, self.scanning, &sender);
+        populate_list(
+            list_box,
+            &self.devices,
+            self.expanded_mac.as_deref(),
+            self.enabled,
+            self.scanning,
+            &sender,
+        );
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -423,6 +446,30 @@ impl SimpleComponent for BluetoothModel {
             BtMsg::ConnectFinished(fresh) => {
                 self.devices = fresh;
             }
+            BtMsg::ToggleExpandDevice(mac) => {
+                if self.expanded_mac.as_ref() == Some(&mac) {
+                    self.expanded_mac = None;
+                } else {
+                    self.expanded_mac = Some(mac);
+                }
+            }
+            BtMsg::ToggleTrusted(mac, trust) => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    hw::set_bluetooth_trusted(&mac, trust);
+                    let fresh = query_devices();
+                    s.input(BtMsg::ScanFinished(fresh));
+                });
+            }
+            BtMsg::ForgetDevice(mac) => {
+                self.expanded_mac = None;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    hw::remove_bluetooth_device(&mac);
+                    let fresh = query_devices();
+                    s.input(BtMsg::ScanFinished(fresh));
+                });
+            }
             BtMsg::OpenManager => {
                 for bin in ["blueman-manager", "overskride", "blueberry"] {
                     if Command::new("which")
@@ -449,6 +496,7 @@ impl SimpleComponent for BluetoothModel {
 fn populate_list(
     list_box: &gtk4::Box,
     devices: &[BtDevice],
+    expanded_mac: Option<&str>,
     enabled: bool,
     scanning: bool,
     sender: &ComponentSender<BluetoothModel>,
@@ -478,10 +526,20 @@ fn populate_list(
     }
 
     for dev in devices {
+        let item_box = gtk4::Box::new(Orientation::Vertical, 0);
+        item_box.set_margin_bottom(4);
+
+        let row_box = gtk4::Box::new(Orientation::Horizontal, 4);
+
         let row = Button::new();
         row.add_css_class("card-item");
+        row.set_hexpand(true);
         if dev.connected {
             row.add_css_class("active");
+        }
+        let is_exp = expanded_mac == Some(dev.mac.as_str());
+        if is_exp {
+            row.add_css_class("expanded");
         }
 
         let inner = gtk4::Box::new(Orientation::Horizontal, 8);
@@ -508,10 +566,19 @@ fn populate_list(
         name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         txt.append(&name_lbl);
 
-        let mac_lbl = Label::new(Some(&dev.mac));
-        mac_lbl.add_css_class("card-sub");
-        mac_lbl.set_xalign(0.0);
-        txt.append(&mac_lbl);
+        let sub_str = if dev.connected {
+            if let Some(pct) = dev.battery {
+                format!("{} • 󰥈 {}%", tr("Connected", "Подключено"), pct)
+            } else {
+                tr("Connected", "Подключено").to_string()
+            }
+        } else {
+            dev.mac.clone()
+        };
+        let sub_lbl = Label::new(Some(&sub_str));
+        sub_lbl.add_css_class("card-sub");
+        sub_lbl.set_xalign(0.0);
+        txt.append(&sub_lbl);
         inner.append(&txt);
 
         let badge_text = if dev.connected {
@@ -527,6 +594,37 @@ fn populate_list(
         inner.append(&badge);
 
         row.set_child(Some(&inner));
+
+        // Tooltip
+        let mut tip = format!(
+            "{}: {}\nMAC: {}\n{}: {}",
+            tr("Device", "Устройство"),
+            dev.name,
+            dev.mac,
+            tr("Status", "Статус"),
+            if dev.connected {
+                tr("Connected", "Подключено")
+            } else if dev.paired {
+                tr("Paired", "Сопряжено")
+            } else {
+                tr("Available", "Доступно")
+            }
+        );
+        if let Some(pct) = dev.battery {
+            tip.push_str(&format!("\n{}: {}%", tr("Battery", "Батарея"), pct));
+        }
+        if dev.paired || dev.connected {
+            tip.push_str(&format!(
+                "\n{}: {}",
+                tr("Trusted", "Доверенное"),
+                if dev.trusted {
+                    tr("Yes", "Да")
+                } else {
+                    tr("No", "Нет")
+                }
+            ));
+        }
+        row.set_tooltip_text(Some(&tip));
 
         let mac = dev.mac.clone();
         let is_conn = dev.connected;
@@ -546,7 +644,85 @@ fn populate_list(
             s.input(BtMsg::ConnectDevice(mac.clone(), is_conn, is_paired));
         });
 
-        list_box.append(&row);
+        let can_manage = dev.paired || dev.connected;
+
+        // Right-click gesture (ПКМ)
+        if can_manage {
+            let s_right = sender.clone();
+            let mac_right = dev.mac.clone();
+            let gesture = gtk4::GestureClick::new();
+            gesture.set_button(BUTTON_SECONDARY);
+            gesture.connect_pressed(move |_, _, _, _| {
+                s_right.input(BtMsg::ToggleExpandDevice(mac_right.clone()));
+            });
+            row.add_controller(gesture);
+        }
+
+        row_box.append(&row);
+
+        // ⋮ Quick actions button
+        if can_manage {
+            let more_btn = Button::with_label("⋮");
+            more_btn.add_css_class("card-more-btn");
+            if is_exp {
+                more_btn.add_css_class("expanded");
+            }
+            more_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
+            let s_more = sender.clone();
+            let mac_more = dev.mac.clone();
+            more_btn.connect_clicked(move |_| {
+                s_more.input(BtMsg::ToggleExpandDevice(mac_more.clone()));
+            });
+            row_box.append(&more_btn);
+        }
+
+        item_box.append(&row_box);
+
+        // Accordion Drawer
+        if is_exp && can_manage {
+            let drawer = gtk4::Box::new(Orientation::Horizontal, 8);
+            drawer.add_css_class("card-drawer");
+
+            // 1. Trust toggle chip
+            let trust_btn = Button::new();
+            trust_btn.add_css_class("drawer-chip");
+            if dev.trusted {
+                trust_btn.add_css_class("on");
+                trust_btn.set_label(tr("󰒓 Trusted: Yes", "󰒓 Доверять: Да"));
+            } else {
+                trust_btn.set_label(tr("󰒓 Trusted: No", "󰒓 Доверять: Нет"));
+            }
+            trust_btn.set_tooltip_text(Some(tr(
+                "Allow automatic trusted connection from this device",
+                "Разрешить автоматическое доверительное подключение",
+            )));
+            let s_trust = sender.clone();
+            let mac_trust = dev.mac.clone();
+            let cur_trust = dev.trusted;
+            trust_btn.connect_clicked(move |_| {
+                s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
+            });
+            drawer.append(&trust_btn);
+
+            // 2. Forget device chip
+            let forget_btn = Button::with_label(tr("󰆴 Forget Device", "󰆴 Забыть"));
+            forget_btn.add_css_class("drawer-chip");
+            forget_btn.add_css_class("danger");
+            forget_btn.set_tooltip_text(Some(tr(
+                "Remove and unpair this Bluetooth device",
+                "Удалить сопряжение с устройством",
+            )));
+            let s_forget = sender.clone();
+            let mac_forget = dev.mac.clone();
+            forget_btn.connect_clicked(move |_| {
+                s_forget.input(BtMsg::ForgetDevice(mac_forget.clone()));
+            });
+            drawer.append(&forget_btn);
+
+            item_box.append(&drawer);
+        }
+
+        list_box.append(&item_box);
     }
 }
 

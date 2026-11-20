@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use gdk4::BUTTON_SECONDARY;
 use gtk4::prelude::*;
 use gtk4::{Button, Label, Orientation, PolicyType};
 use inerium_i18n::{tr, tr_fmt};
@@ -23,7 +24,7 @@ pub struct WifiAp {
 #[derive(Clone, Debug)]
 pub struct SavedConn {
     pub uuid: String,
-    pub name: String,
+    pub _name: String,
     pub autoconnect: bool,
 }
 
@@ -44,7 +45,7 @@ pub fn query_saved_wifi_connections() -> HashMap<String, SavedConn> {
                 if ctype == "802-11-wireless" || ctype == "wifi" {
                     let conn = SavedConn {
                         uuid,
-                        name: name.clone(),
+                        _name: name.clone(),
                         autoconnect,
                     };
                     saved.insert(name, conn);
@@ -169,6 +170,9 @@ pub struct NetworkModel {
     pub is_scanning: bool,
     pub hotspot_active: bool,
     pub active_ssid: Option<String>,
+    pub active_details: Option<hw::network::ActiveWifiDetails>,
+    pub saved_connections: HashMap<String, SavedConn>,
+    pub expanded_ssid: Option<String>,
     pub networks: Vec<WifiAp>,
     pub password_prompt: Option<PasswordPromptState>,
     pub focus_pass_entry: Cell<bool>,
@@ -180,23 +184,27 @@ pub struct NetworkModel {
 
 impl NetworkModel {
     fn sync_active_network(&mut self) {
+        self.saved_connections = query_saved_wifi_connections();
+        self.active_details = hw::get_active_wifi_details();
+
         if let Some(ref act) = self.active_ssid {
             for net in &mut self.networks {
                 net.is_active = &net.ssid == act;
+                net.is_saved = self.saved_connections.contains_key(&net.ssid);
             }
             if !self.networks.iter().any(|n| &n.ssid == act) {
-                let saved_map = query_saved_wifi_connections();
                 self.networks.push(WifiAp {
                     ssid: act.clone(),
                     signal: 100,
                     security: String::new(),
                     is_active: true,
-                    is_saved: saved_map.contains_key(act),
+                    is_saved: self.saved_connections.contains_key(act),
                 });
             }
         } else {
             for net in &mut self.networks {
                 net.is_active = false;
+                net.is_saved = self.saved_connections.contains_key(&net.ssid);
             }
         }
 
@@ -217,6 +225,9 @@ pub enum NetworkMsg {
     ScanProgress(Vec<WifiAp>),
     RescanFinished(Vec<WifiAp>),
     PollStatus,
+    ToggleExpandAp(String),
+    ToggleAutoconnect(String, bool),
+    ForgetSavedNetwork(String),
     SelectAp(WifiAp),
     PasswordInput(String),
     SubmitPassword,
@@ -470,6 +481,8 @@ impl SimpleComponent for NetworkModel {
         let wifi_enabled = hw::is_wifi_enabled();
         let hotspot_active = hw::is_hotspot_active();
         let active_ssid = hw::get_active_wifi_ssid();
+        let active_details = hw::get_active_wifi_details();
+        let saved_connections = query_saved_wifi_connections();
         let mut networks = if wifi_enabled && !hotspot_active {
             query_wifi_networks(false)
         } else {
@@ -493,6 +506,9 @@ impl SimpleComponent for NetworkModel {
             is_scanning: false,
             hotspot_active,
             active_ssid,
+            active_details,
+            saved_connections,
+            expanded_ssid: None,
             networks,
             password_prompt: None,
             focus_pass_entry: Cell::new(false),
@@ -506,6 +522,9 @@ impl SimpleComponent for NetworkModel {
         populate_wifi_list(
             &widgets.list_box,
             &model.networks,
+            &model.saved_connections,
+            model.active_details.as_ref(),
+            model.expanded_ssid.as_deref(),
             model.hotspot_active,
             model.wifi_enabled,
             model.is_scanning,
@@ -538,6 +557,9 @@ impl SimpleComponent for NetworkModel {
             populate_wifi_list(
                 list_box,
                 &self.networks,
+                &self.saved_connections,
+                self.active_details.as_ref(),
+                self.expanded_ssid.as_deref(),
                 self.hotspot_active,
                 self.wifi_enabled,
                 self.is_scanning,
@@ -606,14 +628,41 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::PollStatus => {
                 let current_ssid = hw::get_active_wifi_ssid();
                 let current_hotspot = hw::is_hotspot_active();
+                let current_details = hw::get_active_wifi_details();
                 let ssid_changed = current_ssid != self.active_ssid;
                 let hotspot_changed = current_hotspot != self.hotspot_active;
+                let ip_changed = current_details.as_ref().map(|d| &d.ip) != self.active_details.as_ref().map(|d| &d.ip);
 
-                if ssid_changed || hotspot_changed {
+                if ssid_changed || hotspot_changed || ip_changed {
                     self.active_ssid = current_ssid;
                     self.hotspot_active = current_hotspot;
+                    self.active_details = current_details;
                     self.sync_active_network();
                 }
+            }
+            NetworkMsg::ToggleExpandAp(ssid) => {
+                if self.expanded_ssid.as_ref() == Some(&ssid) {
+                    self.expanded_ssid = None;
+                } else {
+                    self.expanded_ssid = Some(ssid);
+                }
+                self.needs_list_rebuild.set(true);
+            }
+            NetworkMsg::ToggleAutoconnect(uuid, enable) => {
+                let s = sender.clone();
+                thread::spawn(move || {
+                    hw::set_connection_autoconnect(&uuid, enable);
+                    s.input(NetworkMsg::PollStatus);
+                });
+            }
+            NetworkMsg::ForgetSavedNetwork(uuid) => {
+                self.expanded_ssid = None;
+                let s = sender.clone();
+                thread::spawn(move || {
+                    hw::delete_connection(&uuid);
+                    let fresh = query_wifi_networks(false);
+                    s.input(NetworkMsg::RescanFinished(fresh));
+                });
             }
             NetworkMsg::ScanProgress(fresh) => {
                 self.networks = fresh;
@@ -835,9 +884,13 @@ impl Drop for NetworkModel {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn populate_wifi_list(
     list_box: &gtk4::Box,
     networks: &[WifiAp],
+    saved_conns: &HashMap<String, SavedConn>,
+    active_details: Option<&hw::network::ActiveWifiDetails>,
+    expanded_ssid: Option<&str>,
     hotspot_active: bool,
     wifi_enabled: bool,
     is_scanning: bool,
@@ -920,10 +973,20 @@ fn populate_wifi_list(
     }
 
     for net in networks {
+        let item_box = gtk4::Box::new(Orientation::Vertical, 0);
+        item_box.set_margin_bottom(4);
+
+        let row_box = gtk4::Box::new(Orientation::Horizontal, 4);
+
         let row = Button::new();
         row.add_css_class("card-item");
+        row.set_hexpand(true);
         if net.is_active {
             row.add_css_class("active");
+        }
+        let is_exp = expanded_ssid == Some(net.ssid.as_str());
+        if is_exp {
+            row.add_css_class("expanded");
         }
 
         let inner = gtk4::Box::new(Orientation::Horizontal, 8);
@@ -949,16 +1012,32 @@ fn populate_wifi_list(
         txt.append(&name_lbl);
 
         let sec_str = if net.is_active {
-            let sec_desc = if net.security.is_empty() {
-                tr("Open network", "Открытая сеть")
+            if let Some(details) = active_details {
+                if !details.ip.is_empty() && !details.band.is_empty() {
+                    tr_fmt!(
+                        "Connected • {ip} ({band})",
+                        "Подключено • {ip} ({band})",
+                        ip = details.ip,
+                        band = details.band
+                    )
+                } else if !details.band.is_empty() {
+                    tr_fmt!(
+                        "Connected • {band}",
+                        "Подключено • {band}",
+                        band = details.band
+                    )
+                } else if !details.ip.is_empty() {
+                    tr_fmt!(
+                        "Connected • {ip}",
+                        "Подключено • {ip}",
+                        ip = details.ip
+                    )
+                } else {
+                    tr("Connected", "Подключено").to_string()
+                }
             } else {
-                &net.security
-            };
-            tr_fmt!(
-                "Connected • {sec_desc}",
-                "Подключено • {sec_desc}",
-                sec_desc = sec_desc
-            )
+                tr("Connected", "Подключено").to_string()
+            }
         } else if net.security.is_empty() {
             tr("Open network", "Открытая сеть").to_string()
         } else {
@@ -988,6 +1067,61 @@ fn populate_wifi_list(
 
         row.set_child(Some(&inner));
 
+        // Rich Tooltip
+        let tooltip_text = if net.is_active {
+            let sec_desc = if net.security.is_empty() {
+                tr("Open", "Открытая").to_string()
+            } else {
+                net.security.clone()
+            };
+            let mut tip = format!(
+                "SSID: {}\n{}: {}",
+                net.ssid,
+                tr("Security", "Безопасность"),
+                sec_desc
+            );
+            if let Some(d) = active_details {
+                if !d.ip.is_empty() {
+                    tip.push_str(&format!("\nIP: {}", d.ip));
+                }
+                if !d.gateway.is_empty() {
+                    tip.push_str(&format!("\n{}: {}", tr("Gateway", "Шлюз"), d.gateway));
+                }
+                if d.freq_mhz > 0 {
+                    tip.push_str(&format!(
+                        "\n{}: {} MHz ({})",
+                        tr("Frequency", "Частота"),
+                        d.freq_mhz,
+                        d.band
+                    ));
+                }
+                if d.signal_dbm != 0 {
+                    tip.push_str(&format!(
+                        "\n{}: {} dBm ({}%)",
+                        tr("Signal", "Сигнал"),
+                        d.signal_dbm,
+                        net.signal
+                    ));
+                }
+            }
+            tip
+        } else {
+            let sec_desc = if net.security.is_empty() {
+                tr("Open", "Открытая").to_string()
+            } else {
+                net.security.clone()
+            };
+            format!(
+                "SSID: {}\n{}: {}\n{}: {}%",
+                net.ssid,
+                tr("Security", "Безопасность"),
+                sec_desc,
+                tr("Signal", "Сигнал"),
+                net.signal
+            )
+        };
+        row.set_tooltip_text(Some(&tooltip_text));
+
         let s_click = sender.clone();
         let net_item = net.clone();
         let r_ui = row.clone();
@@ -997,7 +1131,10 @@ fn populate_wifi_list(
                 b_ui.set_label(tr("󰑐 Disconnecting...", "󰑐 Отключение..."));
                 b_ui.set_visible(true);
                 r_ui.set_sensitive(false);
-            } else if net_item.is_saved || net_item.security.is_empty() || net_item.security.contains("--") {
+            } else if net_item.is_saved
+                || net_item.security.is_empty()
+                || net_item.security.contains("--")
+            {
                 b_ui.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
                 b_ui.set_visible(true);
                 r_ui.set_sensitive(false);
@@ -1005,7 +1142,85 @@ fn populate_wifi_list(
             s_click.input(NetworkMsg::SelectAp(net_item.clone()));
         });
 
-        list_box.append(&row);
+        // Right-click gesture (ПКМ)
+        if net.is_saved {
+            let s_right = sender.clone();
+            let ssid_right = net.ssid.clone();
+            let gesture = gtk4::GestureClick::new();
+            gesture.set_button(BUTTON_SECONDARY);
+            gesture.connect_pressed(move |_, _, _, _| {
+                s_right.input(NetworkMsg::ToggleExpandAp(ssid_right.clone()));
+            });
+            row.add_controller(gesture);
+        }
+
+        row_box.append(&row);
+
+        // ⋮ Quick actions button
+        if net.is_saved {
+            let more_btn = Button::with_label("⋮");
+            more_btn.add_css_class("card-more-btn");
+            if is_exp {
+                more_btn.add_css_class("expanded");
+            }
+            more_btn.set_tooltip_text(Some(tr("Quick Actions", "Быстрые действия")));
+            let s_more = sender.clone();
+            let ssid_more = net.ssid.clone();
+            more_btn.connect_clicked(move |_| {
+                s_more.input(NetworkMsg::ToggleExpandAp(ssid_more.clone()));
+            });
+            row_box.append(&more_btn);
+        }
+
+        item_box.append(&row_box);
+
+        // Accordion Drawer
+        if is_exp
+            && let Some(conn) = saved_conns.get(&net.ssid)
+        {
+            let drawer = gtk4::Box::new(Orientation::Horizontal, 8);
+            drawer.add_css_class("card-drawer");
+
+                // 1. Autoconnect chip
+                let auto_btn = Button::new();
+                auto_btn.add_css_class("drawer-chip");
+                if conn.autoconnect {
+                    auto_btn.add_css_class("on");
+                    auto_btn.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
+                } else {
+                    auto_btn.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
+                }
+                auto_btn.set_tooltip_text(Some(tr(
+                    "Toggle automatic connection",
+                    "Автоматически подключаться к сети",
+                )));
+                let s_auto = sender.clone();
+                let u_auto = conn.uuid.clone();
+                let cur_auto = conn.autoconnect;
+                auto_btn.connect_clicked(move |_| {
+                    s_auto.input(NetworkMsg::ToggleAutoconnect(u_auto.clone(), !cur_auto));
+                });
+                drawer.append(&auto_btn);
+
+                // 2. Forget network chip
+                let forget_btn = Button::with_label(tr("󰆴 Forget Network", "󰆴 Забыть сеть"));
+                forget_btn.add_css_class("drawer-chip");
+                forget_btn.add_css_class("danger");
+                forget_btn.set_tooltip_text(Some(tr(
+                    "Delete saved Wi-Fi profile and credentials",
+                    "Удалить сохранённый профиль и пароль сети",
+                )));
+                let s_forget = sender.clone();
+                let u_forget = conn.uuid.clone();
+                forget_btn.connect_clicked(move |_| {
+                    s_forget.input(NetworkMsg::ForgetSavedNetwork(u_forget.clone()));
+                });
+                drawer.append(&forget_btn);
+
+                item_box.append(&drawer);
+        }
+
+        list_box.append(&item_box);
     }
 }
 
