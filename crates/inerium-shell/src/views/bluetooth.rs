@@ -13,6 +13,7 @@ pub struct BtDevice {
     pub mac: String,
     pub name: String,
     pub connected: bool,
+    pub paired: bool,
 }
 
 pub fn query_devices() -> Vec<BtDevice> {
@@ -21,8 +22,8 @@ pub fn query_devices() -> Vec<BtDevice> {
         return devices;
     }
 
-    // Query connected devices first
-    let mut connected_macs = Vec::new();
+    // Query connected devices
+    let mut connected_macs = std::collections::HashSet::new();
     if let Ok(out) = Command::new("timeout")
         .args(["2", "bluetoothctl", "devices", "Connected"])
         .stdin(std::process::Stdio::null())
@@ -32,11 +33,28 @@ pub fn query_devices() -> Vec<BtDevice> {
         for line in text.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 3 && parts[0] == "Device" {
-                connected_macs.push(parts[1].to_string());
+                connected_macs.insert(parts[1].to_string());
             }
         }
     }
 
+    // Query paired devices
+    let mut paired_macs = std::collections::HashSet::new();
+    if let Ok(out) = Command::new("timeout")
+        .args(["2", "bluetoothctl", "devices", "Paired"])
+        .stdin(std::process::Stdio::null())
+        .output()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 && parts[0] == "Device" {
+                paired_macs.insert(parts[1].to_string());
+            }
+        }
+    }
+
+    // Query all discovered/cached devices
     if let Ok(out) = Command::new("timeout")
         .args(["2", "bluetoothctl", "devices"])
         .stdin(std::process::Stdio::null())
@@ -55,19 +73,54 @@ pub fn query_devices() -> Vec<BtDevice> {
                 seen.insert(mac.clone());
                 let name = parts[2..].join(" ");
                 let connected = connected_macs.contains(&mac);
+                let paired = paired_macs.contains(&mac);
                 devices.push(BtDevice {
                     mac,
                     name,
                     connected,
+                    paired,
                 });
             }
         }
     }
 
-    // Sort connected devices to the top, then alphabetically
+    fn is_friendly_name(name: &str, mac: &str) -> bool {
+        let n = name.trim();
+        if n.is_empty() || n.eq_ignore_ascii_case(mac) {
+            return false;
+        }
+        let mac_hyphens = mac.replace(':', "-");
+        !n.eq_ignore_ascii_case(&mac_hyphens)
+    }
+
+    // Sort order:
+    // 1. Connected devices
+    // 2. Paired devices
+    // 3. Named discovered devices
+    // 4. Raw MAC address beacons
+    // Alphabetical within same tier
     devices.sort_by(|a, b| {
-        b.connected
-            .cmp(&a.connected)
+        let a_tier = if a.connected {
+            0
+        } else if a.paired {
+            1
+        } else if is_friendly_name(&a.name, &a.mac) {
+            2
+        } else {
+            3
+        };
+        let b_tier = if b.connected {
+            0
+        } else if b.paired {
+            1
+        } else if is_friendly_name(&b.name, &b.mac) {
+            2
+        } else {
+            3
+        };
+
+        a_tier
+            .cmp(&b_tier)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
@@ -79,20 +132,24 @@ pub struct BluetoothModel {
     scanning: bool,
     devices: Vec<BtDevice>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    close_cb: std::boxed::Box<dyn Fn() + 'static>,
 }
 
 #[derive(Debug)]
 pub enum BtMsg {
     TogglePower(bool),
     StartScan,
+    ScanProgress(Vec<BtDevice>),
     ScanFinished(Vec<BtDevice>),
-    ConnectDevice(String, bool),
+    ConnectDevice(String, bool, bool),
     ConnectFinished(Vec<BtDevice>),
+    OpenManager,
     Back,
 }
 
 pub struct BluetoothInit {
     pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
 }
 
 #[relm4::component(pub)]
@@ -137,7 +194,7 @@ impl SimpleComponent for BluetoothModel {
                 },
             },
 
-            // Subheader with Scan
+            // Subheader with Scan and Manager
             gtk4::Box {
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
@@ -147,6 +204,14 @@ impl SimpleComponent for BluetoothModel {
                     set_label: &tr("DEVICES", "УСТРОЙСТВА"),
                     set_xalign: 0.0,
                     set_hexpand: true,
+                },
+
+                #[name = "mgr_btn"]
+                gtk4::Button {
+                    add_css_class: "cc-chip",
+                    set_tooltip_text: Some(tr("Open Bluetooth Manager", "Открыть менеджер Bluetooth")),
+                    set_label: tr("󰒓 Manager", "󰒓 Менеджер"),
+                    connect_clicked => BtMsg::OpenManager,
                 },
 
                 #[name = "scan_btn"]
@@ -196,6 +261,7 @@ impl SimpleComponent for BluetoothModel {
             scanning: false,
             devices: devices.clone(),
             nav_cb: init.nav_cb,
+            close_cb: init.close_cb,
         };
 
         let widgets = view_output!();
@@ -225,27 +291,56 @@ impl SimpleComponent for BluetoothModel {
                 self.scanning = true;
                 let s = sender.clone();
                 thread::spawn(move || {
-                    let _ = Command::new("timeout")
-                        .args(["4", "bluetoothctl", "scan", "on"])
-                        .output();
+                    // Non-interactive discovery requires passing --timeout to bluetoothctl,
+                    // otherwise it exits immediately in 5ms without discovering devices.
+                    let mut child = Command::new("timeout")
+                        .args(["10", "bluetoothctl", "--timeout", "7", "scan", "on"])
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+
+                    // Periodically query devices so discovered hardware pops up live
+                    for _ in 0..3 {
+                        thread::sleep(std::time::Duration::from_secs(2));
+                        let interim = query_devices();
+                        s.input(BtMsg::ScanProgress(interim));
+                    }
+
+                    if let Ok(ref mut proc) = child {
+                        let _ = proc.wait();
+                    }
+
                     let fresh = query_devices();
                     s.input(BtMsg::ScanFinished(fresh));
                 });
+            }
+            BtMsg::ScanProgress(devices) => {
+                self.devices = devices;
             }
             BtMsg::ScanFinished(fresh) => {
                 self.scanning = false;
                 self.devices = fresh;
             }
-            BtMsg::ConnectDevice(mac, is_conn) => {
+            BtMsg::ConnectDevice(mac, is_conn, is_paired) => {
                 let s = sender.clone();
                 thread::spawn(move || {
                     if is_conn {
-                        let _ = Command::new("bluetoothctl")
-                            .args(["disconnect", &mac])
+                        let _ = Command::new("timeout")
+                            .args(["5", "bluetoothctl", "disconnect", &mac])
                             .output();
                     } else {
-                        let _ = Command::new("bluetoothctl")
-                            .args(["connect", &mac])
+                        // For un-paired devices, trust and pair first before connecting
+                        if !is_paired {
+                            let _ = Command::new("timeout")
+                                .args(["3", "bluetoothctl", "trust", &mac])
+                                .output();
+                            let _ = Command::new("timeout")
+                                .args(["6", "bluetoothctl", "pair", &mac])
+                                .output();
+                        }
+                        let _ = Command::new("timeout")
+                            .args(["8", "bluetoothctl", "connect", &mac])
                             .output();
                     }
                     let fresh = query_devices();
@@ -254,6 +349,20 @@ impl SimpleComponent for BluetoothModel {
             }
             BtMsg::ConnectFinished(fresh) => {
                 self.devices = fresh;
+            }
+            BtMsg::OpenManager => {
+                for bin in ["blueman-manager", "overskride", "blueberry"] {
+                    if Command::new("which")
+                        .arg(bin)
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                    {
+                        let _ = Command::new(bin).spawn();
+                        break;
+                    }
+                }
+                (self.close_cb)();
             }
             BtMsg::Back => {
                 (self.nav_cb)("control");
@@ -326,19 +435,23 @@ fn populate_list(
         txt.append(&mac_lbl);
         inner.append(&txt);
 
-        let badge = Label::new(Some(if dev.connected {
+        let badge_text = if dev.connected {
             tr("󰄬 Connected", "󰄬 Подключено")
+        } else if dev.paired {
+            tr("Paired", "Сохранено")
         } else {
-            ""
-        }));
+            tr("New", "Новое")
+        };
+        let badge = Label::new(Some(badge_text));
         badge.add_css_class("card-badge");
-        badge.set_visible(dev.connected);
+        badge.set_visible(true);
         inner.append(&badge);
 
         row.set_child(Some(&inner));
 
         let mac = dev.mac.clone();
         let is_conn = dev.connected;
+        let is_paired = dev.paired;
         let s = sender.clone();
         let r_ui = row.clone();
         let b_ui = badge.clone();
@@ -351,7 +464,7 @@ fn populate_list(
                 tr("󰑐 Connecting...", "󰑐 Подключение...")
             });
             b_ui.set_visible(true);
-            s.input(BtMsg::ConnectDevice(mac.clone(), is_conn));
+            s.input(BtMsg::ConnectDevice(mac.clone(), is_conn, is_paired));
         });
 
         list_box.append(&row);
@@ -360,7 +473,7 @@ fn populate_list(
 
 pub fn build_bluetooth_view<FNav, FClose>(
     nav_cb: FNav,
-    _close_cb: FClose,
+    close_cb: FClose,
 ) -> (gtk4::Box, i32, i32)
 where
     FNav: Fn(&str) + 'static + Clone,
@@ -368,10 +481,11 @@ where
 {
     let init = BluetoothInit {
         nav_cb: std::boxed::Box::new(nav_cb),
+        close_cb: std::boxed::Box::new(close_cb),
     };
 
     let mut controller = BluetoothModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 380, 340)
+    (root, 380, 360)
 }
