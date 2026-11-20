@@ -3,6 +3,16 @@
  * Подключается из config.rasi (лаунчер), clipboard.rasi и applet.rasi.
  **/
 
+* {
+    /* Fallback palette for older or unmigrated colors.rasi */
+    green:        #87a987;
+    green-soft:   rgba(135, 169, 135, 0.16);
+    green-line:   rgba(135, 169, 135, 0.35);
+    primary:      @green;
+    primary-soft: @green-soft;
+    primary-line: @green-line;
+}
+
 @import "colors.rasi"
 
 * {
