@@ -249,10 +249,13 @@ impl SimpleComponent for BluetoothModel {
             },
 
             // Devices List
+            #[name = "scroll_win"]
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
                 set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::Automatic),
                 set_propagate_natural_height: false,
+                set_min_content_height: 280,
+                set_max_content_height: 280,
                 set_vexpand: true,
 
                 #[name = "list_box"]
@@ -284,7 +287,7 @@ impl SimpleComponent for BluetoothModel {
 
         let widgets = view_output!();
 
-        populate_list(&widgets.list_box, &devices, None, enabled, false, &sender);
+        let _ = populate_list(&widgets.list_box, &devices, None, enabled, false, &sender);
 
         let root_ref = root.clone();
         let s_poll = sender.clone();
@@ -300,7 +303,10 @@ impl SimpleComponent for BluetoothModel {
     }
 
     fn post_view() {
-        populate_list(
+        let vadj = scroll_win.vadjustment();
+        let prev_val = vadj.value();
+
+        let exp_widget = populate_list(
             list_box,
             &self.devices,
             self.expanded_mac.as_deref(),
@@ -308,6 +314,24 @@ impl SimpleComponent for BluetoothModel {
             self.scanning,
             &sender,
         );
+
+        let vadj_clone = vadj.clone();
+        let scroll_win_clone = scroll_win.clone();
+        glib::idle_add_local(move || {
+            let max_val = (vadj_clone.upper() - vadj_clone.page_size()).max(0.0);
+            if let Some(rect) = exp_widget.as_ref().and_then(|c| c.compute_bounds(&scroll_win_clone)) {
+                let bottom = rect.y() + rect.height();
+                let viewport_h = vadj_clone.page_size();
+                if (bottom as f64) > viewport_h {
+                    let diff = (bottom as f64) - viewport_h + 12.0;
+                    let new_val = (prev_val + diff).min(max_val);
+                    vadj_clone.set_value(new_val);
+                    return glib::ControlFlow::Break;
+                }
+            }
+            vadj_clone.set_value(prev_val.min(max_val));
+            glib::ControlFlow::Break
+        });
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -498,7 +522,7 @@ fn populate_list(
     enabled: bool,
     scanning: bool,
     sender: &ComponentSender<BluetoothModel>,
-) {
+) -> Option<gtk4::Box> {
     while let Some(child) = list_box.first_child() {
         list_box.remove(&child);
     }
@@ -520,8 +544,10 @@ fn populate_list(
         empty_lbl.add_css_class("cc-meta");
         empty_lbl.set_margin_top(20);
         list_box.append(&empty_lbl);
-        return;
+        return None;
     }
+
+    let mut expanded_card = None;
 
     for dev in devices {
         let card = gtk4::Box::new(Orientation::Vertical, 0);
@@ -532,6 +558,7 @@ fn populate_list(
         let is_exp = expanded_mac == Some(dev.mac.as_str());
         if is_exp {
             card.add_css_class("expanded");
+            expanded_card = Some(card.clone());
         }
 
         // Header row
@@ -632,11 +659,11 @@ fn populate_list(
         if dev.paired || dev.connected {
             tip.push_str(&format!(
                 "\n{}: {}",
-                tr("Trusted", "Доверенное"),
+                tr("Auto-connect", "Автоподключение"),
                 if dev.trusted {
-                    tr("Yes", "Да")
+                    tr("On", "Вкл")
                 } else {
-                    tr("No", "Нет")
+                    tr("Off", "Выкл")
                 }
             ));
         }
@@ -683,19 +710,19 @@ fn populate_list(
             drawer.set_homogeneous(true);
 
             if dev.paired || dev.connected {
-                // 1. Trust toggle chip
+                // 1. Autoconnect (Trusted) toggle chip
                 let trust_btn = Button::new();
                 trust_btn.add_css_class("drawer-chip");
                 trust_btn.set_hexpand(true);
                 if dev.trusted {
                     trust_btn.add_css_class("on");
-                    trust_btn.set_label(tr("󰒓 Trust: On", "󰒓 Доверие: Да"));
+                    trust_btn.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
                 } else {
-                    trust_btn.set_label(tr("󰒓 Trust: Off", "󰒓 Доверие: Нет"));
+                    trust_btn.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
                 }
                 trust_btn.set_tooltip_text(Some(tr(
-                    "Allow automatic trusted connection from this device",
-                    "Разрешить автоматическое доверительное подключение",
+                    "Allow automatic connection from this device",
+                    "Автоматически подключаться к этому устройству при обнаружении",
                 )));
                 let s_trust = sender.clone();
                 let mac_trust = dev.mac.clone();
@@ -705,10 +732,10 @@ fn populate_list(
                     b_trust.set_sensitive(false);
                     if cur_trust {
                         b_trust.remove_css_class("on");
-                        b_trust.set_label(tr("󰒓 Trust: Off", "󰒓 Доверие: Нет"));
+                        b_trust.set_label(tr("󰑐 Auto: Off", "󰑐 Авто: Выкл"));
                     } else {
                         b_trust.add_css_class("on");
-                        b_trust.set_label(tr("󰒓 Trust: On", "󰒓 Доверие: Да"));
+                        b_trust.set_label(tr("󰑐 Auto: On", "󰑐 Авто: Вкл"));
                     }
                     s_trust.input(BtMsg::ToggleTrusted(mac_trust.clone(), !cur_trust));
                 });
@@ -788,6 +815,8 @@ fn populate_list(
 
         list_box.append(&card);
     }
+
+    expanded_card
 }
 
 pub fn build_bluetooth_view<FNav, FClose>(

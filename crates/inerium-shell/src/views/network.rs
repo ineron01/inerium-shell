@@ -360,6 +360,8 @@ impl SimpleComponent for NetworkModel {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::Automatic),
                 set_propagate_natural_height: false,
+                set_min_content_height: 300,
+                set_max_content_height: 300,
                 set_vexpand: true,
 
                 #[name = "list_box"]
@@ -416,7 +418,7 @@ impl SimpleComponent for NetworkModel {
 
         let widgets = view_output!();
 
-        populate_wifi_list(
+        let _ = populate_wifi_list(
             &widgets.list_box,
             &model.networks,
             &model.saved_connections,
@@ -447,9 +449,8 @@ impl SimpleComponent for NetworkModel {
             self.needs_list_rebuild.set(false);
             let vadj = scroll_win.vadjustment();
             let prev_val = vadj.value();
-            let is_expanded = self.expanded_ssid.is_some();
 
-            populate_wifi_list(
+            let exp_widget = populate_wifi_list(
                 list_box,
                 &self.networks,
                 &self.saved_connections,
@@ -462,13 +463,23 @@ impl SimpleComponent for NetworkModel {
                 &sender,
             );
 
-            if !is_expanded {
-                let vadj_clone = vadj.clone();
-                glib::idle_add_local(move || {
-                    vadj_clone.set_value(prev_val);
-                    glib::ControlFlow::Break
-                });
-            }
+            let vadj_clone = vadj.clone();
+            let scroll_win_clone = scroll_win.clone();
+            glib::idle_add_local(move || {
+                let max_val = (vadj_clone.upper() - vadj_clone.page_size()).max(0.0);
+                if let Some(rect) = exp_widget.as_ref().and_then(|c| c.compute_bounds(&scroll_win_clone)) {
+                    let bottom = rect.y() + rect.height();
+                    let viewport_h = vadj_clone.page_size();
+                    if (bottom as f64) > viewport_h {
+                        let diff = (bottom as f64) - viewport_h + 12.0;
+                        let new_val = (prev_val + diff).min(max_val);
+                        vadj_clone.set_value(new_val);
+                        return glib::ControlFlow::Break;
+                    }
+                }
+                vadj_clone.set_value(prev_val.min(max_val));
+                glib::ControlFlow::Break
+            });
         }
     }
 
@@ -697,6 +708,9 @@ impl SimpleComponent for NetworkModel {
                     if auth.ssid != ssid || auth.password.trim().is_empty() {
                         return;
                     }
+                    if !auth.is_enterprise && auth.password.len() < 8 {
+                        return;
+                    }
                     if auth.is_enterprise && auth.identity.trim().is_empty() {
                         return;
                     }
@@ -875,7 +889,7 @@ fn populate_wifi_list(
     wifi_enabled: bool,
     is_scanning: bool,
     sender: &ComponentSender<NetworkModel>,
-) {
+) -> Option<gtk4::Box> {
     while let Some(child) = list_box.first_child() {
         list_box.remove(&child);
     }
@@ -929,7 +943,7 @@ fn populate_wifi_list(
         card.append(&stop_btn);
 
         list_box.append(&card);
-        return;
+        return None;
     }
 
     if networks.is_empty() {
@@ -949,8 +963,10 @@ fn populate_wifi_list(
         empty_lbl.add_css_class("cc-meta");
         empty_lbl.set_margin_top(20);
         list_box.append(&empty_lbl);
-        return;
+        return None;
     }
+
+    let mut expanded_card = None;
 
     for net in networks {
         let card = gtk4::Box::new(Orientation::Vertical, 0);
@@ -961,6 +977,7 @@ fn populate_wifi_list(
         let is_exp = expanded_ssid == Some(net.ssid.as_str());
         if is_exp {
             card.add_css_class("expanded");
+            expanded_card = Some(card.clone());
         }
 
         // Header row
@@ -1421,6 +1438,8 @@ fn populate_wifi_list(
 
         list_box.append(&card);
     }
+
+    expanded_card
 }
 
 pub fn build_network_view<FNav, FClose>(
