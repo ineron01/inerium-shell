@@ -13,10 +13,6 @@
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
 
 <p align="center">
-  <img src="assets/preview/desktop.png" alt="Inerium Desktop" width="100%" />
-</p>
-
-<p align="center">
   <img src="assets/preview/control_center.png" alt="Control Center" width="32%" />
   <img src="assets/preview/appearance.png" alt="Appearance & Themes" width="32%" />
   <img src="assets/preview/audio_menu.png" alt="Audio Mixer" width="32%" />

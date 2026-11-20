@@ -13,10 +13,6 @@
 Универсальное окружение рабочего стола для CachyOS / Arch Linux, построенное вокруг **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO** и нативного набора утилит на **Rust / GTK4** в фирменной цветовой палитре **Inerium Dragon**.
 
 <p align="center">
-  <img src="assets/preview/desktop.png" alt="Рабочий стол Inerium" width="100%" />
-</p>
-
-<p align="center">
   <img src="assets/preview/control_center.png" alt="Центр управления" width="32%" />
   <img src="assets/preview/appearance.png" alt="Темы и обои" width="32%" />
   <img src="assets/preview/audio_menu.png" alt="Аудиоустройства" width="32%" />
