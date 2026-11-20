@@ -612,23 +612,19 @@ fn populate_list(
         txt.append(&sub_lbl);
         main_box.append(&txt);
 
-        let badge_text = if dev.connected {
-            tr("󰄬 Connected", "󰄬 Подключено")
-        } else if dev.paired {
-            tr("Paired", "Сохранено")
-        } else {
-            tr("New", "Новое")
-        };
-        let badge = Label::new(Some(badge_text));
+        let badge = Label::new(None);
         badge.add_css_class("card-badge");
         if dev.connected {
+            badge.set_label(tr("󰄬 Connected", "󰄬 Подключено"));
             badge.add_css_class("connected");
+            badge.set_visible(true);
         } else if dev.paired {
+            badge.set_label(tr("Paired", "Сохранено"));
             badge.add_css_class("paired");
+            badge.set_visible(true);
         } else {
-            badge.add_css_class("new");
+            badge.set_visible(false);
         }
-        badge.set_visible(true);
         main_box.append(&badge);
 
         header_row.append(&main_box);
