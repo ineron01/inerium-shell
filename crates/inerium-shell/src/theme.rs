@@ -424,10 +424,14 @@ window.popup-window decoration {
     background: none;
     box-shadow: none;
     border-radius: 9px;
-    padding: 6px 4px;
+    padding: 6px 8px;
     font-size: 11.5px;
     font-weight: 600;
     color: @cc_fg_subtle;
+}
+.cc-seg.cc-seg-wide button {
+    padding: 6px 14px;
+    min-width: 80px;
 }
 .cc-seg button:hover {
     background-color: @cc_surface_hover;

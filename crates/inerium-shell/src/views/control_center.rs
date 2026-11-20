@@ -238,11 +238,13 @@ impl SimpleComponent for ControlCenterModel {
                 add_css_class: "cc-head",
                 set_orientation: Orientation::Horizontal,
                 set_spacing: 8,
+                set_valign: Align::Center,
 
                 gtk4::Box {
                     set_orientation: Orientation::Vertical,
                     set_spacing: 2,
                     set_hexpand: true,
+                    set_valign: Align::Center,
 
                     gtk4::Label {
                         add_css_class: "cc-host",
@@ -253,6 +255,7 @@ impl SimpleComponent for ControlCenterModel {
                     gtk4::Box {
                         set_orientation: Orientation::Horizontal,
                         set_spacing: 8,
+                        set_valign: Align::Center,
 
                         gtk4::Label {
                             add_css_class: "cc-meta-accent",
@@ -328,57 +331,64 @@ impl SimpleComponent for ControlCenterModel {
                     },
                 },
 
-                #[name = "appearance_btn"]
-                gtk4::Button {
-                    add_css_class: "cc-icon-btn",
+                // Right icon buttons
+                gtk4::Box {
+                    set_orientation: Orientation::Horizontal,
+                    set_spacing: 6,
                     set_valign: Align::Center,
-                    set_label: "󰏘",
-                    #[watch]
-                    set_tooltip_text: Some(&format!(
-                        "{}: {} — {}",
-                        tr("Appearance", "Оформление"),
-                        model.theme_name,
-                        tr("LMB: themes & wallpapers, RMB: toggle theme", "ЛКМ: темы и обои, ПКМ: быстрая смена")
-                    )),
-                    connect_clicked => ControlCenterMsg::NavAppearance,
-                },
 
-                #[name = "idle_btn"]
-                gtk4::Button {
-                    add_css_class: "cc-icon-btn",
-                    set_valign: Align::Center,
-                    #[watch]
-                    set_css_classes: if model.is_idle_active {
-                        &["cc-icon-btn"]
-                    } else {
-                        &["cc-icon-btn", "amber", "on"]
+                    #[name = "appearance_btn"]
+                    gtk4::Button {
+                        add_css_class: "cc-icon-btn",
+                        set_valign: Align::Center,
+                        set_label: "󰏘",
+                        #[watch]
+                        set_tooltip_text: Some(&format!(
+                            "{}: {} — {}",
+                            tr("Appearance", "Оформление"),
+                            model.theme_name,
+                            tr("LMB: themes & wallpapers, RMB: toggle theme", "ЛКМ: темы и обои, ПКМ: быстрая смена")
+                        )),
+                        connect_clicked => ControlCenterMsg::NavAppearance,
                     },
-                    #[watch]
-                    set_label: if model.is_idle_active { "󰒳" } else { "󰈈" },
-                    #[watch]
-                    set_tooltip_text: Some(if model.is_idle_active {
-                        tr("Autolock: On", "Автоблокировка: вкл")
-                    } else {
-                        tr("Autolock: Off", "Автоблокировка: выкл")
-                    }),
-                    connect_clicked => ControlCenterMsg::ToggleHypridle,
-                },
 
-                gtk4::Button {
-                    add_css_class: "cc-icon-btn",
-                    set_valign: Align::Center,
-                    set_label: "󰌾",
-                    set_tooltip_text: Some(tr("Lock", "Заблокировать")),
-                    connect_clicked => ControlCenterMsg::LockScreen,
-                },
+                    #[name = "idle_btn"]
+                    gtk4::Button {
+                        add_css_class: "cc-icon-btn",
+                        set_valign: Align::Center,
+                        #[watch]
+                        set_css_classes: if model.is_idle_active {
+                            &["cc-icon-btn"]
+                        } else {
+                            &["cc-icon-btn", "amber", "on"]
+                        },
+                        #[watch]
+                        set_label: if model.is_idle_active { "󰒳" } else { "󰈈" },
+                        #[watch]
+                        set_tooltip_text: Some(if model.is_idle_active {
+                            tr("Autolock: On", "Автоблокировка: вкл")
+                        } else {
+                            tr("Autolock: Off", "Автоблокировка: выкл")
+                        }),
+                        connect_clicked => ControlCenterMsg::ToggleHypridle,
+                    },
 
-                gtk4::Button {
-                    add_css_class: "cc-icon-btn",
-                    add_css_class: "danger",
-                    set_valign: Align::Center,
-                    set_label: "⏻",
-                    set_tooltip_text: Some(tr("Power menu", "Меню питания")),
-                    connect_clicked => ControlCenterMsg::PowerMenu,
+                    gtk4::Button {
+                        add_css_class: "cc-icon-btn",
+                        set_valign: Align::Center,
+                        set_label: "󰌾",
+                        set_tooltip_text: Some(tr("Lock", "Заблокировать")),
+                        connect_clicked => ControlCenterMsg::LockScreen,
+                    },
+
+                    gtk4::Button {
+                        add_css_class: "cc-icon-btn",
+                        add_css_class: "danger",
+                        set_valign: Align::Center,
+                        set_label: "⏻",
+                        set_tooltip_text: Some(tr("Power menu", "Меню питания")),
+                        connect_clicked => ControlCenterMsg::PowerMenu,
+                    },
                 },
             },
 
@@ -925,9 +935,11 @@ impl SimpleComponent for ControlCenterModel {
                         gtk4::Box {
                             set_orientation: Orientation::Horizontal,
                             set_spacing: 8,
+                            set_valign: Align::Center,
 
                             gtk4::Box {
                                 set_orientation: Orientation::Vertical,
+                                set_spacing: 2,
                                 set_hexpand: true,
                                 set_valign: Align::Center,
 
@@ -951,8 +963,10 @@ impl SimpleComponent for ControlCenterModel {
 
                             gtk4::Box {
                                 add_css_class: "cc-seg",
+                                add_css_class: "cc-seg-wide",
                                 set_orientation: Orientation::Horizontal,
-                                set_spacing: 2,
+                                set_spacing: 3,
+                                set_valign: Align::Center,
 
                                 gtk4::Button {
                                     #[watch]
