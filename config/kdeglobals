@@ -119,9 +119,9 @@ ForegroundPositive=135,169,135
 ForegroundVisited=137,146,167
 
 [General]
-ColorScheme=Inerium-kanagawa-dragon
-ColorSchemeHash=e89f001b8554da715ab789ec93d9bba5f273af83
-Name=Kanagawa Dragon
+ColorScheme=Inerium-ineron
+ColorSchemeHash=4907caf572a2f598ce2f1d617b3dfacd245003c7
+Name=Ineron
 TerminalApplication=kitty
 
 [Icons]
