@@ -139,9 +139,10 @@ ColorSchemeHash=3c9a10f670123c434ee2eaf6b2c3ecc8df944028
 Name=Ineron
 TerminalApplication=kitty
 colorSchemeAccent=61,174,233
+font=Inter,10,-1,5,50,0,0,0,0,0
 
 [Icons]
-Theme=Papirus-Dark
+Theme=Colloid-Dark
 
 [KDE]
 contrast=7

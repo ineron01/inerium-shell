@@ -1,13 +1,20 @@
 MenuBar=Disabled
 
 [DetailsMode]
-PreviewSize=22
+ExpandableFolders=false
+HighlightEntireRow=true
+IconSize=32
+PreviewSize=32
+UseSystemFont=false
+ViewFont=Inter,10,-1,5,50,0,0,0,0,0
 
 [General]
+GlobalViewProps=true
 Version=202
+ViewMode=1
 
 [IconsMode]
-PreviewSize=80
+PreviewSize=32
 
 [KFileDialog Settings]
 Places Icons Auto-resize=false
