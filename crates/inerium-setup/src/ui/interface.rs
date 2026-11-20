@@ -85,6 +85,149 @@ pub fn build_interface_tab(
     theme_sub.set_xalign(0.0);
     theme_info.append(&theme_sub);
 
+    let selected_theme = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+    let selected_theme_name = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+    let watch_child: std::rc::Rc<std::cell::RefCell<Option<std::process::Child>>> =
+        std::rc::Rc::new(std::cell::RefCell::new(None));
+
+    let themes_flow = gtk4::FlowBox::new();
+    themes_flow.set_valign(gtk4::Align::Start);
+    themes_flow.set_max_children_per_line(5);
+    themes_flow.set_min_children_per_line(2);
+    themes_flow.set_selection_mode(gtk4::SelectionMode::None);
+    themes_flow.set_row_spacing(8);
+    themes_flow.set_column_spacing(8);
+
+    populate_setup_themes(&themes_flow, &selected_theme, &selected_theme_name, &status_cb, lang);
+
+    let new_theme_btn = Button::builder()
+        .label(tr(lang, "➕ New", "➕ Новая"))
+        .tooltip_text(tr(lang, "Create a new custom theme", "Создать шаблон новой темы"))
+        .build();
+    new_theme_btn.add_css_class("flat-btn");
+    {
+        let flow_c = themes_flow.clone();
+        let sel_id_c = selected_theme.clone();
+        let sel_name_c = selected_theme_name.clone();
+        let status_c = status_cb.clone();
+        new_theme_btn.connect_clicked(move |_| {
+            let home = inerium_hw::sysfs::home_dir();
+            let themes_dir = home.join(".config/inerium/themes");
+            let _ = std::fs::create_dir_all(&themes_dir);
+
+            let mut id = "my-theme".to_string();
+            let mut counter = 2;
+            while themes_dir.join(format!("{}.toml", id)).exists() {
+                id = format!("my-theme-{}", counter);
+                counter += 1;
+            }
+
+            let status_local = status_c.clone();
+            let flow_local = flow_c.clone();
+            let sel_id_local = sel_id_c.clone();
+            let sel_name_local = sel_name_c.clone();
+            let id_clone = id.clone();
+
+            let out = std::process::Command::new("inerium-theme")
+                .arg("new")
+                .arg(&id_clone)
+                .output();
+
+            if let Ok(out) = out && out.status.success() {
+                let file_path = themes_dir.join(format!("{}.toml", id_clone));
+                let _ = std::process::Command::new("xdg-open").arg(&file_path).spawn();
+                populate_setup_themes(&flow_local, &sel_id_local, &sel_name_local, &status_local, lang);
+                status_local.ok(&match lang {
+                    Lang::En => format!("Theme '{}' created and opened in editor", id_clone),
+                    Lang::Ru => format!("Тема '{}' создана и открыта в редакторе", id_clone),
+                });
+            } else {
+                status_local.warn(&match lang {
+                    Lang::En => "Failed to create theme".to_string(),
+                    Lang::Ru => "Не удалось создать тему".to_string(),
+                });
+            }
+        });
+    }
+
+    let edit_theme_btn = Button::builder()
+        .label(tr(lang, "✏️ Edit", "✏️ Изменить"))
+        .tooltip_text(tr(lang, "Open current theme file in editor", "Открыть файл текущей темы в текстовом редакторе"))
+        .build();
+    edit_theme_btn.add_css_class("flat-btn");
+    {
+        let sel_id_c = selected_theme.clone();
+        let status_c = status_cb.clone();
+        edit_theme_btn.connect_clicked(move |_| {
+            let id = sel_id_c.borrow().clone();
+            if id.is_empty() {
+                return;
+            }
+            let home = inerium_hw::sysfs::home_dir();
+            let user_path = home.join(format!(".config/inerium/themes/{}.toml", id));
+            let final_path = if user_path.exists() {
+                user_path
+            } else {
+                let sys_path = std::path::PathBuf::from(format!("/usr/share/inerium/themes/{}.toml", id));
+                if sys_path.exists() {
+                    let _ = std::fs::create_dir_all(home.join(".config/inerium/themes"));
+                    let _ = std::fs::copy(&sys_path, &user_path);
+                    user_path
+                } else {
+                    user_path
+                }
+            };
+
+            let _ = std::process::Command::new("xdg-open").arg(&final_path).spawn();
+            status_c.ok(&match lang {
+                Lang::En => format!("Opened '{}' in editor", final_path.display()),
+                Lang::Ru => format!("Открыт файл '{}'", final_path.display()),
+            });
+        });
+    }
+
+    let watch_toggle_btn = gtk4::ToggleButton::builder()
+        .label(tr(lang, "👀 Live Watch", "👀 Авто-просмотр"))
+        .tooltip_text(tr(lang, "Hot-reload theme on every Ctrl+S save", "Автоматически применять тему при сохранении файла (Ctrl+S)"))
+        .build();
+    watch_toggle_btn.add_css_class("flat-btn");
+    {
+        let watch_child_c = watch_child.clone();
+        let sel_theme_c = selected_theme.clone();
+        let status_cb_c = status_cb.clone();
+        watch_toggle_btn.connect_toggled(move |btn| {
+            if btn.is_active() {
+                let cur_id = sel_theme_c.borrow().clone();
+                let id = if cur_id.is_empty() { "current".to_string() } else { cur_id };
+                match std::process::Command::new("inerium-theme")
+                    .arg("watch")
+                    .arg(&id)
+                    .spawn()
+                {
+                    Ok(child) => {
+                        watch_child_c.replace(Some(child));
+                        status_cb_c.ok(&match lang {
+                            Lang::En => format!("Live watch started for '{}'", id),
+                            Lang::Ru => format!("Live-просмотр запущен для '{}'", id),
+                        });
+                    }
+                    Err(e) => {
+                        btn.set_active(false);
+                        status_cb_c.warn(&format!("Watch error: {}", e));
+                    }
+                }
+            } else {
+                if let Some(mut child) = watch_child_c.borrow_mut().take() {
+                    let _ = child.kill();
+                }
+                status_cb_c.ok(&match lang {
+                    Lang::En => "Live watch stopped".to_string(),
+                    Lang::Ru => "Live-просмотр остановлен".to_string(),
+                });
+            }
+        });
+    }
+
     let open_theme_btn = Button::builder()
         .label(tr(lang, "📁 Folder", "📁 Папка тем"))
         .tooltip_text(tr(lang, "Open ~/.config/inerium/themes", "Открыть папку ~/.config/inerium/themes"))
@@ -96,22 +239,17 @@ pub fn build_interface_tab(
             let _ = inerium_hw::open_folder(&path);
         });
     });
+
+    let theme_actions = Box::new(Orientation::Horizontal, 6);
+    theme_actions.append(&new_theme_btn);
+    theme_actions.append(&edit_theme_btn);
+    theme_actions.append(&watch_toggle_btn);
+    theme_actions.append(&open_theme_btn);
+
     theme_head.append(&theme_info);
-    theme_head.append(&open_theme_btn);
+    theme_head.append(&theme_actions);
     theme_card.append(&theme_head);
 
-    let selected_theme = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
-    let selected_theme_name = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
-
-    let themes_flow = gtk4::FlowBox::new();
-    themes_flow.set_valign(gtk4::Align::Start);
-    themes_flow.set_max_children_per_line(5);
-    themes_flow.set_min_children_per_line(2);
-    themes_flow.set_selection_mode(gtk4::SelectionMode::None);
-    themes_flow.set_row_spacing(8);
-    themes_flow.set_column_spacing(8);
-
-    populate_setup_themes(&themes_flow, &selected_theme, &selected_theme_name, &status_cb, lang);
     theme_card.append(&themes_flow);
     content.append(&theme_card);
 

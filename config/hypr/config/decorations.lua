@@ -1,7 +1,7 @@
 -- Look and feel configuration - Inerium aesthetic
 
 local border_active_1 = INERIUM_BORDER_ACTIVE or INERIUM_DRAGON_GRAY or INERIUM_BORDER or "rgba(727169ff)"
-local border_active_2 = INERIUM_ACCENT_PRIMARY or INERIUM_DRAGON_BLUE or INERIUM_BLUE or "rgba(7fb4caff)"
+local border_active_2 = INERIUM_BORDER_ACTIVE_SECONDARY or border_active_1
 local border_inactive = INERIUM_BORDER or "rgba(454444cc)"
 local primary = INERIUM_ACCENT_PRIMARY or INERIUM_BLUE or "rgba(7fb4caff)"
 local purple = INERIUM_PURPLE or "rgba(938aa9ff)"

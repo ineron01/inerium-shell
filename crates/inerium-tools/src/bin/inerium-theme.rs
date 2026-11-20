@@ -6,6 +6,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +19,42 @@ pub struct ThemeConfig {
     pub theme: ThemeMeta,
     pub palette: Palette,
     #[serde(default)]
+    pub typography: Option<Typography>,
+    #[serde(default)]
     pub display: Option<DisplayConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Typography {
+    #[serde(default)]
+    pub font_ui: Option<String>,
+    #[serde(default)]
+    pub font_mono: Option<String>,
+    #[serde(default)]
+    pub font_size: Option<f32>,
+}
+
+impl Typography {
+    pub fn get_ui_font(&self) -> &str {
+        self.font_ui.as_deref().unwrap_or("JetBrainsMono Nerd Font")
+    }
+
+    pub fn get_mono_font(&self) -> &str {
+        self.font_mono.as_deref().unwrap_or("JetBrainsMono Nerd Font")
+    }
+
+    pub fn get_size(&self) -> f32 {
+        self.font_size.unwrap_or(11.0)
+    }
+
+    pub fn to_css_font_family(&self) -> String {
+        let ui = self.get_ui_font();
+        if ui.contains("Nerd Font") {
+            format!("\"{}\", monospace", ui)
+        } else {
+            format!("\"{}\", \"JetBrainsMono Nerd Font\", sans-serif, monospace", ui)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -34,48 +71,89 @@ pub struct ThemeMeta {
     pub variant: String, // "dark" | "light"
     pub license: Option<String>,
     pub description: Option<String>,
+    #[serde(default)]
+    pub opacity: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Palette {
     pub bg_canvas: String,
     pub bg_surface: String,
-    pub bg_surface_alt: String,
-    pub bg_surface_hover: String,
-    pub bg_surface_active: String,
+    #[serde(default)]
+    pub bg_surface_alt: Option<String>,
+    #[serde(default)]
+    pub bg_surface_hover: Option<String>,
+    #[serde(default)]
+    pub bg_surface_active: Option<String>,
+
     pub border_subtle: String,
     pub border_active: String,
+    #[serde(default)]
+    pub border_active_secondary: Option<String>,
+
     pub text_primary: String,
     pub text_heading: String,
-    pub text_muted: String,
-    pub text_subtle: String,
-    pub text_inverted: String,
+    #[serde(default)]
+    pub text_muted: Option<String>,
+    #[serde(default)]
+    pub text_subtle: Option<String>,
+    #[serde(default)]
+    pub text_inverted: Option<String>,
+
     pub accent_green: String,
-    pub accent_green_bg: String,
-    pub accent_green_border: String,
+    #[serde(default)]
+    pub accent_green_bg: Option<String>,
+    #[serde(default)]
+    pub accent_green_border: Option<String>,
+
     pub accent_blue: String,
-    pub accent_blue_bg: String,
-    pub accent_blue_border: String,
+    #[serde(default)]
+    pub accent_blue_bg: Option<String>,
+    #[serde(default)]
+    pub accent_blue_border: Option<String>,
+
     pub accent_amber: String,
-    pub accent_amber_bg: String,
-    pub accent_amber_border: String,
+    #[serde(default)]
+    pub accent_amber_bg: Option<String>,
+    #[serde(default)]
+    pub accent_amber_border: Option<String>,
+
     pub accent_red: String,
-    pub accent_red_bg: String,
-    pub accent_red_border: String,
+    #[serde(default)]
+    pub accent_red_bg: Option<String>,
+    #[serde(default)]
+    pub accent_red_border: Option<String>,
+
     pub accent_aqua: String,
-    pub accent_aqua_bg: String,
-    pub accent_aqua_border: String,
+    #[serde(default)]
+    pub accent_aqua_bg: Option<String>,
+    #[serde(default)]
+    pub accent_aqua_border: Option<String>,
+
     pub accent_purple: String,
-    pub accent_purple_bg: String,
-    pub accent_purple_border: String,
+    #[serde(default)]
+    pub accent_purple_bg: Option<String>,
+    #[serde(default)]
+    pub accent_purple_border: Option<String>,
+
     #[serde(default)]
     pub accent_primary: Option<String>,
     #[serde(default)]
     pub accent_orange: Option<String>,
-    pub shadow: String,
-    pub modal_backdrop: String,
-    pub slider_trough: String,
-    pub slider_thumb: String,
+
+    #[serde(default)]
+    pub slider_fill: Option<String>,
+    #[serde(default)]
+    pub slider_fill_secondary: Option<String>,
+    #[serde(default)]
+    pub slider_trough: Option<String>,
+    #[serde(default)]
+    pub slider_thumb: Option<String>,
+
+    #[serde(default)]
+    pub shadow: Option<String>,
+    #[serde(default)]
+    pub modal_backdrop: Option<String>,
 }
 
 impl Palette {
@@ -96,6 +174,154 @@ impl Palette {
         let rgba = Rgba::parse(self.get_primary());
         format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
     }
+
+    pub fn get_slider_fill(&self) -> &str {
+        self.slider_fill.as_deref().unwrap_or_else(|| self.get_primary())
+    }
+
+    pub fn get_slider_fill_secondary(&self) -> &str {
+        self.slider_fill_secondary.as_deref().unwrap_or(&self.accent_amber)
+    }
+
+    pub fn get_slider_trough(&self) -> String {
+        self.slider_trough.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.text_primary).with_alpha(26).to_css_rgba()
+        })
+    }
+
+    pub fn get_slider_thumb(&self) -> &str {
+        self.slider_thumb.as_deref().unwrap_or(&self.text_heading)
+    }
+
+    pub fn get_border_active_secondary(&self) -> &str {
+        self.border_active_secondary.as_deref().unwrap_or(&self.border_active)
+    }
+
+    pub fn get_surface_alt(&self) -> String {
+        self.bg_surface_alt.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.bg_surface).darken(0.06).to_hex_rgb()
+        })
+    }
+
+    pub fn get_surface_hover(&self) -> String {
+        self.bg_surface_hover.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.bg_surface).lighten(0.08).to_hex_rgb()
+        })
+    }
+
+    pub fn get_surface_active(&self) -> String {
+        self.bg_surface_active.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.bg_surface).lighten(0.15).to_hex_rgb()
+        })
+    }
+
+    pub fn get_text_muted(&self) -> String {
+        self.text_muted.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.text_primary).darken(0.40).to_hex_rgb()
+        })
+    }
+
+    pub fn get_text_subtle(&self) -> String {
+        self.text_subtle.clone().unwrap_or_else(|| {
+            Rgba::parse(&self.text_primary).darken(0.20).to_hex_rgb()
+        })
+    }
+
+    pub fn get_text_inverted(&self) -> &str {
+        self.text_inverted.as_deref().unwrap_or(&self.bg_canvas)
+    }
+
+    pub fn get_green_bg(&self) -> String {
+        self.accent_green_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_green);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_green_border(&self) -> String {
+        self.accent_green_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_green);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_blue_bg(&self) -> String {
+        self.accent_blue_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_blue);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_blue_border(&self) -> String {
+        self.accent_blue_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_blue);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_amber_bg(&self) -> String {
+        self.accent_amber_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_amber);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_amber_border(&self) -> String {
+        self.accent_amber_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_amber);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_red_bg(&self) -> String {
+        self.accent_red_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_red);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_red_border(&self) -> String {
+        self.accent_red_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_red);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_aqua_bg(&self) -> String {
+        self.accent_aqua_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_aqua);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_aqua_border(&self) -> String {
+        self.accent_aqua_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_aqua);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_purple_bg(&self) -> String {
+        self.accent_purple_bg.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_purple);
+            format!("rgba({}, {}, {}, 0.16)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_purple_border(&self) -> String {
+        self.accent_purple_border.clone().unwrap_or_else(|| {
+            let rgba = Rgba::parse(&self.accent_purple);
+            format!("rgba({}, {}, {}, 0.35)", rgba.0, rgba.1, rgba.2)
+        })
+    }
+
+    pub fn get_shadow(&self) -> &str {
+        self.shadow.as_deref().unwrap_or("rgba(0, 0, 0, 0.85)")
+    }
+
+    pub fn get_modal_backdrop(&self) -> &str {
+        self.modal_backdrop.as_deref().unwrap_or("rgba(5, 5, 7, 0.75)")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,42 +330,109 @@ pub struct Rgba(pub u8, pub u8, pub u8, pub u8);
 impl Rgba {
     pub fn parse(s: &str) -> Self {
         let s = s.trim();
-        if let Some(stripped) = s.strip_prefix('#') {
-            if stripped.len() == 6 {
-                let r = u8::from_str_radix(&stripped[0..2], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&stripped[2..4], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&stripped[4..6], 16).unwrap_or(0);
-                return Rgba(r, g, b, 255);
-            } else if stripped.len() == 8 {
-                let r = u8::from_str_radix(&stripped[0..2], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&stripped[2..4], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&stripped[4..6], 16).unwrap_or(0);
-                let a = u8::from_str_radix(&stripped[6..8], 16).unwrap_or(255);
-                return Rgba(r, g, b, a);
-            }
-        } else if s.starts_with("rgba(") || s.starts_with("rgb(") {
-            let inner = s
-                .trim_start_matches("rgba(")
-                .trim_start_matches("rgb(")
-                .trim_end_matches(')');
-            let parts: Vec<&str> = inner.split(',').map(|p| p.trim()).collect();
-            if parts.len() >= 3 {
-                let r = parts[0].parse::<u8>().unwrap_or(0);
-                let g = parts[1].parse::<u8>().unwrap_or(0);
-                let b = parts[2].parse::<u8>().unwrap_or(0);
-                let a = if parts.len() >= 4 {
-                    if let Ok(alpha_float) = parts[3].parse::<f32>() {
-                        (alpha_float.clamp(0.0, 1.0) * 255.0).round() as u8
-                    } else {
-                        parts[3].parse::<u8>().unwrap_or(255)
-                    }
-                } else {
-                    255
-                };
-                return Rgba(r, g, b, a);
+        if s.is_empty() {
+            return Rgba(0, 0, 0, 255);
+        }
+
+        // Named colors
+        if s.eq_ignore_ascii_case("transparent") {
+            return Rgba(0, 0, 0, 0);
+        } else if s.eq_ignore_ascii_case("black") {
+            return Rgba(0, 0, 0, 255);
+        } else if s.eq_ignore_ascii_case("white") {
+            return Rgba(255, 255, 255, 255);
+        }
+
+        // Hex formats (with or without '#')
+        let hex_str = s.strip_prefix('#').unwrap_or(s);
+        let is_pure_hex = hex_str.chars().all(|c| c.is_ascii_hexdigit());
+
+        if is_pure_hex {
+            match hex_str.len() {
+                3 => {
+                    let r = u8::from_str_radix(&hex_str[0..1], 16).unwrap_or(0);
+                    let g = u8::from_str_radix(&hex_str[1..2], 16).unwrap_or(0);
+                    let b = u8::from_str_radix(&hex_str[2..3], 16).unwrap_or(0);
+                    return Rgba(r * 17, g * 17, b * 17, 255);
+                }
+                4 => {
+                    let r = u8::from_str_radix(&hex_str[0..1], 16).unwrap_or(0);
+                    let g = u8::from_str_radix(&hex_str[1..2], 16).unwrap_or(0);
+                    let b = u8::from_str_radix(&hex_str[2..3], 16).unwrap_or(0);
+                    let a = u8::from_str_radix(&hex_str[3..4], 16).unwrap_or(15);
+                    return Rgba(r * 17, g * 17, b * 17, a * 17);
+                }
+                6 => {
+                    let r = u8::from_str_radix(&hex_str[0..2], 16).unwrap_or(0);
+                    let g = u8::from_str_radix(&hex_str[2..4], 16).unwrap_or(0);
+                    let b = u8::from_str_radix(&hex_str[4..6], 16).unwrap_or(0);
+                    return Rgba(r, g, b, 255);
+                }
+                8 => {
+                    let r = u8::from_str_radix(&hex_str[0..2], 16).unwrap_or(0);
+                    let g = u8::from_str_radix(&hex_str[2..4], 16).unwrap_or(0);
+                    let b = u8::from_str_radix(&hex_str[4..6], 16).unwrap_or(0);
+                    let a = u8::from_str_radix(&hex_str[6..8], 16).unwrap_or(255);
+                    return Rgba(r, g, b, a);
+                }
+                _ => {}
             }
         }
+
+        // Functional rgb(...) and rgba(...) handling
+        if s.starts_with("rgb") {
+            let inner = s
+                .strip_prefix("rgba(")
+                .or_else(|| s.strip_prefix("rgb("))
+                .and_then(|str_val| str_val.strip_suffix(')'));
+
+            if let Some(inner) = inner {
+                let normalized = inner.replace([',', '/'], " ");
+                let parts: Vec<&str> = normalized.split_whitespace().collect();
+
+                if parts.len() >= 3 {
+                    let r = parts[0].parse::<u8>().unwrap_or(0);
+                    let g = parts[1].parse::<u8>().unwrap_or(0);
+                    let b = parts[2].parse::<u8>().unwrap_or(0);
+                    let a = if parts.len() >= 4 {
+                        let a_str = parts[3].trim_end_matches('%');
+                        if let Ok(alpha_float) = a_str.parse::<f32>() {
+                            if parts[3].ends_with('%') {
+                                (alpha_float.clamp(0.0, 100.0) / 100.0 * 255.0).round() as u8
+                            } else if alpha_float <= 1.0 {
+                                (alpha_float.clamp(0.0, 1.0) * 255.0).round() as u8
+                            } else {
+                                alpha_float.clamp(0.0, 255.0).round() as u8
+                            }
+                        } else {
+                            parts[3].parse::<u8>().unwrap_or(255)
+                        }
+                    } else {
+                        255
+                    };
+                    return Rgba(r, g, b, a);
+                }
+            }
+        }
+
         Rgba(0, 0, 0, 255)
+    }
+
+    pub fn with_alpha(&self, alpha: u8) -> Self {
+        Rgba(self.0, self.1, self.2, alpha)
+    }
+
+    pub fn with_alpha_f32(&self, alpha: f32) -> Self {
+        Rgba(self.0, self.1, self.2, (alpha.clamp(0.0, 1.0) * 255.0).round() as u8)
+    }
+
+    pub fn to_css_rgba(&self) -> String {
+        if self.3 == 255 {
+            self.to_hex_rgb()
+        } else {
+            let a = (self.3 as f32 / 255.0 * 100.0).round() / 100.0;
+            format!("rgba({}, {}, {}, {:.2})", self.0, self.1, self.2, a)
+        }
     }
 
     pub fn to_hex_rgb(&self) -> String {
@@ -156,6 +449,22 @@ impl Rgba {
 
     pub fn to_kde_rgb(&self) -> String {
         format!("{},{},{}", self.0, self.1, self.2)
+    }
+
+    pub fn lighten(&self, factor: f32) -> Self {
+        let f = factor.clamp(0.0, 1.0);
+        let r = (self.0 as f32 + (255.0 - self.0 as f32) * f).round().clamp(0.0, 255.0) as u8;
+        let g = (self.1 as f32 + (255.0 - self.1 as f32) * f).round().clamp(0.0, 255.0) as u8;
+        let b = (self.2 as f32 + (255.0 - self.2 as f32) * f).round().clamp(0.0, 255.0) as u8;
+        Rgba(r, g, b, self.3)
+    }
+
+    pub fn darken(&self, factor: f32) -> Self {
+        let f = (1.0 - factor.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+        let r = (self.0 as f32 * f).round().clamp(0.0, 255.0) as u8;
+        let g = (self.1 as f32 * f).round().clamp(0.0, 255.0) as u8;
+        let b = (self.2 as f32 * f).round().clamp(0.0, 255.0) as u8;
+        Rgba(r, g, b, self.3)
     }
 }
 
@@ -299,23 +608,24 @@ fn emit_hyprland_lua(theme: &ThemeConfig) -> String {
 r#"-- Generated by inerium-theme for {} (author: {})
 -- Upstream: {}
 
-INERIUM_BASE           = "{}"
-INERIUM_SURFACE        = "{}"
-INERIUM_BORDER         = "{}"
-INERIUM_BORDER_ACTIVE  = "{}"
-INERIUM_TEXT           = "{}"
-INERIUM_MUTED          = "{}"
+INERIUM_BASE                    = "{}"
+INERIUM_SURFACE                 = "{}"
+INERIUM_BORDER                  = "{}"
+INERIUM_BORDER_ACTIVE           = "{}"
+INERIUM_BORDER_ACTIVE_SECONDARY = "{}"
+INERIUM_TEXT                    = "{}"
+INERIUM_MUTED                   = "{}"
 
-INERIUM_GREEN          = "{}"
-INERIUM_BLUE           = "{}"
-INERIUM_AMBER          = "{}"
-INERIUM_RED            = "{}"
-INERIUM_PURPLE         = "{}"
-INERIUM_ACCENT_PRIMARY = "{}"
-INERIUM_SHADOW         = "{}"
+INERIUM_GREEN                   = "{}"
+INERIUM_BLUE                    = "{}"
+INERIUM_AMBER                   = "{}"
+INERIUM_RED                     = "{}"
+INERIUM_PURPLE                  = "{}"
+INERIUM_ACCENT_PRIMARY          = "{}"
+INERIUM_SHADOW                  = "{}"
 
-INERIUM_DRAGON_GRAY    = "{}"
-INERIUM_DRAGON_BLUE    = "{}"
+INERIUM_DRAGON_GRAY             = "{}"
+INERIUM_DRAGON_BLUE             = "{}"
 "#,
         theme.theme.name,
         theme.theme.author,
@@ -324,15 +634,16 @@ INERIUM_DRAGON_BLUE    = "{}"
         Rgba::parse(&p.bg_surface).to_hypr(),
         Rgba::parse(&p.border_subtle).to_hypr(),
         Rgba::parse(&p.border_active).to_hypr(),
+        Rgba::parse(p.get_border_active_secondary()).to_hypr(),
         Rgba::parse(&p.text_primary).to_hypr(),
-        Rgba::parse(&p.text_muted).to_hypr(),
+        Rgba::parse(&p.get_text_muted()).to_hypr(),
         Rgba::parse(&p.accent_green).to_hypr(),
         Rgba::parse(&p.accent_blue).to_hypr(),
         Rgba::parse(&p.accent_amber).to_hypr(),
         Rgba::parse(&p.accent_red).to_hypr(),
         Rgba::parse(&p.accent_purple).to_hypr(),
         Rgba::parse(p.get_primary()).to_hypr(),
-        Rgba::parse(&p.shadow).to_hypr(),
+        Rgba::parse(p.get_shadow()).to_hypr(),
         Rgba::parse(&p.border_subtle).to_hypr(),
         Rgba::parse(p.get_primary()).to_hypr(),
     )
@@ -340,35 +651,46 @@ INERIUM_DRAGON_BLUE    = "{}"
 
 fn emit_waybar_css(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
+    let typo_css = if let Some(t) = &theme.typography {
+        format!(
+            "\n* {{\n    font-family: {};\n    font-size: {:.1}px;\n}}\n",
+            t.to_css_font_family(),
+            t.get_size()
+        )
+    } else {
+        String::new()
+    };
     format!(
 r#"/* Generated by inerium-theme for {} (author: {}) */
-@define-color bg        {};
-@define-color surface   {};
-@define-color hover     {};
-@define-color line      {};
-@define-color fg        {};
-@define-color fg-bright {};
-@define-color muted     {};
-@define-color subtle    {};
-@define-color green     {};
-@define-color blue      {};
-@define-color aqua      {};
-@define-color yellow    {};
-@define-color orange    {};
-@define-color red       {};
-@define-color violet    {};
-@define-color primary   {};
-"#,
+@define-color bg                      {};
+@define-color surface                 {};
+@define-color hover                   {};
+@define-color line                    {};
+@define-color fg                      {};
+@define-color fg-bright               {};
+@define-color muted                   {};
+@define-color subtle                  {};
+@define-color green                   {};
+@define-color blue                    {};
+@define-color aqua                    {};
+@define-color yellow                  {};
+@define-color orange                  {};
+@define-color red                     {};
+@define-color violet                  {};
+@define-color primary                 {};
+@define-color slider_fill             {};
+@define-color slider_fill_secondary   {};
+{typo_css}"#,
         theme.theme.name,
         theme.theme.author,
         p.bg_canvas,
         p.bg_surface,
-        p.bg_surface_hover,
+        p.get_surface_hover(),
         p.border_subtle,
         p.text_primary,
         p.text_heading,
-        p.text_muted,
-        p.text_subtle,
+        p.get_text_muted(),
+        p.get_text_subtle(),
         p.accent_green,
         p.accent_blue,
         p.accent_aqua,
@@ -377,15 +699,22 @@ r#"/* Generated by inerium-theme for {} (author: {}) */
         p.accent_red,
         p.accent_purple,
         p.get_primary(),
+        p.get_slider_fill(),
+        p.get_slider_fill_secondary(),
     )
 }
 
 fn emit_rofi_rasi(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
+    let font_str = if let Some(t) = &theme.typography {
+        format!("    font:         \"{} {:.1}\";\n", t.get_ui_font(), t.get_size())
+    } else {
+        String::new()
+    };
     format!(
 r#"/* Generated by inerium-theme for {} (author: {}) */
 * {{
-    bg:           {};
+{font_str}    bg:           {};
     surface:      {};
     surface-hi:   {};
     line:         {};
@@ -406,15 +735,15 @@ r#"/* Generated by inerium-theme for {} (author: {}) */
         theme.theme.author,
         p.bg_canvas,
         p.bg_surface,
-        p.bg_surface_hover,
+        p.get_surface_hover(),
         p.border_active,
         p.border_subtle,
         p.text_primary,
         p.text_heading,
-        p.text_muted,
+        p.get_text_muted(),
         p.accent_green,
-        p.accent_green_bg,
-        p.accent_green_border,
+        p.get_green_bg(),
+        p.get_green_border(),
         p.accent_red,
         p.get_primary(),
         p.get_primary_bg(),
@@ -426,21 +755,38 @@ fn emit_kitty_conf(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
     let bg = Rgba::parse(&p.bg_canvas).to_hex_rgb();
     let fg = Rgba::parse(&p.text_primary).to_hex_rgb();
-    let sel_bg = Rgba::parse(&p.bg_surface_hover).to_hex_rgb();
+    let sel_bg = Rgba::parse(&p.get_surface_hover()).to_hex_rgb();
     let green = Rgba::parse(&p.accent_green).to_hex_rgb();
     let blue = Rgba::parse(&p.accent_blue).to_hex_rgb();
     let red = Rgba::parse(&p.accent_red).to_hex_rgb();
     let amber = Rgba::parse(&p.accent_amber).to_hex_rgb();
     let aqua = Rgba::parse(&p.accent_aqua).to_hex_rgb();
     let purple = Rgba::parse(&p.accent_purple).to_hex_rgb();
-    let muted = Rgba::parse(&p.text_muted).to_hex_rgb();
+    let muted = Rgba::parse(&p.get_text_muted()).to_hex_rgb();
     let heading = Rgba::parse(&p.text_heading).to_hex_rgb();
     let primary = Rgba::parse(p.get_primary()).to_hex_rgb();
+
+    let bright_red = Rgba::parse(&p.accent_red).lighten(0.18).to_hex_rgb();
+    let bright_green = Rgba::parse(&p.accent_green).lighten(0.18).to_hex_rgb();
+    let bright_amber = Rgba::parse(&p.accent_amber).lighten(0.18).to_hex_rgb();
+    let bright_blue = Rgba::parse(&p.accent_blue).lighten(0.18).to_hex_rgb();
+    let bright_purple = Rgba::parse(&p.accent_purple).lighten(0.18).to_hex_rgb();
+    let bright_aqua = Rgba::parse(&p.accent_aqua).lighten(0.18).to_hex_rgb();
+
+    let font_directives = if let Some(t) = &theme.typography {
+        format!(
+            "font_family {}\nfont_size {:.1}\n\n",
+            t.get_mono_font(),
+            t.get_size()
+        )
+    } else {
+        String::new()
+    };
 
     format!(
 r#"# Generated by inerium-theme for {} (author: {})
 
-foreground            {}
+{font_directives}foreground            {}
 background            {}
 selection_foreground  {}
 selection_background  {}
@@ -504,12 +850,12 @@ color15 {}
         aqua,
         fg,
         muted,
-        red,
-        green,
-        amber,
-        blue,
-        purple,
-        aqua,
+        bright_red,
+        bright_green,
+        bright_amber,
+        bright_blue,
+        bright_purple,
+        bright_aqua,
         heading,
     )
 }
@@ -518,15 +864,18 @@ fn emit_mako_config(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
     let bg = Rgba::parse(&p.bg_canvas).to_hex_rgba();
     let text = Rgba::parse(&p.text_primary).to_hex_rgb();
-    let text_subtle = Rgba::parse(&p.text_subtle).to_hex_rgb();
-    let text_muted = Rgba::parse(&p.text_muted).to_hex_rgb();
+    let text_subtle = Rgba::parse(&p.get_text_subtle()).to_hex_rgb();
+    let text_muted = Rgba::parse(&p.get_text_muted()).to_hex_rgb();
     let border = Rgba::parse(&p.border_subtle).to_hex_rgba();
     let red = Rgba::parse(&p.accent_red).to_hex_rgb();
     let primary_progress = Rgba::parse(&p.get_primary_bg()).to_hex_rgba();
 
+    let font_ui = theme.typography.as_ref().map(|t| t.get_ui_font()).unwrap_or("JetBrainsMono Nerd Font");
+    let font_size = theme.typography.as_ref().map(|t| t.get_size()).unwrap_or(10.0);
+
     format!(
 r#"# Generated by inerium-theme for {} (author: {})
-font=JetBrainsMono Nerd Font 10
+font={} {:.0}
 width=360
 background-color={}
 text-color={}
@@ -570,6 +919,8 @@ invisible=1
 "#,
         theme.theme.name,
         theme.theme.author,
+        font_ui,
+        font_size,
         bg,
         text,
         border,
@@ -585,88 +936,104 @@ invisible=1
 
 fn emit_gtk_vars(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
+    let typo_css = if let Some(t) = &theme.typography {
+        format!(
+            "\n.popup-container, .cc, window.popup-window {{\n    font-family: {};\n}}\n",
+            t.to_css_font_family()
+        )
+    } else {
+        String::new()
+    };
     format!(
 r#"/* Generated by inerium-theme for {} (author: {}) */
-@define-color cc_bg               {};
-@define-color cc_surface          {};
-@define-color cc_surface_hover    {};
-@define-color cc_surface_active   {};
-@define-color cc_line             {};
-@define-color cc_line_light       {};
-@define-color cc_fg               {};
-@define-color cc_fg_bright        {};
-@define-color cc_fg_muted         {};
-@define-color cc_fg_subtle        {};
-@define-color cc_fg_on_accent     {};
+@define-color cc_bg                   {};
+@define-color cc_surface              {};
+@define-color cc_surface_hover        {};
+@define-color cc_surface_active       {};
+@define-color cc_line                 {};
+@define-color cc_line_light           {};
+@define-color cc_fg                   {};
+@define-color cc_fg_bright            {};
+@define-color cc_fg_muted             {};
+@define-color cc_fg_subtle            {};
+@define-color cc_fg_on_accent         {};
 
-@define-color cc_green            {};
-@define-color cc_green_bg         {};
-@define-color cc_green_border     {};
+@define-color cc_green                {};
+@define-color cc_green_bg             {};
+@define-color cc_green_border         {};
 
-@define-color cc_blue             {};
-@define-color cc_blue_bg          {};
-@define-color cc_blue_border      {};
+@define-color cc_blue                 {};
+@define-color cc_blue_bg              {};
+@define-color cc_blue_border          {};
 
-@define-color cc_amber            {};
-@define-color cc_amber_bg         {};
-@define-color cc_amber_border     {};
+@define-color cc_amber                {};
+@define-color cc_amber_bg             {};
+@define-color cc_amber_border         {};
 
-@define-color cc_red              {};
-@define-color cc_red_bg           {};
-@define-color cc_red_border       {};
+@define-color cc_red                  {};
+@define-color cc_red_bg               {};
+@define-color cc_red_border           {};
 
-@define-color cc_aqua             {};
-@define-color cc_aqua_bg          {};
-@define-color cc_aqua_border      {};
+@define-color cc_aqua                 {};
+@define-color cc_aqua_bg              {};
+@define-color cc_aqua_border          {};
 
-@define-color cc_violet           {};
-@define-color cc_violet_bg        {};
-@define-color cc_violet_border    {};
+@define-color cc_violet               {};
+@define-color cc_violet_bg            {};
+@define-color cc_violet_border        {};
 
-@define-color cc_shadow           {};
-@define-color cc_modal_backdrop   {};
-@define-color cc_slider_trough    {};
-@define-color cc_slider_thumb     {};
-@define-color cc_orange           {};
-@define-color cc_primary          {};
-"#,
+@define-color cc_shadow               {};
+@define-color cc_modal_backdrop       {};
+@define-color cc_slider_trough        {};
+@define-color cc_slider_thumb         {};
+@define-color cc_orange               {};
+@define-color cc_primary              {};
+@define-color cc_primary_bg           {};
+@define-color cc_primary_border       {};
+@define-color cc_slider_fill          {};
+@define-color cc_slider_fill_secondary {};
+{typo_css}"#,
         theme.theme.name,
         theme.theme.author,
         p.bg_canvas,
         p.bg_surface,
-        p.bg_surface_hover,
-        p.bg_surface_active,
+        p.get_surface_hover(),
+        p.get_surface_active(),
         p.border_subtle,
         p.border_active,
         p.text_primary,
         p.text_heading,
-        p.text_muted,
-        p.text_subtle,
-        p.text_inverted,
+        p.get_text_muted(),
+        p.get_text_subtle(),
+        p.get_text_inverted(),
         p.accent_green,
-        p.accent_green_bg,
-        p.accent_green_border,
+        p.get_green_bg(),
+        p.get_green_border(),
         p.accent_blue,
-        p.accent_blue_bg,
-        p.accent_blue_border,
+        p.get_blue_bg(),
+        p.get_blue_border(),
         p.accent_amber,
-        p.accent_amber_bg,
-        p.accent_amber_border,
+        p.get_amber_bg(),
+        p.get_amber_border(),
         p.accent_red,
-        p.accent_red_bg,
-        p.accent_red_border,
+        p.get_red_bg(),
+        p.get_red_border(),
         p.accent_aqua,
-        p.accent_aqua_bg,
-        p.accent_aqua_border,
+        p.get_aqua_bg(),
+        p.get_aqua_border(),
         p.accent_purple,
-        p.accent_purple_bg,
-        p.accent_purple_border,
-        p.shadow,
-        p.modal_backdrop,
-        p.slider_trough,
-        p.slider_thumb,
+        p.get_purple_bg(),
+        p.get_purple_border(),
+        p.get_shadow(),
+        p.get_modal_backdrop(),
+        p.get_slider_trough(),
+        p.get_slider_thumb(),
         p.get_orange(),
         p.get_primary(),
+        p.get_primary_bg(),
+        p.get_primary_border(),
+        p.get_slider_fill(),
+        p.get_slider_fill_secondary(),
     )
 }
 
@@ -714,7 +1081,7 @@ r#"/* Generated by inerium-theme for {} (author: {}) */
         p.border_subtle,
         primary,
         primary,
-        p.bg_canvas,
+        p.get_text_inverted(),
         p.accent_red,
         p.accent_red,
         p.text_primary,
@@ -784,9 +1151,9 @@ fn emit_kde_colors(theme: &ThemeConfig) -> String {
     let p = &theme.palette;
     let bg_canvas = Rgba::parse(&p.bg_canvas).to_kde_rgb();
     let bg_surface = Rgba::parse(&p.bg_surface).to_kde_rgb();
-    let bg_hover = Rgba::parse(&p.bg_surface_hover).to_kde_rgb();
+    let bg_hover = Rgba::parse(&p.get_surface_hover()).to_kde_rgb();
     let text = Rgba::parse(&p.text_primary).to_kde_rgb();
-    let text_muted = Rgba::parse(&p.text_muted).to_kde_rgb();
+    let text_muted = Rgba::parse(&p.get_text_muted()).to_kde_rgb();
     let green = Rgba::parse(&p.accent_green).to_kde_rgb();
     let blue = Rgba::parse(&p.accent_blue).to_kde_rgb();
     let red = Rgba::parse(&p.accent_red).to_kde_rgb();
@@ -936,8 +1303,8 @@ fn emit_hyprlock_conf(theme: &ThemeConfig) -> String {
     let border = Rgba::parse(&p.border_subtle);
     let heading = Rgba::parse(&p.text_heading);
     let amber = Rgba::parse(&p.accent_amber);
-    let muted = Rgba::parse(&p.text_muted);
-    let surface_alt = Rgba::parse(&p.bg_surface_alt);
+    let muted = Rgba::parse(&p.get_text_muted());
+    let surface_alt = Rgba::parse(&p.get_surface_alt());
     let text = Rgba::parse(&p.text_primary);
     let green = Rgba::parse(&p.accent_green);
     let red = Rgba::parse(&p.accent_red);
@@ -986,7 +1353,7 @@ fn emit_greeter_css(theme: &ThemeConfig) -> String {
     let primary = Rgba::parse(p.get_primary());
     let red = Rgba::parse(&p.accent_red);
     let canvas = Rgba::parse(&p.bg_canvas);
-    let surface_alt = Rgba::parse(&p.bg_surface_alt);
+    let surface_alt = Rgba::parse(&p.get_surface_alt());
 
     let bg_card_rgba = format!("rgba({}, {}, {}, 0.92)", card.0, card.1, card.2);
     let bg_end_rgba = format!("rgba({}, {}, {}, 0.85)", card.0, card.1, card.2);
@@ -1117,42 +1484,42 @@ entry.password image:hover,
         bg_card_rgba,
         card_border,
         p.text_heading,
-        p.text_muted,
-        p.accent_green_bg, p.accent_green,
-        p.bg_surface_alt, p.text_primary,
+        p.get_text_muted(),
+        p.get_green_bg(), p.accent_green,
+        p.get_surface_alt(), p.text_primary,
         input_border,
         p.text_primary,
         focus_border,
         error_border,
-        p.text_muted,
-        p.text_muted,
+        p.get_text_muted(),
+        p.get_text_muted(),
         p.text_primary,
-        p.bg_surface_alt,
+        p.get_surface_alt(),
         btn_border,
         p.text_primary,
         btn_border_hover,
-        p.text_muted,
+        p.get_text_muted(),
         session_menu_bg,
         card_border,
         p.text_primary,
         p.accent_green,
-        p.bg_surface_hover,
+        p.get_surface_hover(),
         p.text_heading,
-        p.accent_green_bg,
+        p.get_green_bg(),
         p.accent_green,
         p.accent_green,
-        p.text_inverted,
-        p.text_inverted,
-        p.accent_green_border,
-        p.text_muted,
-        p.text_muted,
+        p.get_text_inverted(),
+        p.get_text_inverted(),
+        p.get_green_border(),
+        p.get_text_muted(),
+        p.get_text_muted(),
         p.accent_red,
         p.accent_amber,
         bg_end_rgba,
         end_border,
         p.accent_red,
         p.accent_red,
-        p.text_inverted,
+        p.get_text_inverted(),
     )
 }
 
@@ -1208,9 +1575,31 @@ pub fn apply_theme(theme: &ThemeConfig) {
         .stderr(Stdio::null())
         .status();
 
+    // 2b. Typography (GSettings and GTK settings.ini)
+    if let Some(typo) = &theme.typography {
+        let font_ui_str = format!("{} {}", typo.get_ui_font(), typo.get_size());
+        let font_mono_str = format!("{} {}", typo.get_mono_font(), typo.get_size());
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "font-name", &font_ui_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "document-font-name", &font_ui_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "monospace-font-name", &font_mono_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
     // 3. GTK 3 & GTK 4 settings.ini and Libadwaita CSS
     let prefer_dark_str = if is_dark { "1" } else { "0" };
     let libadwaita_css = emit_libadwaita_css(theme);
+    let font_spec = theme.typography.as_ref().map(|t| format!("{} {}", t.get_ui_font(), t.get_size()));
     for gtk_ver in &["gtk-3.0", "gtk-4.0"] {
         let dir = home.join(format!(".config/{}", gtk_ver));
         let _ = fs::create_dir_all(&dir);
@@ -1219,6 +1608,7 @@ pub fn apply_theme(theme: &ThemeConfig) {
         let path = dir.join("settings.ini");
         if let Ok(content) = fs::read_to_string(&path) {
             let mut lines = Vec::new();
+            let mut font_written = false;
             for line in content.lines() {
                 if line.starts_with("gtk-theme-name=") {
                     lines.push(format!("gtk-theme-name={}", gtk_theme));
@@ -1226,9 +1616,19 @@ pub fn apply_theme(theme: &ThemeConfig) {
                     lines.push(format!("gtk-application-prefer-dark-theme={}", prefer_dark_str));
                 } else if line.starts_with("gtk-icon-theme-name=") {
                     lines.push(format!("gtk-icon-theme-name={}", icon_theme));
+                } else if line.starts_with("gtk-font-name=") {
+                    if let Some(ref f) = font_spec {
+                        lines.push(format!("gtk-font-name={}", f));
+                        font_written = true;
+                    } else {
+                        lines.push(line.to_string());
+                    }
                 } else {
                     lines.push(line.to_string());
                 }
+            }
+            if !font_written && let Some(ref f) = font_spec {
+                lines.push(format!("gtk-font-name={}", f));
             }
             let _ = fs::write(&path, lines.join("\n") + "\n");
         }
@@ -1366,6 +1766,196 @@ pub fn apply_theme(theme: &ThemeConfig) {
     }
 }
 
+fn simple_time() -> String {
+    if let Ok(duration) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        let total_secs = duration.as_secs();
+        let hours = (total_secs / 3600) % 24;
+        let mins = (total_secs / 60) % 60;
+        let secs = total_secs % 60;
+        format!("{:02}:{:02}:{:02}", hours, mins, secs)
+    } else {
+        "00:00:00".to_string()
+    }
+}
+
+pub fn generate_new_theme_template(id: &str) -> String {
+    let title_cased = id
+        .split(['-', '_'])
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    format!(
+r##"# ==============================================================================
+# Inerium Desktop Theme: {title_cased}
+#
+# ФОРМАТЫ ЦВЕТОВ:
+#   Вы можете указывать цвета в любом удобном формате:
+#     - HEX:      "#1e2029", "1e2029" (без решётки), "#123" (3-значный)
+#     - HEX+Alpha:"#1e2029cc", "#1238"
+#     - RGB:      "rgb(30, 32, 41)"
+#     - RGBA:     "rgba(30, 32, 41, 0.85)"
+#     - CSS-4:    "rgb(30 32 41 / 85%)"
+#
+# СИСТЕМА АВТОВЫЧИСЛЕНИЙ:
+#   Поля с пометкой (опционально) можно опустить. Движок автоматически рассчитает
+#   нужные оттенки (фон кнопок @ 16%, рамки @ 35%, hover @ +8%, active @ +15%).
+# ==============================================================================
+
+[theme]
+id = "{id}"
+name = "{title_cased}"
+author = "User"
+variant = "dark" # "dark" или "light"
+
+# ------------------------------------------------------------------------------
+# Шрифты интерфейса (опционально)
+# Автоматически настраивает GTK, Waybar, Rofi, Kitty, Mako и системные окна.
+# Включает защитный fallback на "JetBrainsMono Nerd Font" для иконок.
+# ------------------------------------------------------------------------------
+[typography]
+font_ui = "Inter"
+font_mono = "JetBrainsMono Nerd Font"
+font_size = 10.0
+
+# ------------------------------------------------------------------------------
+# Цветовая палитра
+# ------------------------------------------------------------------------------
+[palette]
+# Основные холсты и карточки
+bg_canvas = "#111216"           # Фоновый цвет рабочего стола / подложки
+bg_surface = "#1e2029"          # Цвет карточек, виджетов Waybar, меню
+# bg_surface_alt = "#17181f"    # (опционально) Вторичные поверхности / списки
+# bg_surface_hover = "#262935"  # (опционально) Фон при наведении
+# bg_surface_active = "#2e3241" # (опционально) Фон при клике / нажатии
+
+# Текст и контраст
+text_heading = "#e6e8ee"        # Заголовки, жирный текст
+text_primary = "#cfd2dd"        # Основной текст приложений
+# text_muted = "#72778e"        # (опционально) Второстепенные подписи / плейсхолдеры
+# text_subtle = "#9ba0b4"       # (опционально) Промежуточный текст
+# text_inverted = "#111216"     # (опционально) Текст на контрастных плашках
+
+# Рамки и границы окон Hyprland
+border_subtle = "rgba(147, 138, 169, 0.20)"  # Неактивные окна и разделители
+border_active = "#938aa9"                    # Активное окно Hyprland
+# border_active_secondary = "#938aa9"        # (опционально) 2-й цвет для градиента рамки окна
+
+# Ползунки громкости и яркости в панелях
+# slider_fill = "#938aa9"                    # (опционально, по умолчанию = primary)
+# slider_fill_secondary = "#e6c384"          # (опционально, для внешнего монитора)
+
+# Акцентные цвета
+accent_primary = "#938aa9"      # Главный акцент системы (кнопки, фокус, бейджи)
+accent_green = "#87a987"        # Статус сети, активные тумблеры, успех
+accent_blue = "#7fb4ca"         # Ссылки, информация, Bluetooth
+accent_amber = "#e6c384"        # Предупреждения, зарядка батареи
+accent_red = "#e46876"          # Ошибки, кнопка выключения, опасность
+accent_aqua = "#7aa89f"         # Дополнительный акцент
+accent_purple = "#938aa9"       # Фиолетовый / аметистовый
+"##
+    )
+}
+
+fn cmd_new(id: &str) {
+    let clean_id = id.trim().to_lowercase().replace(' ', "-");
+    if clean_id.is_empty() {
+        eprintln!("󰅖 Ошибка: ID темы не может быть пустым.");
+        eprintln!("Использование: inerium-theme new <id_темы>");
+        std::process::exit(1);
+    }
+
+    let home = get_home();
+    let theme_dir = home.join(".config/inerium/themes");
+    let _ = fs::create_dir_all(&theme_dir);
+    let theme_path = theme_dir.join(format!("{}.toml", clean_id));
+
+    if theme_path.exists() {
+        eprintln!("󰅖 Файл темы уже существует: {}", theme_path.display());
+        eprintln!("💡 Отредактируйте его или удалите перед созданием заново.");
+        std::process::exit(1);
+    }
+
+    let content = generate_new_theme_template(&clean_id);
+    if let Err(e) = fs::write(&theme_path, content) {
+        eprintln!("󰅖 Не удалось создать файл {}: {}", theme_path.display(), e);
+        std::process::exit(1);
+    }
+
+    println!("✨ Новая тема успешно создана: {}", theme_path.display());
+    println!("💡 Редактируйте её в любом редакторе и запустите live-просмотр:");
+    println!("   inerium-theme watch {}", clean_id);
+}
+
+fn cmd_watch(id: &str) {
+    let clean_id = id.trim().to_lowercase().replace(' ', "-");
+    let home = get_home();
+
+    let target_path = if clean_id.ends_with(".toml") && Path::new(&clean_id).exists() {
+        PathBuf::from(&clean_id)
+    } else {
+        let user_theme = home.join(format!(".config/inerium/themes/{}.toml", clean_id));
+        if user_theme.exists() {
+            user_theme
+        } else {
+            let sys_theme = PathBuf::from(format!("/usr/share/inerium/themes/{}.toml", clean_id));
+            if sys_theme.exists() {
+                sys_theme
+            } else {
+                eprintln!("󰅖 Тема '{}' не найдена в ~/.config/inerium/themes/", clean_id);
+                eprintln!("💡 Создайте её командой: inerium-theme new {}", clean_id);
+                std::process::exit(1);
+            }
+        }
+    };
+
+    println!("👀 Запущен режим отслеживания: {}", target_path.display());
+    println!("⚡ Нажмите Ctrl+C для выхода. Изменения применяются сразу при сохранении файла.");
+
+    let read_and_apply = |path: &Path| -> bool {
+        match fs::read_to_string(path) {
+            Ok(content) => match toml::from_str::<ThemeConfig>(&content) {
+                Ok(theme) => {
+                    apply_theme(&theme);
+                    let now = simple_time();
+                    println!("  [✓ {}] Тема '{}' успешно обновлена и применена!", now, theme.theme.name);
+                    true
+                }
+                Err(e) => {
+                    let now = simple_time();
+                    eprintln!("  [✗ {}] Ошибка синтаксиса TOML: {}", now, e);
+                    false
+                }
+            },
+            Err(e) => {
+                eprintln!("  [✗] Ошибка чтения файла {}: {}", path.display(), e);
+                false
+            }
+        }
+    };
+
+    // Initial apply
+    read_and_apply(&target_path);
+
+    let mut last_mtime = fs::metadata(&target_path).and_then(|m| m.modified()).ok();
+
+    loop {
+        thread::sleep(Duration::from_millis(250));
+        let cur_mtime = fs::metadata(&target_path).and_then(|m| m.modified()).ok();
+        if cur_mtime.is_some() && cur_mtime != last_mtime {
+            last_mtime = cur_mtime;
+            thread::sleep(Duration::from_millis(50));
+            read_and_apply(&target_path);
+        }
+    }
+}
+
 fn print_help() {
     println!(
         r#"inerium-theme — Менеджер и компилятор тем оформления Inerium Desktop
@@ -1378,6 +1968,8 @@ fn print_help() {
     set <id>              Применить палитру по ID (если тема в extra, переносит её в постоянные)
     preview <id>          Быстрый показ палитры (только применение оформления без переноса файла)
     install <id>          Перенести тему из дополнительных в постоянные и применить
+    new <id>              Создать шаблон новой темы в ~/.config/inerium/themes/<id>.toml
+    watch [id]            Запустить отслеживание изменений темы (live reload на лету)
     toggle                Быстрое переключение (темный <-> светлый вариант)
     status                Вывести текущую активную тему и авторство в формате JSON
     help, --help          Показать эту справку
@@ -1559,6 +2151,21 @@ fn main() {
                 std::process::exit(1);
             }
         }
+        "new" => {
+            if args.len() < 2 {
+                eprintln!("Ошибка: укажите идентификатор новой темы. Пример: inerium-theme new my-theme");
+                std::process::exit(1);
+            }
+            cmd_new(&args[1]);
+        }
+        "watch" => {
+            let id = if args.len() >= 2 {
+                args[1].clone()
+            } else {
+                get_current_theme_id()
+            };
+            cmd_watch(&id);
+        }
         "help" | "--help" | "-h" => {
             print_help();
         }
@@ -1566,5 +2173,150 @@ fn main() {
             eprintln!("Неизвестная команда: '{}'. Запустите 'inerium-theme --help'.", other);
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rgba_parse_hex3_hex6_hex8_and_bare() {
+        assert_eq!(Rgba::parse("#fff"), Rgba(255, 255, 255, 255));
+        assert_eq!(Rgba::parse("#000"), Rgba(0, 0, 0, 255));
+        assert_eq!(Rgba::parse("#1238"), Rgba(17, 34, 51, 136));
+        assert_eq!(Rgba::parse("#1e2029"), Rgba(30, 32, 41, 255));
+        assert_eq!(Rgba::parse("1e2029"), Rgba(30, 32, 41, 255));
+        assert_eq!(Rgba::parse("#1e202980"), Rgba(30, 32, 41, 128));
+        assert_eq!(Rgba::parse("transparent"), Rgba(0, 0, 0, 0));
+        assert_eq!(Rgba::parse("white"), Rgba(255, 255, 255, 255));
+        assert_eq!(Rgba::parse("black"), Rgba(0, 0, 0, 255));
+    }
+
+    #[test]
+    fn test_rgba_parse_rgb_rgba_and_slash() {
+        assert_eq!(Rgba::parse("rgb(30, 32, 41)"), Rgba(30, 32, 41, 255));
+        assert_eq!(Rgba::parse("rgba(30, 32, 41, 0.5)"), Rgba(30, 32, 41, 128));
+        assert_eq!(Rgba::parse("rgb(30 32 41 / 50%)"), Rgba(30, 32, 41, 128));
+    }
+
+    #[test]
+    fn test_palette_auto_derivation() {
+        let p = Palette {
+            bg_canvas: "#111216".to_string(),
+            bg_surface: "#1e2029".to_string(),
+            bg_surface_alt: None,
+            bg_surface_hover: None,
+            bg_surface_active: None,
+            text_heading: "#e6e8ee".to_string(),
+            text_primary: "#cfd2dd".to_string(),
+            text_muted: None,
+            text_subtle: None,
+            text_inverted: None,
+            border_subtle: "rgba(147, 138, 169, 0.20)".to_string(),
+            border_active: "#938aa9".to_string(),
+            border_active_secondary: None,
+            accent_green: "#87a987".to_string(),
+            accent_green_bg: None,
+            accent_green_border: None,
+            accent_blue: "#7fb4ca".to_string(),
+            accent_blue_bg: None,
+            accent_blue_border: None,
+            accent_amber: "#e6c384".to_string(),
+            accent_amber_bg: None,
+            accent_amber_border: None,
+            accent_red: "#e46876".to_string(),
+            accent_red_bg: None,
+            accent_red_border: None,
+            accent_aqua: "#7aa89f".to_string(),
+            accent_aqua_bg: None,
+            accent_aqua_border: None,
+            accent_purple: "#938aa9".to_string(),
+            accent_purple_bg: None,
+            accent_purple_border: None,
+            accent_primary: None,
+            accent_orange: None,
+            slider_fill: None,
+            slider_fill_secondary: None,
+            slider_trough: None,
+            slider_thumb: None,
+            shadow: None,
+            modal_backdrop: None,
+        };
+
+        assert_eq!(p.get_primary(), "#7fb4ca");
+        assert_eq!(p.get_slider_fill(), "#7fb4ca");
+        assert_eq!(p.get_slider_fill_secondary(), "#e6c384");
+        assert_eq!(p.get_border_active_secondary(), "#938aa9");
+        assert!(p.get_green_bg().contains("rgba(135, 169, 135, 0.16)"));
+        assert!(p.get_green_border().contains("rgba(135, 169, 135, 0.35)"));
+    }
+
+    #[test]
+    fn test_typography_fallbacks() {
+        let typo = Typography {
+            font_ui: Some("Inter".to_string()),
+            font_mono: Some("JetBrainsMono Nerd Font".to_string()),
+            font_size: Some(10.5),
+        };
+        assert_eq!(
+            typo.to_css_font_family(),
+            "\"Inter\", \"JetBrainsMono Nerd Font\", sans-serif, monospace"
+        );
+    }
+
+    #[test]
+    fn test_slider_fill_fallback() {
+        let mut p = Palette {
+            bg_canvas: "#111216".to_string(),
+            bg_surface: "#1e2029".to_string(),
+            bg_surface_alt: None,
+            bg_surface_hover: None,
+            bg_surface_active: None,
+            text_heading: "#e6e8ee".to_string(),
+            text_primary: "#cfd2dd".to_string(),
+            text_muted: None,
+            text_subtle: None,
+            text_inverted: None,
+            border_subtle: "rgba(147, 138, 169, 0.20)".to_string(),
+            border_active: "#938aa9".to_string(),
+            border_active_secondary: None,
+            accent_green: "#87a987".to_string(),
+            accent_green_bg: None,
+            accent_green_border: None,
+            accent_blue: "#7fb4ca".to_string(),
+            accent_blue_bg: None,
+            accent_blue_border: None,
+            accent_amber: "#e6c384".to_string(),
+            accent_amber_bg: None,
+            accent_amber_border: None,
+            accent_red: "#e46876".to_string(),
+            accent_red_bg: None,
+            accent_red_border: None,
+            accent_aqua: "#7aa89f".to_string(),
+            accent_aqua_bg: None,
+            accent_aqua_border: None,
+            accent_purple: "#938aa9".to_string(),
+            accent_purple_bg: None,
+            accent_purple_border: None,
+            accent_primary: Some("#938aa9".to_string()),
+            accent_orange: None,
+            slider_fill: None,
+            slider_fill_secondary: None,
+            slider_trough: None,
+            slider_thumb: None,
+            shadow: None,
+            modal_backdrop: None,
+        };
+
+        // Fallbacks to primary and amber
+        assert_eq!(p.get_slider_fill(), "#938aa9");
+        assert_eq!(p.get_slider_fill_secondary(), "#e6c384");
+
+        // Custom override
+        p.slider_fill = Some("#87a987".to_string());
+        p.slider_fill_secondary = Some("#7fb4ca".to_string());
+        assert_eq!(p.get_slider_fill(), "#87a987");
+        assert_eq!(p.get_slider_fill_secondary(), "#7fb4ca");
     }
 }

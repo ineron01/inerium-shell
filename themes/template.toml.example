@@ -1,6 +1,20 @@
+# ==============================================================================
 # Inerium Desktop Theme Template
-# Copy this file to `~/.config/inerium/themes/<your-theme-id>.toml` to create a custom theme.
-# It will instantly appear in the Appearance gallery and `inerium-theme list`.
+# Copy this file to `~/.config/inerium/themes/<your-theme-id>.toml` or run:
+#   inerium-theme new <your-theme-id>
+#
+# COLOR FORMATS ACCEPTED:
+#   - HEX:       "#1e2029", "1e2029" (without hash), "#123" (3-digit)
+#   - HEX+Alpha: "#1e2029cc", "#1238"
+#   - RGB:       "rgb(30, 32, 41)"
+#   - RGBA:      "rgba(30, 32, 41, 0.85)"
+#   - CSS-4:     "rgb(30 32 41 / 85%)"
+#
+# AUTO-DERIVATION:
+#   Fields marked "(optional)" can be omitted. The theme engine will automatically
+#   compute balanced values (button backgrounds @ 16%, borders @ 35%, hover @ +8%,
+#   active @ +15%, slider fill from accent_primary).
+# ==============================================================================
 
 [theme]
 id = "my-custom-theme"               # Unique identifier (lowercase, hyphens only, e.g. "cyberpunk-2077")
@@ -11,59 +25,73 @@ variant = "dark"                     # "dark" or "light" (controls GTK/Portal sy
 license = "MIT"                      # License
 description = "My custom desktop theme"
 
+# ------------------------------------------------------------------------------
+# Typography (Optional)
+# Automatically configures GTK, Waybar, Rofi, Kitty, Mako, and desktop windows.
+# Includes protective fallback chain to "JetBrainsMono Nerd Font" for icon glyphs.
+# ------------------------------------------------------------------------------
+[typography]
+font_ui = "Inter"                    # Interface font (GTK, Waybar, menus)
+font_mono = "JetBrainsMono Nerd Font"# Monospace font (Kitty terminal, code)
+font_size = 10.0                     # Base UI font size
+
+# ------------------------------------------------------------------------------
+# Color Palette
+# ------------------------------------------------------------------------------
 [palette]
-# Canvas and background layers (RGB or RGBA)
-bg_canvas         = "rgba(24, 22, 22, 0.97)" # Waybar, Rofi, and popups base background
-bg_surface        = "#221f1f"                # Windows, dialogs, cards
-bg_surface_alt    = "#1c1a1a"                # Contrasting panels, sidebars
-bg_surface_hover  = "#2d2a2a"                # Button and list item hover state
-bg_surface_active = "#363434"                # Active/pressed element state
+# Canvas and background layers
+bg_canvas         = "#111216"        # Desktop backdrop, Waybar, and popup base background
+bg_surface        = "#1e2029"        # Cards, dialogs, control center tiles
+# bg_surface_alt    = "#17181f"      # (optional) Contrasting secondary surfaces / lists
+# bg_surface_hover  = "#262935"      # (optional) Button and tile hover state
+# bg_surface_active = "#2e3241"      # (optional) Active / pressed element state
 
-# Borders and outlines
-border_subtle     = "rgba(197, 201, 197, 0.10)" # Subtle window borders and card outlines
-border_active     = "rgba(197, 201, 197, 0.35)" # Active window border, focused elements
+# Typography & Text Contrast
+text_heading      = "#e6e8ee"        # Bold headings, active window titles
+text_primary      = "#cfd2dd"        # Default body text
+# text_muted        = "#72778e"      # (optional) Secondary captions, placeholders
+# text_subtle       = "#9ba0b4"      # (optional) Tertiary text, timestamps
+# text_inverted     = "#111216"      # (optional) Text on bright accent badges
 
-# Typography
-text_primary      = "#c5c9c5"                # Default body text
-text_heading      = "#e6e2cc"                # Headings, active window titles
-text_muted        = "#737c73"                # Secondary information, disabled items
-text_subtle       = "#a6a69c"                # Tertiary text, timestamps
-text_inverted     = "#181616"                # Text on bright accent badges
+# Window borders & Hyprland outlines
+border_subtle     = "rgba(147, 138, 169, 0.20)" # Inactive window borders and dividers
+border_active     = "#938aa9"                   # Active window border
+# border_active_secondary = "#938aa9"           # (optional) 2nd color for Hyprland border gradient
 
-# Dominant theme accents (Optional, falls back cleanly to blue/amber)
-accent_primary    = "#8ba4b0"                # Primary brand accent for GTK, Dolphin focus & window border
-accent_orange     = "#b6927b"                # Dedicated orange accent (for Waybar & hardware widgets)
+# Sliders in Control Center and popups
+# slider_fill           = "#938aa9"  # (optional, defaults to accent_primary)
+# slider_fill_secondary = "#e6c384"  # (optional, secondary slider fill, defaults to accent_amber)
+# slider_trough         = "rgba(207, 210, 221, 0.10)" # (optional)
+# slider_thumb          = "#e6e8ee"  # (optional, defaults to text_heading)
 
-# Accent colors (Used for badges, highlights, graphs and Waybar indicators)
-accent_green      = "#87a987"
-accent_green_bg   = "rgba(135, 169, 135, 0.16)"
-accent_green_border = "rgba(135, 169, 135, 0.35)"
+# Dominant theme accents
+accent_primary    = "#938aa9"        # Primary system accent (buttons, focus, badges)
+# accent_orange     = "#e6c384"      # (optional, defaults to accent_amber)
 
-accent_blue       = "#8ba4b0"
-accent_blue_bg    = "rgba(139, 164, 176, 0.16)"
-accent_blue_border = "rgba(139, 164, 176, 0.38)"
+# Accent colors (Used for badges, highlights, status indicators, and graphs)
+accent_green      = "#87a987"        # Wi-Fi active, success, toggles ON
+# accent_green_bg   = "rgba(135, 169, 135, 0.16)"  # (optional, auto-derived)
+# accent_green_border = "rgba(135, 169, 135, 0.35)" # (optional, auto-derived)
 
-accent_amber      = "#c4b28a"
-accent_amber_bg   = "rgba(196, 178, 138, 0.15)"
-accent_amber_border = "rgba(196, 178, 138, 0.38)"
+accent_blue       = "#7fb4ca"        # Bluetooth, links, informational chips
+# accent_blue_bg    = "rgba(127, 180, 202, 0.16)"  # (optional, auto-derived)
+# accent_blue_border = "rgba(127, 180, 202, 0.35)" # (optional, auto-derived)
 
-accent_red        = "#c4746e"
-accent_red_bg     = "rgba(196, 116, 110, 0.15)"
-accent_red_border = "rgba(196, 116, 110, 0.38)"
+accent_amber      = "#e6c384"        # Warnings, battery charging
+# accent_amber_bg   = "rgba(230, 195, 132, 0.16)"  # (optional, auto-derived)
+# accent_amber_border = "rgba(230, 195, 132, 0.35)"# (optional, auto-derived)
 
-accent_aqua       = "#8ea4a2"
-accent_aqua_bg    = "rgba(142, 164, 162, 0.16)"
-accent_aqua_border = "rgba(142, 164, 162, 0.38)"
+accent_red        = "#e46876"        # Errors, power off button, danger
+# accent_red_bg     = "rgba(228, 104, 118, 0.16)"  # (optional, auto-derived)
+# accent_red_border = "rgba(228, 104, 118, 0.35)"  # (optional, auto-derived)
 
-accent_purple     = "#8a7ea8"
-accent_purple_bg  = "rgba(138, 126, 168, 0.16)"
-accent_purple_border = "rgba(138, 126, 168, 0.38)"
+accent_aqua       = "#7aa89f"        # Audio, secondary indicators
+# accent_aqua_bg    = "rgba(122, 168, 159, 0.16)"  # (optional, auto-derived)
+# accent_aqua_border = "rgba(122, 168, 159, 0.35)" # (optional, auto-derived)
 
-# Desktop UI controls
-shadow            = "rgba(0, 0, 0, 0.85)"
-modal_backdrop    = "rgba(17, 17, 27, 0.60)"
-slider_trough     = "rgba(108, 112, 134, 0.22)"
-slider_thumb      = "#c5c9c5"
+accent_purple     = "#938aa9"        # Twilight amethyst / purple accent
+# accent_purple_bg  = "rgba(147, 138, 169, 0.16)"  # (optional, auto-derived)
+# accent_purple_border = "rgba(147, 138, 169, 0.35)"# (optional, auto-derived)
 
 [display]
 # Optional display color temperature via hyprsunset (e.g. 5500 for warm paper light, 6500 for standard)

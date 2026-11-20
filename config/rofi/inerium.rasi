@@ -11,12 +11,12 @@
     primary:      @green;
     primary-soft: @green-soft;
     primary-line: @green-line;
+    font:         "JetBrainsMono Nerd Font 10.5";
 }
 
 @import "colors.rasi"
 
 * {
-    font: "JetBrainsMono Nerd Font 10.5";
     background-color: transparent;
     text-color: @fg;
 }

@@ -1,7 +1,5 @@
 /* Waybar — Inerium Desktop, «островки» на прозрачной панели */
 
-@import "colors.css";
-
 * {
     border: none;
     border-radius: 0;
@@ -10,6 +8,8 @@
     font-size: 12px;
     font-weight: 600;
 }
+
+@import "colors.css";
 
 /* Сама панель прозрачная: видны только островки, клики по пустоте ловят распорки */
 window#waybar {
@@ -28,7 +28,7 @@ window#waybar {
 #tray,
 #status,
 #session {
-    background: alpha(@bg, 0.82);
+    background: alpha(@surface, 0.88);
     border: 1px solid @line;
     border-radius: 10px;
     margin: 2px 3px;
