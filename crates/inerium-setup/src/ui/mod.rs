@@ -320,7 +320,7 @@ fn build_shell(
     }
 
     // Unified Save & Apply Action Button
-    let save_all_btn = Button::with_label(tr(lang, "✓ Save & Apply", "✓ Сохранить и применить"));
+    let save_all_btn = Button::with_label(tr(lang, "󰄬 Save & Apply", "󰄬 Сохранить и применить"));
     save_all_btn.add_css_class("btn-primary");
     {
         let save_displays = save_displays.clone();

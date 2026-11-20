@@ -12,7 +12,7 @@
 @define-color popover_fg_color #e1e3e8;
 @define-color dialog_bg_color #1e2029;
 @define-color dialog_fg_color #e1e3e8;
-@define-color borders rgba(255, 255, 255, 0.06);
+@define-color borders rgba(126, 133, 155, 0.20);
 @define-color accent_color #938aa9;
 @define-color accent_bg_color #938aa9;
 @define-color accent_fg_color #111216;

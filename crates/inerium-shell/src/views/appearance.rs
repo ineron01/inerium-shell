@@ -168,7 +168,7 @@ impl SimpleComponent for AppearanceModel {
 
                             gtk4::Button {
                                 add_css_class: "cc-chip",
-                                set_label: &tr("📁 Folder", "📁 Папка тем"),
+                                set_label: &tr("󰉋 Folder", "󰉋 Папка тем"),
                                 set_tooltip_text: Some("~/.config/inerium/themes/"),
                                 connect_clicked => AppearanceMsg::OpenThemesFolder,
                             },
@@ -199,7 +199,7 @@ impl SimpleComponent for AppearanceModel {
 
                             gtk4::Button {
                                 add_css_class: "cc-chip",
-                                set_label: &tr("📁 Folder", "📁 Папка обоев"),
+                                set_label: &tr("󰉋 Folder", "󰉋 Папка обоев"),
                                 set_tooltip_text: Some("~/.local/share/inerium/wallpapers/"),
                                 connect_clicked => AppearanceMsg::OpenWallpapersFolder,
                             },
@@ -425,7 +425,7 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
         inner.append(&txt);
 
         if item.is_active {
-            let badge = Label::new(Some(tr("✓ Active", "✓ Активна")));
+            let badge = Label::new(Some(tr("󰄬 Active", "󰄬 Активна")));
             badge.add_css_class("card-badge");
             inner.append(&badge);
         }
@@ -519,7 +519,7 @@ fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &C
         name_lbl.set_xalign(0.0);
         bottom_row.append(&name_lbl);
 
-        let del_btn = Button::with_label("✕");
+        let del_btn = Button::with_label("󰅖");
         del_btn.add_css_class("del-btn");
         del_btn.set_tooltip_text(Some(tr("Delete from folder", "Удалить из папки")));
         let s_del = sender.clone();

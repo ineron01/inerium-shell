@@ -1878,7 +1878,7 @@ fn cmd_new(id: &str) {
 
     if theme_path.exists() {
         eprintln!("󰅖 Файл темы уже существует: {}", theme_path.display());
-        eprintln!("💡 Отредактируйте его или удалите перед созданием заново.");
+        eprintln!("  Отредактируйте его или удалите перед созданием заново.");
         std::process::exit(1);
     }
 
@@ -1888,8 +1888,8 @@ fn cmd_new(id: &str) {
         std::process::exit(1);
     }
 
-    println!("✨ Новая тема успешно создана: {}", theme_path.display());
-    println!("💡 Редактируйте её в любом редакторе и запустите live-просмотр:");
+    println!("󰄬 Новая тема успешно создана: {}", theme_path.display());
+    println!("  Редактируйте её в любом редакторе и запустите live-просмотр:");
     println!("   inerium-theme watch {}", clean_id);
 }
 
@@ -1909,14 +1909,14 @@ fn cmd_watch(id: &str) {
                 sys_theme
             } else {
                 eprintln!("󰅖 Тема '{}' не найдена в ~/.config/inerium/themes/", clean_id);
-                eprintln!("💡 Создайте её командой: inerium-theme new {}", clean_id);
+                eprintln!("  Создайте её командой: inerium-theme new {}", clean_id);
                 std::process::exit(1);
             }
         }
     };
 
-    println!("👀 Запущен режим отслеживания: {}", target_path.display());
-    println!("⚡ Нажмите Ctrl+C для выхода. Изменения применяются сразу при сохранении файла.");
+    println!("󰈈 Запущен режим отслеживания: {}", target_path.display());
+    println!("  Нажмите Ctrl+C для выхода. Изменения применяются сразу при сохранении файла.");
 
     let read_and_apply = |path: &Path| -> bool {
         match fs::read_to_string(path) {

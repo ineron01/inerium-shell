@@ -101,7 +101,7 @@ pub fn build_interface_tab(
     populate_setup_themes(&themes_flow, &selected_theme, &selected_theme_name, &status_cb, lang);
 
     let new_theme_btn = Button::builder()
-        .label(tr(lang, "➕ New", "➕ Новая"))
+        .label(tr(lang, "󰐕 New", "󰐕 Новая"))
         .tooltip_text(tr(lang, "Create a new custom theme", "Создать шаблон новой темы"))
         .build();
     new_theme_btn.add_css_class("flat-btn");
@@ -151,7 +151,7 @@ pub fn build_interface_tab(
     }
 
     let edit_theme_btn = Button::builder()
-        .label(tr(lang, "✏️ Edit", "✏️ Изменить"))
+        .label(tr(lang, "󰏫 Edit", "󰏫 Изменить"))
         .tooltip_text(tr(lang, "Open current theme file in editor", "Открыть файл текущей темы в текстовом редакторе"))
         .build();
     edit_theme_btn.add_css_class("flat-btn");
@@ -187,7 +187,7 @@ pub fn build_interface_tab(
     }
 
     let watch_toggle_btn = gtk4::ToggleButton::builder()
-        .label(tr(lang, "👀 Live Watch", "👀 Авто-просмотр"))
+        .label(tr(lang, "󰈈 Live Watch", "󰈈 Авто-просмотр"))
         .tooltip_text(tr(lang, "Hot-reload theme on every Ctrl+S save", "Автоматически применять тему при сохранении файла (Ctrl+S)"))
         .build();
     watch_toggle_btn.add_css_class("flat-btn");
@@ -229,7 +229,7 @@ pub fn build_interface_tab(
     }
 
     let open_theme_btn = Button::builder()
-        .label(tr(lang, "📁 Folder", "📁 Папка тем"))
+        .label(tr(lang, "󰉋 Folder", "󰉋 Папка тем"))
         .tooltip_text(tr(lang, "Open ~/.config/inerium/themes", "Открыть папку ~/.config/inerium/themes"))
         .build();
     open_theme_btn.add_css_class("flat-btn");
@@ -280,7 +280,7 @@ pub fn build_interface_tab(
     wall_head.append(&wall_info);
 
     let open_wall_btn = Button::builder()
-        .label(tr(lang, "📁 Folder", "📁 Папка обоев"))
+        .label(tr(lang, "󰉋 Folder", "󰉋 Папка обоев"))
         .tooltip_text(tr(lang, "Open wallpapers directory", "Открыть папку с обоями"))
         .build();
     open_wall_btn.add_css_class("flat-btn");
@@ -403,7 +403,7 @@ pub fn build_interface_tab(
     ovr_head.append(&ovr_title_box);
 
     let open_binds_btn = Button::builder()
-        .label(tr(lang, "📝 Keybinds", "📝 Хоткеи"))
+        .label(tr(lang, "󰌌 Keybinds", "󰌌 Хоткеи"))
         .build();
     open_binds_btn.add_css_class("flat-btn");
     open_binds_btn.set_tooltip_text(Some(tr(
@@ -511,8 +511,8 @@ pub fn build_interface_tab(
 
     let conflict_warn_lbl = Label::new(Some(tr(
         lang,
-        "⚠ Super + Space is bound to layout toggle. Choose a new shortcut for Application Launcher:",
-        "⚠ Super + Space занят сменой языка. Выберите новую клавишу для Лаунчера приложений:",
+        "󰀦 Super + Space is bound to layout toggle. Choose a new shortcut for Application Launcher:",
+        "󰀦 Super + Space занят сменой языка. Выберите новую клавишу для Лаунчера приложений:",
     )));
     conflict_warn_lbl.add_css_class("card-title");
     conflict_warn_lbl.set_xalign(0.0);

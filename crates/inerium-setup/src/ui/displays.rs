@@ -236,7 +236,7 @@ pub fn build_displays_tab(
     refresh_btn.add_css_class("btn-secondary");
     mon_head.append(&refresh_btn);
 
-    let open_cfg_btn = Button::with_label(tr(lang, "📝 Open config", "📝 Открыть конфиг"));
+    let open_cfg_btn = Button::with_label(tr(lang, "󰏫 Open config", "󰏫 Конфиг"));
     open_cfg_btn.add_css_class("btn-secondary");
     open_cfg_btn.set_tooltip_text(Some(tr(
         lang,
