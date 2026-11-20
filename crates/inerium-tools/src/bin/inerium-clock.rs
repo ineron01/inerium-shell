@@ -237,7 +237,7 @@ fn format_tooltip() -> String {
 
     // Header: full current date
     output.push_str(&format!(
-        "<span size='11000' weight='bold' color='#7fb4ca'>{}{}\n</span>\n",
+        "<span weight='bold' color='#7fb4ca'>{}{}\n</span>\n",
         head_spaces, header
     ));
 
@@ -288,7 +288,7 @@ fn format_tooltip() -> String {
     let pad_f2 = " ".repeat(total_w.saturating_sub(f2.chars().count()) / 2);
 
     output.push_str(&format!(
-        "\n<span size='small' color='#727169'>{}{}\n{}{}</span>",
+        "\n<span color='#727169'>{}{}\n{}{}</span>",
         pad_f1, f1, pad_f2, f2
     ));
     output.push_str("</span>");
