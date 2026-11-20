@@ -175,12 +175,45 @@ pub struct NetworkModel {
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
 }
 
+impl NetworkModel {
+    fn sync_active_network(&mut self) {
+        if let Some(ref act) = self.active_ssid {
+            for net in &mut self.networks {
+                net.is_active = &net.ssid == act;
+            }
+            if !self.networks.iter().any(|n| &n.ssid == act) {
+                let saved_map = query_saved_wifi_connections();
+                self.networks.push(WifiAp {
+                    ssid: act.clone(),
+                    signal: 100,
+                    security: String::new(),
+                    is_active: true,
+                    is_saved: saved_map.contains_key(act),
+                });
+            }
+        } else {
+            for net in &mut self.networks {
+                net.is_active = false;
+            }
+        }
+
+        self.networks.sort_by(|a, b| {
+            b.is_active
+                .cmp(&a.is_active)
+                .then_with(|| b.is_saved.cmp(&a.is_saved))
+                .then_with(|| b.signal.cmp(&a.signal))
+        });
+        self.needs_list_rebuild.set(true);
+    }
+}
+
 #[derive(Debug)]
 pub enum NetworkMsg {
     ToggleWifi(bool),
     StartRescan,
     ScanProgress(Vec<WifiAp>),
     RescanFinished(Vec<WifiAp>),
+    PollStatus,
     SelectAp(WifiAp),
     PasswordInput(String),
     SubmitPassword,
@@ -428,17 +461,29 @@ impl SimpleComponent for NetworkModel {
 
     fn init(
         init: Self::Init,
-        _root: Self::Root,
+        root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let wifi_enabled = hw::is_wifi_enabled();
         let hotspot_active = hw::is_hotspot_active();
         let active_ssid = hw::get_active_wifi_ssid();
-        let networks = if wifi_enabled && !hotspot_active {
+        let mut networks = if wifi_enabled && !hotspot_active {
             query_wifi_networks(false)
         } else {
             Vec::new()
         };
+
+        if let Some(ref act) = active_ssid {
+            for net in &mut networks {
+                net.is_active = &net.ssid == act;
+            }
+            networks.sort_by(|a, b| {
+                b.is_active
+                    .cmp(&a.is_active)
+                    .then_with(|| b.is_saved.cmp(&a.is_saved))
+                    .then_with(|| b.signal.cmp(&a.signal))
+            });
+        }
 
         let model = NetworkModel {
             wifi_enabled,
@@ -463,6 +508,16 @@ impl SimpleComponent for NetworkModel {
             model.is_scanning,
             &sender,
         );
+
+        let root_ref = root.clone();
+        let s_poll = sender.clone();
+        glib::timeout_add_local(Duration::from_millis(1000), move || {
+            if !root_ref.is_mapped() {
+                return glib::ControlFlow::Break;
+            }
+            s_poll.input(NetworkMsg::PollStatus);
+            glib::ControlFlow::Continue
+        });
 
         ComponentParts { model, widgets }
     }
@@ -545,18 +600,30 @@ impl SimpleComponent for NetworkModel {
                     s.input(NetworkMsg::RescanFinished(fresh));
                 });
             }
+            NetworkMsg::PollStatus => {
+                let current_ssid = hw::get_active_wifi_ssid();
+                let current_hotspot = hw::is_hotspot_active();
+                let ssid_changed = current_ssid != self.active_ssid;
+                let hotspot_changed = current_hotspot != self.hotspot_active;
+
+                if ssid_changed || hotspot_changed {
+                    self.active_ssid = current_ssid;
+                    self.hotspot_active = current_hotspot;
+                    self.sync_active_network();
+                }
+            }
             NetworkMsg::ScanProgress(fresh) => {
                 self.networks = fresh;
                 self.active_ssid = hw::get_active_wifi_ssid();
                 self.hotspot_active = hw::is_hotspot_active();
-                self.needs_list_rebuild.set(true);
+                self.sync_active_network();
             }
             NetworkMsg::RescanFinished(fresh) => {
                 self.is_scanning = false;
                 self.networks = fresh;
                 self.active_ssid = hw::get_active_wifi_ssid();
                 self.hotspot_active = hw::is_hotspot_active();
-                self.needs_list_rebuild.set(true);
+                self.sync_active_network();
             }
             NetworkMsg::SelectAp(net) => {
                 if net.is_active {
@@ -700,7 +767,7 @@ impl SimpleComponent for NetworkModel {
             } => {
                 self.networks = networks;
                 self.active_ssid = hw::get_active_wifi_ssid();
-                self.needs_list_rebuild.set(true);
+                self.sync_active_network();
                 if success {
                     crate::set_modal_dialog_active(false);
                     self.password_prompt = None;
@@ -734,7 +801,7 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::DisconnectFinished(fresh) => {
                 self.networks = fresh;
                 self.active_ssid = hw::get_active_wifi_ssid();
-                self.needs_list_rebuild.set(true);
+                self.sync_active_network();
             }
             NetworkMsg::StopHotspot => {
                 let s_fin = sender.clone();

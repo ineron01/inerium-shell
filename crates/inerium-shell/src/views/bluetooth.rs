@@ -9,7 +9,7 @@ use relm4::prelude::*;
 
 use crate::hw;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BtDevice {
     pub mac: String,
     pub name: String,
@@ -142,6 +142,7 @@ pub enum BtMsg {
     StartScan,
     ScanProgress(Vec<BtDevice>),
     ScanFinished(Vec<BtDevice>),
+    PollStatus,
     ConnectDevice(String, bool, bool),
     ConnectFinished(Vec<BtDevice>),
     OpenManager,
@@ -271,6 +272,16 @@ impl SimpleComponent for BluetoothModel {
 
         populate_list(&widgets.list_box, &devices, enabled, false, &sender);
 
+        let root_ref = root.clone();
+        let s_poll = sender.clone();
+        glib::timeout_add_local(Duration::from_millis(1500), move || {
+            if !root_ref.is_mapped() {
+                return glib::ControlFlow::Break;
+            }
+            s_poll.input(BtMsg::PollStatus);
+            glib::ControlFlow::Continue
+        });
+
         ComponentParts { model, widgets }
     }
 
@@ -280,6 +291,14 @@ impl SimpleComponent for BluetoothModel {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
+            BtMsg::PollStatus => {
+                if !self.scanning && self.enabled {
+                    let fresh = query_devices();
+                    if fresh != self.devices {
+                        self.devices = fresh;
+                    }
+                }
+            }
             BtMsg::TogglePower(state) => {
                 self.enabled = state;
                 if !state {
