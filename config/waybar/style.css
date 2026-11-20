@@ -40,7 +40,7 @@ window#waybar {
 #custom-launcher {
     margin-left: 0;
     padding: 0 11px;
-    font-size: 15px;
+    font-size: 1.25em;
     color: @primary;
 }
 
@@ -61,7 +61,7 @@ window#waybar {
     padding: 0 9px;
     margin: 4px 0;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: 1.1em;
     transition: background 200ms ease, color 200ms ease;
 }
 
@@ -178,7 +178,7 @@ window#waybar {
 #clock,
 #custom-clock {
     padding: 0 16px;
-    font-size: 12.5px;
+    font-size: 1.05em;
     font-weight: 700;
     color: @fg-bright;
 }
@@ -238,7 +238,7 @@ window#waybar {
 #custom-keyboard,
 #language {
     color: @fg;
-    font-size: 11px;
+    font-size: 0.95em;
     font-weight: 700;
 }
 
@@ -248,7 +248,7 @@ window#waybar {
 #network.disconnected,
 #network.disabled { color: @muted; }
 
-#custom-hotspot { color: @muted; font-size: 13px; }
+#custom-hotspot { color: @muted; font-size: 1.1em; }
 #custom-hotspot.active { color: @green; }
 #custom-hotspot.starting,
 #custom-hotspot.stopping {
