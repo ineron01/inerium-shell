@@ -17,8 +17,3 @@
 @define-color primary                 #938aa9;
 @define-color slider_fill             #938aa9;
 @define-color slider_fill_secondary   #c4b28a;
-
-* {
-    font-family: "Inter", "JetBrainsMono Nerd Font", sans-serif, monospace;
-    font-size: 10.0px;
-}
