@@ -48,7 +48,7 @@ fn set_dnd_audio_mute(mute: bool) {
         ])
         .output();
 
-    // 2. Mute/unmute active notification or Telegram sink-inputs via pactl if any stream is currently playing
+    // 2. Mute/unmute active notification sink-inputs via pactl if any stream with media.role:Notification is currently playing
     if let Ok(out) = Command::new("pactl").args(["list", "sink-inputs"]).output() {
         let text = String::from_utf8_lossy(&out.stdout);
         let mut cur_id: Option<String> = None;
@@ -58,9 +58,7 @@ fn set_dnd_audio_mute(mute: bool) {
             let trimmed = line.trim();
             if trimmed.starts_with("Sink Input #") {
                 cur_id = trimmed.strip_prefix("Sink Input #").map(|s| s.to_string());
-            } else if (trimmed.contains("media.role = \"Notification\"")
-                || trimmed.contains("application.name = \"Telegram")
-                || trimmed.contains("application.process.binary = \"Telegram\""))
+            } else if trimmed.contains("media.role = \"Notification\"")
                 && let Some(ref id) = cur_id
             {
                 let _ = Command::new("pactl")
@@ -69,6 +67,13 @@ fn set_dnd_audio_mute(mute: bool) {
             }
         }
     }
+}
+
+fn set_gsettings_dnd(dnd_active: bool) {
+    let show_banners = if dnd_active { "false" } else { "true" };
+    let _ = Command::new("gsettings")
+        .args(["set", "org.gnome.desktop.notifications", "show-banners", show_banners])
+        .output();
 }
 
 pub fn toggle_dnd() {
@@ -80,11 +85,13 @@ pub fn toggle_dnd() {
             .args(["mode", "-a", "dnd", "-a", "do-not-disturb"])
             .output();
         set_dnd_audio_mute(true);
+        set_gsettings_dnd(true);
     } else {
         let _ = Command::new("makoctl")
             .args(["mode", "-r", "dnd", "-r", "do-not-disturb"])
             .output();
         set_dnd_audio_mute(false);
+        set_gsettings_dnd(false);
     }
 
     let _ = dnd_registry().notify(SIGUSR1);
