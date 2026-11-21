@@ -772,14 +772,11 @@ window.power-window {
     border: none;
     background: transparent;
     box-shadow: none;
+    min-width: 128px;
     min-height: 72px;
-    max-height: 72px;
 }
 .wall-card {
     min-width: 140px;
-    max-width: 140px;
-    min-height: 114px;
-    max-height: 114px;
     border-radius: 12px;
     background-color: @cc_surface;
     border: 1.5px solid @cc_line;
@@ -796,8 +793,8 @@ window.power-window {
 }
 .wall-thumb {
     border-radius: 8px;
+    min-width: 128px;
     min-height: 72px;
-    max-height: 72px;
 }
 .wall-caption,
 .wall-name {

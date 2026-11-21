@@ -178,6 +178,24 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
     let _ = fs::File::create(&sentinel);
 }
 
+fn generate_wallpaper_thumb(src: &Path, dst: &Path) -> bool {
+    if let Some(parent) = dst.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    Command::new("magick")
+        .arg(src)
+        .arg("-resize")
+        .arg("160x90^")
+        .arg("-gravity")
+        .arg("center")
+        .arg("-extent")
+        .arg("160x90")
+        .arg(dst)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 pub fn list_available_wallpapers() -> Vec<WallpaperItem> {
     let mut items = Vec::new();
     let inerium_dir = inerium_wallpapers_dir();
@@ -199,8 +217,8 @@ pub fn list_available_wallpapers() -> Vec<WallpaperItem> {
                     let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
                     let path_str = p.to_string_lossy().to_string();
 
-                    let thumb_candidate = thumb_base.join(format!("{}.84x48.png", filename));
-                    let thumb_path = if thumb_candidate.exists() {
+                    let thumb_candidate = thumb_base.join(format!("{}.160x90.png", filename));
+                    let thumb_path = if thumb_candidate.exists() || generate_wallpaper_thumb(&p, &thumb_candidate) {
                         Some(thumb_candidate.to_string_lossy().into_owned())
                     } else {
                         None

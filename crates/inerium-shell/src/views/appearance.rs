@@ -474,7 +474,7 @@ impl SimpleComponent for AppearanceModel {
                     if let Some(file_name) = canon_user.file_name().and_then(|f| f.to_str()) {
                         let thumb = hw::cache_dir()
                             .join("inerium-wall-thumbs")
-                            .join(format!("{}.84x48.png", file_name));
+                            .join(format!("{}.160x90.png", file_name));
                         let _ = std::fs::remove_file(thumb);
                     }
                     self.wallpapers = hw::list_available_wallpapers();
