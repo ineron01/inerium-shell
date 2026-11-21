@@ -4,6 +4,15 @@
 # ============================================================================
 set -euo pipefail
 
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
 find_repo_dir() {
     if [[ -n "${INERIUM_SHELL_DIR:-}" && -d "$INERIUM_SHELL_DIR" ]]; then
         echo "$INERIUM_SHELL_DIR"
@@ -11,6 +20,8 @@ find_repo_dir() {
         echo "$INERIUM_DESKTOP_DIR"
     elif [[ -d "$HOME/Repos/inerium-shell" ]]; then
         echo "$HOME/Repos/inerium-shell"
+    elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell" ]]; then
+        echo "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell"
     elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell" ]]; then
         echo "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
     elif [[ -d "$HOME/inerium-shell" ]]; then
@@ -21,7 +32,8 @@ find_repo_dir() {
 }
 
 usage() {
-    cat <<EOF
+    if is_ru; then
+        cat <<EOF
 Использование: inerium <команда> [параметры...]
 
 Команды:
@@ -38,14 +50,38 @@ usage() {
   inerium update --sysupgrade # Обновление оболочки вместе со всей системой (pacman -Syu)
   inerium setup               # Настройки мониторов, обоев и интеграций
 EOF
+    else
+        cat <<EOF
+Usage: inerium <command> [options...]
+
+Commands:
+  update, up      Update Inerium Shell (binaries, services, modules)
+  setup           Open configuration GUI (inerium-setup)
+  theme [ID]      View or change current desktop theme
+  check           Check system libraries and binary integrity (ABI)
+  status          Current system status and active modules
+  help, -h        Show this help message
+
+Examples:
+  inerium update              # Interactive update (TUI selection)
+  inerium update -y           # Unattended quiet update
+  inerium update --sysupgrade # Update shell along with full system upgrade
+  inerium setup               # Configure displays, wallpapers, integrations
+EOF
+    fi
 }
 
 cmd_update() {
     local repo_dir
     repo_dir="$(find_repo_dir)"
     if [[ -z "$repo_dir" || ! -f "$repo_dir/install.sh" ]]; then
-        echo "[inerium] Ошибка: Каталог Inerium Shell не найден." >&2
-        echo "          Запустите установку: curl -sL ineron01.github.io/inerium-shell | bash" >&2
+        if is_ru; then
+            echo "[inerium] Ошибка: Каталог Inerium Shell не найден." >&2
+            echo "          Установите: git clone https://github.com/ineron01/inerium-shell && cd inerium-shell && ./install.sh" >&2
+        else
+            echo "[inerium] Error: Inerium Shell repository directory not found." >&2
+            echo "          Install: git clone https://github.com/ineron01/inerium-shell && cd inerium-shell && ./install.sh" >&2
+        fi
         exit 1
     fi
 
@@ -59,13 +95,26 @@ cmd_update() {
         fi
     fi
 
-    echo "[inerium] Проверка обновлений репозитория в $repo_dir..."
+    if is_ru; then
+        echo "[inerium] Проверка обновлений репозитория в $repo_dir..."
+    else
+        echo "[inerium] Checking repository updates in $repo_dir..."
+    fi
+
     if [[ -d "$repo_dir/.git" ]]; then
-        if [[ "$repo_dir" == *"/Repos/inerium"* ]]; then
-            echo "[inerium] Обнаружено рабочее дерево разработчика ($repo_dir). Пропуск git pull."
+        if [[ -n "${INERIUM_DEV:-}" || "$repo_dir" == *"/Repos/inerium"* || -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]]; then
+            if is_ru; then
+                echo "[inerium] Обнаружено рабочее дерево разработки ($repo_dir). Пропуск git pull."
+            else
+                echo "[inerium] Development or modified working tree detected ($repo_dir). Skipping git pull."
+            fi
         else
             git -C "$repo_dir" pull --ff-only 2>/dev/null || {
-                echo "[inerium] Предупреждение: Не удалось обновить git репозиторий (продолжаем с текущей копией)."
+                if is_ru; then
+                    echo "[inerium] Предупреждение: Не удалось обновить git репозиторий (продолжаем с текущей копией)."
+                else
+                    echo "[inerium] Warning: Failed to fast-forward git repository (continuing with current copy)."
+                fi
             }
         fi
     fi
@@ -74,20 +123,39 @@ cmd_update() {
 }
 
 cmd_status() {
-    local repo_dir
+    local repo_dir manifest_file
     repo_dir="$(find_repo_dir)"
-    echo "=== Inerium Shell — Состояние системы ==="
-    echo "Версия репозитория: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
-    echo "Каталог:            ${repo_dir:-не найден}"
-    echo "Сессия Wayland:     ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
-    echo ""
-    echo "Установленные модули:"
-    [[ -f "/etc/greetd/config.toml" ]] && echo "  [✓] Greetd (Экран входа)" || echo "  [ ] Greetd"
-    command -v novpn >/dev/null 2>&1 && echo "  [✓] noVPN (Сетевая изоляция)" || echo "  [ ] noVPN"
-    [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && echo "  [✓] Google Drive (rclone)" || echo "  [ ] Google Drive"
-    [[ -d "$HOME/.local/share/kio/servicemenus" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
-    [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
-    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && echo "  [✓] Охлаждение MSI (msi-ec)" || echo "  [ ] Охлаждение MSI"
+    manifest_file="${XDG_STATE_HOME:-$HOME/.local/state}/inerium/installed.manifest"
+
+    if is_ru; then
+        echo "=== Inerium Shell — Состояние системы ==="
+        echo "Версия репозитория: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
+        echo "Каталог:            ${repo_dir:-не найден}"
+        echo "Сессия Wayland:     ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
+        echo ""
+        echo "Установленные модули:"
+        ([[ -f "/etc/greetd/inerium-greeter.json" ]] || grep -q "inerium-greeter" /etc/greetd/config.toml 2>/dev/null) && echo "  [✓] Greetd (inerium-greeter)" || echo "  [ ] Greetd"
+        command -v novpn >/dev/null 2>&1 && echo "  [✓] noVPN (Сетевая изоляция)" || echo "  [ ] noVPN"
+        [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && echo "  [✓] Google Drive (rclone)" || echo "  [ ] Google Drive"
+        [[ -f "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
+        [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
+        ([[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] || [[ -f "/etc/modules-load.d/msi-ec.conf" ]]) && echo "  [✓] Охлаждение MSI (msi-ec)" || echo "  [ ] Охлаждение MSI"
+        (command -v gh >/dev/null 2>&1 && [[ -f "$HOME/.config/inerium/first-login.d/10-github" || -n "$(grep -w 'ADDON github' "$manifest_file" 2>/dev/null || true)" ]]) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
+    else
+        echo "=== Inerium Shell — System Status ==="
+        echo "Repository version: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
+        echo "Directory:          ${repo_dir:-not found}"
+        echo "Wayland session:    ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
+        echo ""
+        echo "Installed modules:"
+        ([[ -f "/etc/greetd/inerium-greeter.json" ]] || grep -q "inerium-greeter" /etc/greetd/config.toml 2>/dev/null) && echo "  [✓] Greetd (inerium-greeter)" || echo "  [ ] Greetd"
+        command -v novpn >/dev/null 2>&1 && echo "  [✓] noVPN (Network Isolation)" || echo "  [ ] noVPN"
+        [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && echo "  [✓] Google Drive (rclone)" || echo "  [ ] Google Drive"
+        [[ -f "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
+        [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
+        ([[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] || [[ -f "/etc/modules-load.d/msi-ec.conf" ]]) && echo "  [✓] MSI Cooling (msi-ec)" || echo "  [ ] MSI Cooling"
+        (command -v gh >/dev/null 2>&1 && [[ -f "$HOME/.config/inerium/first-login.d/10-github" || -n "$(grep -w 'ADDON github' "$manifest_file" 2>/dev/null || true)" ]]) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
+    fi
 }
 
 COMMAND="${1:-}"
@@ -108,7 +176,7 @@ case "$COMMAND" in
         if [[ -n "$repo_dir" && -f "$repo_dir/install.sh" ]]; then
             exec "$repo_dir/install.sh" --check-abi "$@"
         else
-            echo "install.sh не найден." >&2; exit 1
+            echo "install.sh not found." >&2; exit 1
         fi
         ;;
     "status")
@@ -118,7 +186,11 @@ case "$COMMAND" in
         usage
         ;;
     *)
-        echo "Неизвестная команда: $COMMAND" >&2
+        if is_ru; then
+            echo "Неизвестная команда: $COMMAND" >&2
+        else
+            echo "Unknown command: $COMMAND" >&2
+        fi
         usage
         exit 1
         ;;

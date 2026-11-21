@@ -1,4 +1,4 @@
--- Universal monitor configuration
+-- INERIUM_TEMPLATE_MONITORS: Universal monitor configuration
 -- Wiki: https://wiki.hypr.land/Configuring/Monitors/
 
 hl.monitor({

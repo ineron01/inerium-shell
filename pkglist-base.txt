@@ -9,7 +9,6 @@ xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
 waybar
 rofi
-rofi-emoji
 mako
 swayosd
 cliphist
@@ -26,6 +25,7 @@ pipewire-pulse
 pipewire-alsa
 wireplumber
 pavucontrol
+playerctl
 networkmanager
 nm-connection-editor
 iw
@@ -43,11 +43,9 @@ fish
 kitty
 gum
 btop
-fastfetch
 gnome-text-editor
 gnome-calculator
 gnome-keyring
-seahorse
 dolphin
 python
 
@@ -61,18 +59,15 @@ inter-font
 gtk4
 gtk4-layer-shell
 vte4
-libadwaita
 pango
 cairo
 gdk-pixbuf2
 glib2
 ttf-jetbrains-mono-nerd
-ttf-opensans
 noto-fonts
 noto-fonts-emoji
 git
 curl
-ripgrep
 pacman-contrib
 xdg-user-dirs
 xorg-xhost

@@ -1,11 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Toggle Bluetooth power and notify with rfkill support
 set -uo pipefail
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
 
 STATUS=$(bluetoothctl show 2>/dev/null | grep "Powered: yes")
 if [ -n "$STATUS" ]; then
     bluetoothctl power off >/dev/null 2>&1 || true
-    notify-send -a "Bluetooth" -i bluetooth-disabled "Bluetooth" "Модуль Bluetooth выключен"
+    if is_ru; then
+        notify-send -a "Bluetooth" -i bluetooth-disabled "Bluetooth" "Модуль Bluetooth выключен"
+    else
+        notify-send -a "Bluetooth" -i bluetooth-disabled "Bluetooth" "Bluetooth adapter powered off"
+    fi
 else
     rfkill unblock bluetooth >/dev/null 2>&1 || true
     for _ in {1..10}; do
@@ -15,7 +28,11 @@ else
         bluetoothctl power on >/dev/null 2>&1 || true
         sleep 0.1
     done
-    notify-send -a "Bluetooth" -i bluetooth-active "Bluetooth" "Модуль Bluetooth включен"
+    if is_ru; then
+        notify-send -a "Bluetooth" -i bluetooth-active "Bluetooth" "Модуль Bluetooth включен"
+    else
+        notify-send -a "Bluetooth" -i bluetooth-active "Bluetooth" "Bluetooth adapter powered on"
+    fi
 fi
 
 # Linux TASK_COMM_LEN is 15 chars: inerium-bluetooth comm is truncated to inerium-bluetoo

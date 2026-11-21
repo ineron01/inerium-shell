@@ -1,4 +1,4 @@
--- CachyOS Hyprland Configuration
+-- Inerium Hyprland Configuration
 
 local function safe_require(mod)
     local ok, err = pcall(require, mod)

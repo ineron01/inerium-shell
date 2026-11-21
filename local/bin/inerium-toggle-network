@@ -1,7 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Smart Network Toggle for Waybar RMB
 # If any wired Ethernet cable is connected (carrier == 1), toggle that interface.
 # If no cable, toggle Wi-Fi radio.
+set -euo pipefail
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
 
 ETH_IF=""
 for dev in /sys/class/net/en* /sys/class/net/eth*; do
@@ -16,18 +26,34 @@ if [ -n "$ETH_IF" ]; then
     STATE=$(nmcli -t -f DEVICE,STATE dev | grep "^${ETH_IF}:" | cut -d: -f2)
     if [ "$STATE" = "connected" ]; then
         nmcli dev disconnect "$ETH_IF"
-        notify-send -a "Сеть" -i network-offline "Сеть Ethernet" "Кабель подключен, интерфейс $ETH_IF отключен"
+        if is_ru; then
+            notify-send -a "Сеть" -i network-offline "Сеть Ethernet" "Кабель подключен, интерфейс $ETH_IF отключен"
+        else
+            notify-send -a "Network" -i network-offline "Ethernet Network" "Cable connected, interface $ETH_IF disconnected"
+        fi
     else
         nmcli dev connect "$ETH_IF"
-        notify-send -a "Сеть" -i network-transmit-receive "Сеть Ethernet" "Интерфейс $ETH_IF подключен"
+        if is_ru; then
+            notify-send -a "Сеть" -i network-transmit-receive "Сеть Ethernet" "Интерфейс $ETH_IF подключен"
+        else
+            notify-send -a "Network" -i network-transmit-receive "Ethernet Network" "Interface $ETH_IF connected"
+        fi
     fi
 else
     WIFI_STATUS=$(nmcli radio wifi)
     if [ "$WIFI_STATUS" = "enabled" ]; then
         nmcli radio wifi off
-        notify-send -a "Сеть" -i network-wireless-offline "Беспроводная сеть" "Wi-Fi модуль выключен"
+        if is_ru; then
+            notify-send -a "Сеть" -i network-wireless-offline "Беспроводная сеть" "Wi-Fi модуль выключен"
+        else
+            notify-send -a "Network" -i network-wireless-offline "Wireless Network" "Wi-Fi radio disabled"
+        fi
     else
         nmcli radio wifi on
-        notify-send -a "Сеть" -i network-wireless-signal-excellent "Беспроводная сеть" "Wi-Fi модуль включен"
+        if is_ru; then
+            notify-send -a "Сеть" -i network-wireless-signal-excellent "Беспроводная сеть" "Wi-Fi модуль включен"
+        else
+            notify-send -a "Network" -i network-wireless-signal-excellent "Wireless Network" "Wi-Fi radio enabled"
+        fi
     fi
 fi

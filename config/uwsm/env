@@ -5,10 +5,10 @@
 # Каталог пользовательских бинарников в PATH для окружения сессии и systemd
 export PATH="$HOME/.local/bin:$PATH"
 
-# Базовые приложения по умолчанию
-export TERM="xterm-kitty"
+# Disable AT-SPI D-Bus bridge spam in user session logs
+export NO_AT_BRIDGE="1"
 
-# Интеграция графических тулкитов (Qt, GTK)
+# Graphical toolkit integration (Qt, GTK)
 export QT_QPA_PLATFORM="wayland;xcb"
 export QT_QPA_PLATFORMTHEME="qt6ct"
 export QT_STYLE_OVERRIDE="Fusion"

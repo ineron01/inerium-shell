@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Каталог для хранения снимков экрана (сохраняется в кэше)
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
+# Directory for storing screenshots cache
 CACHE_DIR="${HOME}/.cache/screenshots"
 mkdir -p "$CACHE_DIR"
 
@@ -26,17 +35,20 @@ case "$MODE" in
         ;;
 esac
 
-# Копируем изображение в буфер обмена
+# Copy image to clipboard
 wl-copy --type image/png < "$FILEPATH"
 
-# Регистрируем метаданные скриншота (дата, время, имя) для красивого отображения в буфере
-python3 -c "
-import json, os, hashlib
+# Register screenshot metadata (date, time, filename) for clipboard previews
+python3 - "$FILEPATH" "$FILENAME" "$HUMAN_DATE" <<'PYEOF' 2>/dev/null || true
+import json, os, hashlib, sys
+filepath = sys.argv[1]
+filename = sys.argv[2]
+human_date = sys.argv[3]
 cache_dir = os.path.expanduser('~/.cache/cliphist')
 os.makedirs(cache_dir, exist_ok=True)
 meta_file = os.path.join(cache_dir, 'image-meta.json')
 try:
-    with open('$FILEPATH', 'rb') as f:
+    with open(filepath, 'rb') as f:
         img_bytes = f.read()
     h = hashlib.sha256(img_bytes).hexdigest()
     data = {}
@@ -47,30 +59,40 @@ try:
         except Exception:
             pass
     data[h] = {
-        'filename': '$FILENAME',
-        'datetime': '$HUMAN_DATE',
-        'path': '$FILEPATH',
+        'filename': filename,
+        'datetime': human_date,
+        'path': filepath,
         'type': 'screenshot'
     }
-    # Ограничиваем историю метаданных 100 записями
     if len(data) > 100:
         data = dict(list(data.items())[-100:])
     with open(meta_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 except Exception:
     pass
-" 2>/dev/null || true
+PYEOF
 
-# Отправляем уведомление. По клику ЛКМ (default) или на кнопку открываем редактор
-ACTION=$(notify-send -a "Скриншот" \
-    -i "$FILEPATH" \
-    -t 6000 \
-    --action="default=✏️ Открыть в редакторе" \
-    --action="edit=✏️ Открыть в редакторе" \
-    "Снимок экрана скопирован в буфер" \
-    "${FILENAME}" 2>/dev/null || true)
+# Send notification; open editor on click
+if is_ru; then
+    ACTION=$(notify-send -a "Скриншот" \
+        -i "$FILEPATH" \
+        -t 6000 \
+        --action="default=✏️ Открыть в редакторе" \
+        --action="edit=✏️ Открыть в редакторе" \
+        "Снимок экрана скопирован в буфер" \
+        "${FILENAME}" 2>/dev/null || true)
+else
+    ACTION=$(notify-send -a "Screenshot" \
+        -i "$FILEPATH" \
+        -t 6000 \
+        --action="default=✏️ Open in Editor" \
+        --action="edit=✏️ Open in Editor" \
+        "Screenshot copied to clipboard" \
+        "${FILENAME}" 2>/dev/null || true)
+fi
 
 if [[ "$ACTION" == "default" || "$ACTION" == "edit" ]]; then
+    mkdir -p "${HOME}/Pictures/Screenshots"
     if command -v satty &>/dev/null; then
         satty --filename "$FILEPATH" \
               --output-filename "${HOME}/Pictures/Screenshots/screenshot_%Y-%m-%d_%H-%M-%S.png" \

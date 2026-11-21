@@ -134,9 +134,9 @@ ForegroundVisited=147,138,169
 
 [General]
 AccentColor=61,174,233
-ColorScheme=Inerium-ineron
+ColorScheme=Inerium-Dragon
 ColorSchemeHash=3c9a10f670123c434ee2eaf6b2c3ecc8df944028
-Name=Ineron
+Name=Inerium-Dragon
 TerminalApplication=kitty
 colorSchemeAccent=61,174,233
 font=Inter,10,-1,5,50,0,0,0,0,0

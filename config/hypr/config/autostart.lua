@@ -13,9 +13,6 @@ hl.on("hyprland.start", function ()
     -- 3. Доступ учетной записи root к дисплею XWayland (GParted и утилиты разделов)
     hl.exec_cmd("xhost +SI:localuser:root")
 
-    -- 4. Фоновая мультиязычная индексация приложений (oneshot при наличии)
-    hl.exec_cmd("sh -c 'command -v inerium-desktop-indexer >/dev/null 2>&1 && exec inerium-desktop-indexer'")
-
-    -- 5. Первичная настройка окружения и интеграций; если всё пройдено — выходит сразу
+    -- 4. Первичная настройка окружения и интеграций; если всё пройдено — выходит сразу
     hl.exec_cmd("inerium-setup --autostart")
 end)

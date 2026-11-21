@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# inerium-askpass — диалог запроса пароля в единой эстетике Inerium Dragon
-# Используется в качестве SUDO_ASKPASS / SSH_ASKPASS для скриптов и GUI-запросов
+# inerium-askpass — Password prompt dialog styled in Inerium Dragon aesthetic
+# Used as SUDO_ASKPASS / SSH_ASKPASS for system scripts and GUI requests
 # ==============================================================================
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
@@ -14,9 +23,14 @@ if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
     done
 fi
 
-prompt="${1:-Требуется подтверждение пароля:}"
+default_prompt="Authentication required:"
+if is_ru; then
+    default_prompt="Требуется подтверждение пароля:"
+fi
 
-# Очищаем промпт от лишних префиксов и двоеточий
+prompt="${1:-$default_prompt}"
+
+# Clean prompt from prefixes and trailing colons
 clean_prompt="$(echo "$prompt" | sed -e 's/^\[sudo\] //' -e 's/:$//')"
 
 rofi -dmenu \

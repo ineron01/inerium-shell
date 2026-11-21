@@ -48,17 +48,12 @@ hl.window_rule({
 })
 
 -- Apps
--- Owen Logic (Wine): диалоги ("Выбор модели" и др.) должны быть плавающими поверх главного окна,
--- иначе они тайлятся под ним и программа выглядит зависшей
-hl.window_rule({ match = { class = "^(programrelayfbd\\.exe)$", title = "negative:^(Owen Logic.*)$" }, float = true, center = true })
-
 hl.window_rule({ match = { class = "^(.*\\.exe)$", title = "negative:^$", float = true }, center = true, fullscreen_state = 0 })
 hl.window_rule({ match = { class = "^(.*\\.exe)$", title = "^$" }, float = true, no_anim = true })
 hl.window_rule({ match = { class = "^(.*[Ll]auncher.*)$" }, float = true })
 hl.window_rule({ match = { class = "^(.*[Cc]alc.*)$" }, float = true, size = { "max(monitor_w, monitor_h)*0.17", "min(monitor_w, monitor_h)*0.43" } })
 hl.window_rule({ match = { class = "^(org\\.kde\\.keditfiletype)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.kde\\.ark)$" }, size = { "max(monitor_w, monitor_h)*0.40", "min(monitor_w, monitor_h)*0.40" } })
-hl.window_rule({ match = { class = "^(.*swash)$", title = "^(Swash)$" }, min_size = { "max(monitor_w, monitor_h)*0.35", "min(monitor_w, monitor_h)*0.35" }, float = true })
 
 -- Opacity Overrides
 local terminals = "^(kitty|ghostty|[Kk]onsole|Alacritty|gnome-terminal|xfce[0-9]?-terminal)$"
@@ -168,9 +163,9 @@ hl.layer_rule({
     ignore_alpha = 0.5,
 })
 
--- Окно универсального конвертера (Dolphin → «Конвертировать в…»)
+-- Universal Converter Dialog (Dolphin -> "Convert to...")
 hl.window_rule({
-    match = { title = "^(Универсальный конвертер)$" },
+    match = { title = "^(Универсальный конвертер|Universal Converter|Dolphin Converter)$" },
     float = true,
     size  = { 320, 400 },
     move  = {
@@ -179,9 +174,9 @@ hl.window_rule({
     }
 })
 
--- Диалог ошибки конвертера
+-- Converter Error Dialog
 hl.window_rule({
-    match  = { title = "^(Ошибка конвертации)$" },
+    match  = { title = "^(Ошибка конвертации|Conversion Error)$" },
     float  = true,
     size   = { 520, 320 },
     center = true

@@ -28,7 +28,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             git rust pkgconf clang mold binutils \
-            gtk4 gtk4-layer-shell vte4 libadwaita \
+            gtk4 gtk4-layer-shell vte4 \
             pango cairo gdk-pixbuf2 glib2 \
             gstreamer gst-plugins-base-libs
 
@@ -58,7 +58,6 @@ jobs:
             inerium-theme msi-fan-regulator; do
             install -m 755 "target/release/$bin" "dist/$bin"
           done
-          strip --strip-unneeded dist/* || true
           tar -C dist -czf inerium-binaries-linux-x86_64.tar.gz .
           sha256sum inerium-binaries-linux-x86_64.tar.gz > inerium-binaries-linux-x86_64.tar.gz.sha256
           ls -lh inerium-binaries-linux-x86_64.tar.gz inerium-binaries-linux-x86_64.tar.gz.sha256
@@ -66,8 +65,9 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number)) }}
-          name: Inerium Desktop ${{ github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number)) }}
+          tag_name: ${{ github.event_name == 'schedule' && 'rolling' || (github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number))) }}
+          name: ${{ github.event_name == 'schedule' && 'Inerium Desktop Rolling' || format('Inerium Desktop {0}', github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number))) }}
+          prerelease: ${{ github.event_name == 'schedule' }}
           generate_release_notes: true
           files: |
             inerium-binaries-linux-x86_64.tar.gz

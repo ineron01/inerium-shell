@@ -18,7 +18,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             git rust pkgconf clang binutils \
-            gtk4 gtk4-layer-shell vte4 libadwaita \
+            gtk4 gtk4-layer-shell vte4 \
             pango cairo gdk-pixbuf2 glib2 \
             gstreamer gst-plugins-base-libs
       - name: Checkout repository
@@ -44,7 +44,7 @@ jobs:
       options: --user root
     steps:
       - name: Install runtime interpreters
-        run: pacman -Syu --noconfirm --needed git bash lua python
+        run: pacman -Syu --noconfirm --needed git bash lua python shellcheck
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Script syntax check
@@ -57,6 +57,11 @@ jobs:
               python3 -c "import ast; ast.parse(open('$f').read())"
             fi
           done
+      - name: ShellCheck static analysis
+        run: |
+          shellcheck -S warning \
+            *.sh scripts/install/*.sh local/bin/inerium local/bin/hypr-screenshot \
+            local/bin/inerium-askpass local/bin/inerium-toggle-network local/bin/inerium-toggle-bluetooth || true
       - name: Lua syntax check
         run: |
           luac -p config/hypr/*.lua
@@ -77,3 +82,7 @@ jobs:
         run: ./install.sh --dry-run
       - name: Dry-run test (from-source mode)
         run: ./install.sh --from-source --dry-run
+      - name: Dry-run test (all addons and greeter)
+        run: ./install.sh --all-addons --with-greeter --dry-run
+      - name: Dry-run test (update mode)
+        run: ./install.sh --update --dry-run

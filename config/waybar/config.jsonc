@@ -35,7 +35,7 @@
 
     "custom/launcher": {
         "format": "󰣇",
-        "tooltip-format": "ЛКМ: Приложения (Rofi)\nПКМ: Буфер обмена",
+        "tooltip-format": "LMB: Applications (Rofi)\nRMB: Clipboard",
         "on-click": "uwsm app -- rofi -show drun",
         "on-click-right": "uwsm app -- inerium-clipboard"
     },
@@ -77,7 +77,7 @@
         },
         "status-icons": { "paused": "󰏤" },
         "title-len": 32,
-        "tooltip-format": "{title}\n{artist}\n\nЛКМ: Карточка трека · ПКМ: Пауза\nКолесо: След./пред. трек",
+        "tooltip-format": "{title}\n{artist}\n\nLMB: Track Info · RMB: Play/Pause\nScroll: Next/Prev track",
         "on-click": "inerium-popup media",
         "on-click-right": "playerctl play-pause",
         "on-scroll-up": "playerctl next",
@@ -155,7 +155,7 @@
             "default": ["󰕿", "󰖀", "󰕾"]
         },
         "scroll-step": 2,
-        "tooltip-format": "{desc}: {volume}%\n\nЛКМ: Звук · ПКМ: Mute · СКМ: pavucontrol",
+        "tooltip-format": "{desc}: {volume}%\n\nLMB: Audio · RMB: Mute · MMB: pavucontrol",
         "on-click": "inerium-popup audio",
         "on-click-right": "swayosd-client --output-volume mute-toggle",
         "on-click-middle": "uwsm app -- pavucontrol",
@@ -187,7 +187,7 @@
         "exec": "inerium-bluetooth --waybar",
         "return-type": "json",
         "on-click": "inerium-popup bluetooth",
-        "on-click-right": "rfkill toggle bluetooth",
+        "on-click-right": "inerium-toggle-bluetooth",
         "on-click-middle": "uwsm app -- blueman-manager",
         "tooltip": true
     },
@@ -217,14 +217,14 @@
 
     "custom/control": {
         "format": "",
-        "tooltip-format": "Центр управления (Super+A)\nТакже: клик по пустому месту панели",
+        "tooltip-format": "Control Center (Super+A)\nAlso: click empty space on panel",
         "on-click": "inerium-popup control",
         "on-click-right": "inerium-popup control"
     },
 
     "custom/power": {
         "format": "⏻",
-        "tooltip-format": "Меню питания",
+        "tooltip-format": "Power Menu",
         "on-click": "inerium-popup power"
     }
 }

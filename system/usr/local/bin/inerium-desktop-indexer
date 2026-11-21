@@ -43,18 +43,6 @@ CYR_TO_LAT = {
     'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
 }
 
-LAT_TO_CYR_RULES = [
-    ('shch', 'щ'), ('sch', 'щ'), ('ch', 'ч'), ('sh', 'ш'), ('zh', 'ж'),
-    ('kh', 'х'), ('ts', 'ц'), ('ya', 'я'), ('yu', 'ю'), ('yo', 'ё'),
-    ('ph', 'ф'), ('th', 'т'), ('oo', 'у'), ('ee', 'и'),
-    ('a', 'а'), ('b', 'б'), ('c', 'к'), ('d', 'д'), ('e', 'е'),
-    ('f', 'ф'), ('g', 'г'), ('h', 'х'), ('i', 'и'), ('j', 'дж'),
-    ('k', 'к'), ('l', 'л'), ('m', 'м'), ('n', 'н'), ('o', 'о'),
-    ('p', 'п'), ('q', 'к'), ('r', 'р'), ('s', 'с'), ('t', 'т'),
-    ('u', 'у'), ('v', 'в'), ('w', 'в'), ('x', 'кс'), ('y', 'и'),
-    ('z', 'з')
-]
-
 KNOWN_ALIASES = {
     "telegram": ["телеграм", "телеграмм", "телега", "тг", "tg", "tlg", "тлг"],
     "direct": ["директ", "прямой", "безвпн", "вшкусе", "ghtvjq"],
@@ -115,12 +103,6 @@ def invert_qwerty_to_jcuken(text: str) -> str:
 
 def invert_jcuken_to_qwerty(text: str) -> str:
     return text.translate(JCUKEN_TO_QWERTY)
-
-def latin_to_cyrillic_phonetic(word: str) -> str:
-    w = word.lower()
-    for lat, cyr in LAT_TO_CYR_RULES:
-        w = w.replace(lat, cyr)
-    return w
 
 def cyrillic_to_latin_phonetic(word: str) -> str:
     w = word.lower()
