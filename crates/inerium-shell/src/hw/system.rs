@@ -123,11 +123,15 @@ pub fn inerium_wallpapers_dir() -> PathBuf {
 }
 
 fn ensure_wallpapers_dir_populated(dir: &Path) {
+    let sentinel = dir.join(".wallpapers_initialized");
+    if sentinel.exists() {
+        return;
+    }
     let _ = fs::create_dir_all(dir);
     let extra_dir = dir.join("extra");
     let _ = fs::create_dir_all(&extra_dir);
 
-    let has_extra = fs::read_dir(&extra_dir)
+    let already_has_files = fs::read_dir(dir)
         .map(|entries| {
             entries.flatten().any(|e| {
                 let p = e.path();
@@ -140,7 +144,7 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
         })
         .unwrap_or(false);
 
-    if !has_extra {
+    if !already_has_files {
         let home = home_dir();
         let brand_sources = [
             home.join(".local/share/inerium-shell/assets/wallpapers"),
@@ -158,7 +162,7 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
                         && matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp")
                         && let Some(name) = sp.file_name()
                     {
-                        let target = extra_dir.join(name);
+                        let target = dir.join(name);
                         if !target.exists() && fs::copy(&sp, &target).is_ok() {
                             copied = true;
                         }
@@ -170,6 +174,8 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
             }
         }
     }
+
+    let _ = fs::File::create(&sentinel);
 }
 
 pub fn list_available_wallpapers() -> Vec<WallpaperItem> {

@@ -135,18 +135,24 @@ deploy_desktop_configs() {
     run "mkdir -p '$HOME/.local/share/color-schemes'"
     run "mkdir -p '$HOME/.local/share/inerium/themes/extra'"
     run "mkdir -p '$HOME/.config/inerium/themes'"
-    # Base themes (Dark & Light)
-    for t in "$REPO_DIR"/themes/*.toml; do
-        [[ -f "$t" ]] || continue
-        deploy_config_file "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
-    done
-    # Extra themes pool for inerium-setup and inerium-theme install
-    for t in "$REPO_DIR"/themes/extra/*.toml; do
-        [[ -f "$t" ]] || continue
-        deploy_config_file "$t" "$HOME/.local/share/inerium/themes/extra/$(basename "$t")"
-    done
-    if [[ -f "$REPO_DIR/themes/template.toml.example" ]]; then
-        deploy_config_file "$REPO_DIR/themes/template.toml.example" "$HOME/.config/inerium/themes/template.toml.example"
+    local themes_sentinel="$HOME/.local/share/inerium/.themes_initialized"
+    if [[ ! -f "$themes_sentinel" || "${RESTORE_ASSETS:-0}" -eq 1 || "${IS_UPDATE:-0}" -ne 1 ]]; then
+        # Base themes (Dark & Light)
+        for t in "$REPO_DIR"/themes/*.toml; do
+            [[ -f "$t" ]] || continue
+            deploy_config_file "$t" "$HOME/.config/inerium/themes/$(basename "$t")"
+        done
+        # Extra themes pool for inerium-setup and inerium-theme install
+        for t in "$REPO_DIR"/themes/extra/*.toml; do
+            [[ -f "$t" ]] || continue
+            deploy_config_file "$t" "$HOME/.local/share/inerium/themes/extra/$(basename "$t")"
+        done
+        if [[ -f "$REPO_DIR/themes/template.toml.example" ]]; then
+            deploy_config_file "$REPO_DIR/themes/template.toml.example" "$HOME/.config/inerium/themes/template.toml.example"
+        fi
+        run "touch '$themes_sentinel'"
+    else
+        log "Preserving user themes (pass --restore-assets to restore standard themes)"
     fi
     # Clean up legacy 'examples' symlink
     [[ -L "$HOME/.config/inerium/themes/examples" ]] && run "rm -f '$HOME/.config/inerium/themes/examples'"
@@ -385,6 +391,13 @@ PYEOF
 deploy_wallpapers() {
     local target_dir="$HOME/.local/share/inerium/wallpapers"
     run "mkdir -p '$target_dir'"
+    local sentinel="$target_dir/.wallpapers_initialized"
+
+    if [[ -f "$sentinel" && "${RESTORE_ASSETS:-0}" -ne 1 && "${IS_UPDATE:-0}" -eq 1 ]]; then
+        log "Preserving user wallpapers (pass --restore-assets to restore standard wallpapers)"
+        return 0
+    fi
+
     for wall in "$REPO_DIR"/assets/wallpapers/*; do
         [[ -f "$wall" ]] || continue
         wname="$(basename "$wall")"
@@ -392,12 +405,21 @@ deploy_wallpapers() {
             run "install -m 644 '$wall' '$target_dir/$wname'"
         fi
     done
+    run "touch '$sentinel'"
 }
 
 fetch_silueta_model() {
     if [[ -s "$SILUETA_PATH" ]]; then
         log "Found silueta.onnx at $SILUETA_PATH"
-    elif [[ "$FETCH_MODEL" -eq 1 || "$WITH_CONVERTER" -eq 1 ]]; then
+    elif [[ "$FETCH_MODEL" -eq 1 ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] download_file %s -> %s\n' "$SILUETA_URL" "$SILUETA_PATH"
+        else
+            mkdir -p "$(dirname "$SILUETA_PATH")"
+            run_step "Downloading silueta.onnx (~43 MB)..." download_file "$SILUETA_URL" "$SILUETA_PATH" 300
+        fi
+    elif [[ "$WITH_CONVERTER" -eq 1 && "${IS_UPDATE:-0}" -ne 1 ]]; then
+        # Fresh install with converter: download model
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] download_file %s -> %s\n' "$SILUETA_URL" "$SILUETA_PATH"
         else
@@ -406,7 +428,7 @@ fetch_silueta_model() {
         fi
     else
         log "NOTE: silueta.onnx not found at $SILUETA_PATH."
-        log "      Run with --fetch-model for Dolphin AI background removal."
+        log "      Run with --fetch-model to download Dolphin AI background removal model."
     fi
 }
 

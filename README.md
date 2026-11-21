@@ -143,6 +143,7 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--workspaces N`: Workspaces per monitor (1-9, default: 3).
 - `--fetch-model`: Download `silueta.onnx` background removal AI model (~43 MB) if missing.
 - `--update-configs`: Update configuration files while preserving modified user files as `.bak.<timestamp>`.
+- `--restore-assets`, `--restore-defaults`: Restore missing standard wallpapers and themes (on update; by default, user-deleted wallpapers and themes are kept deleted).
 - `--check-abi`: Validate runtime dynamic library dependencies (`ldd`) for all installed binaries.
 - `--prune`: Prune obsolete files against previous install manifest.
 - `--dry-run`: Print planned actions without modifying the system.

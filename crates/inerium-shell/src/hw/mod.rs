@@ -15,7 +15,7 @@ pub use inerium_hw::open_folder;
 
 // Re-export common structs
 pub use audio::{AudioSink, AudioSource};
-pub use sysfs::home_dir;
+pub use sysfs::{cache_dir, home_dir};
 pub use system::{MonitorTarget, SystemUpdates, WallpaperItem};
 
 pub struct HardwareContext {

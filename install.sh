@@ -30,6 +30,7 @@ WITH_NOVPN=0
 WITH_CONVERTER=0
 WITH_GDRIVE=0
 WITH_SYSUPGRADE=0
+RESTORE_ASSETS=0
 INSTALL_LANG=""
 MSI_EC_REBUILT=0
 
@@ -61,6 +62,7 @@ Options:
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
   --update           Update existing installation (keeps installed modules, pulls latest binaries)
+  --restore-assets   Restore missing standard wallpapers and themes (on update)
   --sysupgrade, -Syu Perform full system upgrade (pacman -Syu) alongside Inerium update
   --update-configs   Update configuration files (backs up existing user files to .bak)
   --check-abi        Check dynamic library ABI health for installed binaries
@@ -84,7 +86,8 @@ while [[ $# -gt 0 ]]; do
             fi
             INSTALL_MODE="source"; MODE_EXPLICIT=1; shift ;;
         --dry-run)         DRY_RUN=1; NON_INTERACTIVE=1; shift ;;
-        --update)          IS_UPDATE=1; UPDATE_CONFIGS=1; shift ;;
+        --update)          IS_UPDATE=1; UPDATE_CONFIGS=0; RESTORE_ASSETS=0; shift ;;
+        --restore-assets|--restore-defaults) RESTORE_ASSETS=1; shift ;;
         --sysupgrade|-Syu) WITH_SYSUPGRADE=1; shift ;;
         --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
         --check-abi)       CHECK_ABI=1; NON_INTERACTIVE=1; shift ;;
@@ -128,7 +131,7 @@ source "$SCRIPTS_DIR/60-addons.sh"
 source "$SCRIPTS_DIR/70-summary.sh"
 
 export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed download_file warn log
-export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS
+export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS RESTORE_ASSETS IS_UPDATE
 
 # ============================================================================
 # Main Execution Pipeline

@@ -146,14 +146,28 @@ run_tui_prompts() {
 
             local cfg_act_update="Обновить конфигурации (изменённые файлы будут забэкаплены в .bak)"
             local cfg_act_keep="Оставить мои текущие конфигурации без изменений"
-            local default_cfg="$cfg_act_update"
-            [[ "${UPDATE_CONFIGS:-1}" -eq 0 ]] && default_cfg="$cfg_act_keep"
+            local default_cfg="$cfg_act_keep"
+            [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]] && default_cfg="$cfg_act_update"
             local chosen_cfg
-            chosen_cfg="$(gum choose --header "Конфигурационные файлы (~/.config):" --selected "$default_cfg" "$cfg_act_update" "$cfg_act_keep")"
+            chosen_cfg="$(gum choose --header "Конфигурационные файлы (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_update")"
             if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
                 UPDATE_CONFIGS=1
             else
                 UPDATE_CONFIGS=0
+            fi
+
+            local opt_assets_keep="Сохранить текущие (не восстанавливать удалённые обои и темы)"
+            local opt_assets_restore="Восстановить стандартные обои и темы оформления"
+            local default_assets="$opt_assets_keep"
+            [[ "${RESTORE_ASSETS:-0}" -eq 1 ]] && default_assets="$opt_assets_restore"
+            local chosen_assets
+            chosen_assets="$(gum choose --header "Стандартные обои и темы оформления:" --selected "$default_assets" "$opt_assets_keep" "$opt_assets_restore")"
+            if [[ "$chosen_assets" == "$opt_assets_restore" ]]; then
+                RESTORE_ASSETS=1
+                log "Выбрано восстановление стандартных обоев и тем."
+            else
+                RESTORE_ASSETS=0
+                log "Стандартные обои и темы не будут восстановлены (пользовательские изменения сохранены)."
             fi
 
             local opt_pkg_fast="Быстрое обновление Inerium (~20 МБ, экономия трафика)"
@@ -248,14 +262,28 @@ run_tui_prompts() {
 
             local cfg_act_update="Update configurations (modified files backed up to .bak)"
             local cfg_act_keep="Keep existing user configurations untouched"
-            local default_cfg="$cfg_act_update"
-            [[ "${UPDATE_CONFIGS:-1}" -eq 0 ]] && default_cfg="$cfg_act_keep"
+            local default_cfg="$cfg_act_keep"
+            [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]] && default_cfg="$cfg_act_update"
             local chosen_cfg
-            chosen_cfg="$(gum choose --header "Configuration files (~/.config):" --selected "$default_cfg" "$cfg_act_update" "$cfg_act_keep")"
+            chosen_cfg="$(gum choose --header "Configuration files (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_update")"
             if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
                 UPDATE_CONFIGS=1
             else
                 UPDATE_CONFIGS=0
+            fi
+
+            local opt_assets_keep="Keep current (do not restore deleted wallpapers and themes)"
+            local opt_assets_restore="Restore missing standard wallpapers and themes"
+            local default_assets="$opt_assets_keep"
+            [[ "${RESTORE_ASSETS:-0}" -eq 1 ]] && default_assets="$opt_assets_restore"
+            local chosen_assets
+            chosen_assets="$(gum choose --header "Standard wallpapers and themes:" --selected "$default_assets" "$opt_assets_keep" "$opt_assets_restore")"
+            if [[ "$chosen_assets" == "$opt_assets_restore" ]]; then
+                RESTORE_ASSETS=1
+                log "Selected restoring standard wallpapers and themes."
+            else
+                RESTORE_ASSETS=0
+                log "Standard wallpapers and themes will not be restored (user modifications preserved)."
             fi
 
             local opt_pkg_fast="Fast Inerium Update (~20 MB, bandwidth saving)"
