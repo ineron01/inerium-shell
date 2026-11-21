@@ -4,7 +4,6 @@
 //! - WirePlumber / PipeWire mute for notification audio & Telegram Desktop
 //! - Waybar streaming JSON format
 
-use std::env;
 use std::io::{self, Write};
 use std::process::Command;
 
@@ -49,23 +48,7 @@ fn set_dnd_audio_mute(mute: bool) {
         ])
         .output();
 
-    // 2. Configure WirePlumber route-settings metadata for Telegram application streams
-    let tg_json = format!(
-        "{{\"mute\":{}, \"volume\":1.000000, \"channelMap\":[\"FL\", \"FR\"], \"channelVolumes\":[1.000000, 1.000000]}}",
-        mute_str
-    );
-    let _ = Command::new("pw-metadata")
-        .args([
-            "-n",
-            "route-settings",
-            "0",
-            "restore.stream.Output/Audio.application.name:Telegram",
-            &tg_json,
-            "Spa:String:JSON",
-        ])
-        .output();
-
-    // 3. Mute/unmute active Telegram sink-inputs via pactl if any stream is currently playing
+    // 2. Mute/unmute active notification or Telegram sink-inputs via pactl if any stream is currently playing
     if let Ok(out) = Command::new("pactl").args(["list", "sink-inputs"]).output() {
         let text = String::from_utf8_lossy(&out.stdout);
         let mut cur_id: Option<String> = None;
@@ -75,7 +58,9 @@ fn set_dnd_audio_mute(mute: bool) {
             let trimmed = line.trim();
             if trimmed.starts_with("Sink Input #") {
                 cur_id = trimmed.strip_prefix("Sink Input #").map(|s| s.to_string());
-            } else if trimmed.contains("application.name = \"Telegram\"")
+            } else if (trimmed.contains("media.role = \"Notification\"")
+                || trimmed.contains("application.name = \"Telegram")
+                || trimmed.contains("application.process.binary = \"Telegram\""))
                 && let Some(ref id) = cur_id
             {
                 let _ = Command::new("pactl")
@@ -102,11 +87,11 @@ pub fn toggle_dnd() {
         set_dnd_audio_mute(false);
     }
 
-    dnd_registry().notify_all(SIGUSR1);
+    let _ = dnd_registry().notify(SIGUSR1);
 }
 
 pub fn notify_dnd() {
-    dnd_registry().notify_all(SIGUSR1);
+    let _ = dnd_registry().notify(SIGUSR1);
 }
 
 fn format_output(dnd: bool) -> String {
@@ -138,9 +123,7 @@ fn format_output(dnd: bool) -> String {
     )
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--toggle") {
         toggle_dnd();
         let cur = is_dnd_active();
