@@ -42,7 +42,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Rust workspace (release)
-        run: cargo build --manifest-path Cargo.toml --workspace --release
+        run: |
+          cargo build --manifest-path Cargo.toml --workspace --release
+          cargo build --manifest-path Cargo.toml -p inerium-tools --features msi-ec --bin msi-fan-regulator --release
 
       - name: Package and checksum binaries
         run: |
