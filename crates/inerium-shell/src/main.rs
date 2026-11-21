@@ -131,6 +131,7 @@ struct SafeZone {
     my: i32,
     mw: i32,
     mh: i32,
+    outside_since: Option<std::time::Instant>,
 }
 
 struct AppState {
@@ -506,6 +507,7 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
         my,
         mw,
         mh,
+        outside_since: None,
     });
 
     win.present();
@@ -554,10 +556,14 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
 
                     if is_inside {
                         sz.has_entered = true;
-                    } else if sz.has_entered && sz.opened_at.elapsed() > std::time::Duration::from_millis(200) {
-                        eprintln!("SafeZone closed: cx={}, cy={}, bounds=[{}, {}]x[{}, {}]", cx, cy, x_min, x_max, y_min, y_max);
-                        hide_window(&mut st);
-                        return glib::ControlFlow::Break;
+                        sz.outside_since = None;
+                    } else if sz.has_entered && sz.opened_at.elapsed() > std::time::Duration::from_millis(250) {
+                        let since = sz.outside_since.get_or_insert_with(std::time::Instant::now);
+                        if since.elapsed() > std::time::Duration::from_millis(180) {
+                            eprintln!("SafeZone closed: cx={}, cy={}, bounds=[{}, {}]x[{}, {}]", cx, cy, x_min, x_max, y_min, y_max);
+                            hide_window(&mut st);
+                            return glib::ControlFlow::Break;
+                        }
                     }
                 }
 

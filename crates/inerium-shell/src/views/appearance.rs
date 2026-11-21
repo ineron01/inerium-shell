@@ -1250,10 +1250,14 @@ fn populate_custom_bg_controls(
             container.append(&dir_row);
 
             // Gradient Presets
-            let presets_row = GtkBox::new(Orientation::Horizontal, 5);
+            let presets_box = GtkBox::new(Orientation::Vertical, 4);
             let lbl_presets = Label::new(Some(tr("Presets:", "Пресеты:")));
             lbl_presets.add_css_class("cc-label");
-            presets_row.append(&lbl_presets);
+            lbl_presets.set_xalign(0.0);
+            presets_box.append(&lbl_presets);
+
+            let row1 = GtkBox::new(Orientation::Horizontal, 5);
+            let row2 = GtkBox::new(Orientation::Horizontal, 5);
 
             let grad_presets = [
                 ("Kanagawa", (0x18, 0x16, 0x16), (0x28, 0x27, 0x28)),
@@ -1264,7 +1268,7 @@ fn populate_custom_bg_controls(
                 ("Emerald", (0x0a, 0x1c, 0x14), (0x16, 0x38, 0x28)),
                 ("Lotus", (0xf2, 0xec, 0xbc), (0xde, 0xd7, 0xbc)),
             ];
-            for (name, c_start, c_end) in grad_presets {
+            for (idx, (name, c_start, c_end)) in grad_presets.into_iter().enumerate() {
                 let chip = Button::with_label(name);
                 chip.add_css_class("cc-chip");
                 if model.custom_color_start == c_start && model.custom_color_end == c_end {
@@ -1275,9 +1279,15 @@ fn populate_custom_bg_controls(
                     s.input(AppearanceMsg::SetBgColorStart(c_start));
                     s.input(AppearanceMsg::SetBgColorEnd(c_end));
                 });
-                presets_row.append(&chip);
+                if idx < 4 {
+                    row1.append(&chip);
+                } else {
+                    row2.append(&chip);
+                }
             }
-            container.append(&presets_row);
+            presets_box.append(&row1);
+            presets_box.append(&row2);
+            container.append(&presets_box);
         }
     }
 
