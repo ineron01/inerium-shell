@@ -19,13 +19,16 @@ jobs:
           pacman -Syu --noconfirm --needed \
             git rust pkgconf clang binutils \
             gtk4 gtk4-layer-shell vte4 libadwaita \
-            pango cairo gdk-pixbuf2 glib2
+            pango cairo gdk-pixbuf2 glib2 \
+            gstreamer gst-plugins-base-libs
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
       - name: Cargo check workspace
         run: cargo check --workspace --all-targets
+      - name: Cargo check msi-fan-regulator
+        run: cargo check --bin msi-fan-regulator
       - name: Cargo clippy workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Cargo test workspace

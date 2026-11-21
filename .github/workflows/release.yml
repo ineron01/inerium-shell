@@ -29,7 +29,8 @@ jobs:
           pacman -Syu --noconfirm --needed \
             git rust pkgconf clang mold binutils \
             gtk4 gtk4-layer-shell vte4 libadwaita \
-            pango cairo gdk-pixbuf2 glib2
+            pango cairo gdk-pixbuf2 glib2 \
+            gstreamer gst-plugins-base-libs
 
       - name: Configure git safe.directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -52,7 +53,7 @@ jobs:
             inerium-layout inerium-network inerium-osd-watcher inerium-popup \
             inerium-updates inerium-shell inerium-setup dolphin-convert \
             inerium-greeter inerium-camera inerium-polkit inerium-wallpaper \
-            inerium-theme; do
+            inerium-theme msi-fan-regulator; do
             install -m 755 "target/release/$bin" "dist/$bin"
           done
           strip --strip-unneeded dist/* || true
@@ -63,8 +64,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-          name: Inerium Desktop ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number)) }}
+          name: Inerium Desktop ${{ github.event_name == 'push' && github.ref_name || (inputs.tag != '' && inputs.tag || format('v0.2.{0}', github.run_number)) }}
           generate_release_notes: true
           files: |
             inerium-binaries-linux-x86_64.tar.gz

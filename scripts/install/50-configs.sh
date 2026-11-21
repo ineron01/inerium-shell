@@ -456,10 +456,14 @@ configure_greeter() {
                 run "sudo systemctl disable '$dm'"
             fi
         done
+        run "sudo mkdir -p /var/lib/inerium-greeter"
+        run "sudo chown -R greeter:greeter /var/lib/inerium-greeter 2>/dev/null || true"
+        run "sudo chmod 0755 /var/lib/inerium-greeter"
         if ! systemctl is-enabled --quiet greetd.service 2>/dev/null; then
             log "Enabling greetd.service..."
             run "sudo systemctl enable --force greetd.service"
         fi
+        manifest_record_system_unit "greetd.service"
     fi
 }
 
