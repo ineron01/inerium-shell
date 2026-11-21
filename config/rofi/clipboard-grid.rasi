@@ -4,11 +4,12 @@ configuration {
     hover-select: true;
     me-select-entry: "";
     me-accept-entry: "MousePrimary";
+    scroll-method: 1;
 }
 
 @theme "~/.config/rofi/inerium.rasi"
 
-/* Галерея скриншотов: тот же размер окна, что и буфер (680px), сетка 3x2 */
+/* Галерея скриншотов: тот же размер окна, что и буфер (680px), сетка 3x2, боковой слайдер */
 window {
     width: 680px;
 }
@@ -20,9 +21,20 @@ entry {
 listview {
     columns: 3;
     lines: 2;
+    flow: horizontal;
     spacing: 10px;
-    cycle: true;
+    cycle: false;
     fixed-height: true;
+    scrollbar: true;
+    scrollbar-width: 6px;
+}
+
+scrollbar {
+    handle-width: 6px;
+    handle-color: @primary;
+    border-radius: 4px;
+    background-color: @line-soft;
+    margin: 0px 0px 0px 8px;
 }
 
 element {

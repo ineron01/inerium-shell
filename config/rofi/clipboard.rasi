@@ -4,12 +4,35 @@ configuration {
     hover-select: true;
     me-select-entry: "";
     me-accept-entry: "MousePrimary";
+    scroll-method: 1;
 }
 
 @theme "~/.config/rofi/inerium.rasi"
 
-/* Буфер обмена: шире, крупные превью картинок */
-window { width: 680px; }
-entry { placeholder: "Поиск в истории буфера…"; }
-listview { lines: 7; }
-element-icon { size: 40px; }
+/* Буфер обмена: шире, крупные превью картинок, аккуратный боковой слайдер */
+window {
+    width: 680px;
+}
+
+entry {
+    placeholder: "Поиск в истории буфера…";
+}
+
+listview {
+    lines: 7;
+    scrollbar: true;
+    scrollbar-width: 6px;
+    cycle: false;
+}
+
+scrollbar {
+    handle-width: 6px;
+    handle-color: @primary;
+    border-radius: 4px;
+    background-color: @line-soft;
+    margin: 0px 0px 0px 8px;
+}
+
+element-icon {
+    size: 40px;
+}
