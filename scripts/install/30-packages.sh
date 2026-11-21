@@ -85,6 +85,18 @@ install_base_packages() {
         return 0
     fi
 
+    # Clean up stale pacman db.lck if left behind by an interrupted run
+    if [[ -f /var/lib/pacman/db.lck ]]; then
+        if ! pgrep -x pacman >/dev/null 2>&1 && ! pgrep -x paru >/dev/null 2>&1; then
+            log "Removing stale /var/lib/pacman/db.lck (no active pacman/paru process found)..."
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] sudo rm -f /var/lib/pacman/db.lck\n'
+            else
+                sudo rm -f /var/lib/pacman/db.lck || true
+            fi
+        fi
+    fi
+
     if [[ "${WITH_SYSUPGRADE:-0}" -eq 1 ]]; then
         local title="Upgrading system (pacman -Syu)..."
         [[ "${INSTALL_LANG:-}" == "ru" ]] && title="Полное обновление системы (pacman -Syu)..."
