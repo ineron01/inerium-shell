@@ -41,20 +41,22 @@ case "${1:-}" in
         fi
         ;;
     "help"|"-h"|"--help"|"")
+        echo "Использование: novpn <команда> [параметры...]"
+        echo "              novpn [status|refresh|on|off]"
+        echo "              novpn make-desktop [браузер]"
+        echo ""
+        echo "Примеры:"
+        echo "  novpn curl https://ifconfig.me"
+        echo "  novpn make-desktop firefox"
+        echo "  novpn make-desktop brave"
+        echo "  novpn status"
         if [ -z "${1:-}" ]; then
-            echo "Использование: novpn <команда> [параметры...]"
-            echo "              novpn [status|refresh|on|off]"
-            echo "              novpn make-desktop [браузер]"
-            echo ""
-            echo "Примеры:"
-            echo "  novpn curl https://ifconfig.me"
-            echo "  novpn make-desktop firefox"
-            echo "  novpn make-desktop brave"
-            echo "  novpn status"
             exit 1
+        else
+            exit 0
         fi
         ;;
     *)
-        exec sudo --preserve-env=DISPLAY,WAYLAND_DISPLAY,XDG_RUNTIME_DIR,DBUS_SESSION_BUS_ADDRESS,PULSE_SERVER,PIPEWIRE_RUNTIME_DIR /usr/local/bin/novpn-exec "$@"
+        exec sudo /usr/local/bin/novpn-exec "$@"
         ;;
 esac

@@ -3,14 +3,14 @@
 # scripts/install/40-binaries.sh — Prebuilt binary delivery & Cargo build
 # ============================================================================
 
-USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-camera inerium-polkit inerium-wallpaper inerium-theme"
+USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup dolphin-convert inerium-polkit inerium-wallpaper inerium-theme"
 
 install_from_binaries() {
     local tmp_dir bin missing_libs
     local -a user_bins
     read -ra user_bins <<< "$USER_BINS_STR"
     tmp_dir="$(mktemp -d)"
-    trap 'rm -rf "$tmp_dir"' EXIT RETURN
+    trap 'rm -rf "$tmp_dir"' RETURN
 
     log "Fetching release archive ${RELEASE_BASE_URL}/${BIN_ARCHIVE}..."
     if ! download_file "${RELEASE_BASE_URL}/${BIN_ARCHIVE}" "${tmp_dir}/${BIN_ARCHIVE}" 300; then

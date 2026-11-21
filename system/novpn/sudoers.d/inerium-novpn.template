@@ -1,0 +1,2 @@
+Defaults!/usr/local/bin/novpn-exec env_keep += "DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS PULSE_SERVER PIPEWIRE_RUNTIME_DIR"
+__USER__ ALL=(root) NOPASSWD: /usr/local/bin/novpn-exec

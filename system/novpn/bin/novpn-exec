@@ -41,6 +41,7 @@ fi
 
 exec ip netns exec novpn sudo -u "$TARGET_USER" \
     env --chdir="$PWD" \
+        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin" \
         HOME="$TARGET_HOME" \
         USER="$TARGET_USER" \
         LOGNAME="$TARGET_USER" \

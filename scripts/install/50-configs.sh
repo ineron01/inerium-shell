@@ -153,10 +153,12 @@ deploy_desktop_configs() {
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
 
-    if command -v inerium-theme >/dev/null 2>&1; then
-        inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
-    elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
-        plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        if command -v inerium-theme >/dev/null 2>&1; then
+            inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
+        elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
+            plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
+        fi
     fi
 
     # 13. Hyprland configuration
@@ -198,7 +200,7 @@ detect_and_generate_local_overlays() {
     local user_keybinds="$HOME/.config/hypr/config/keybinds.lua"
 
     # Clean up legacy local files if present
-    rm -f "$HOME/.config/hypr/config/inputs_local.lua" "$HOME/.config/hypr/config/binds_local.lua" "$HOME/.config/hypr/config/monitors_local.lua"
+    [[ "$DRY_RUN" -eq 0 ]] && rm -f "$HOME/.config/hypr/config/inputs_local.lua" "$HOME/.config/hypr/config/binds_local.lua" "$HOME/.config/hypr/config/monitors_local.lua"
 
     # 1. GPU detection
     if [[ ! -e "$env_local" ]]; then
