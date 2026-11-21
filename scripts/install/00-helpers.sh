@@ -104,13 +104,17 @@ run_step() {
         printf '[DRY-RUN] %s: %s\n' "$title" "$*"
         return 0
     fi
-    # Proactively validate sudo in foreground to prevent background prompt deadlock under gum spin
-    if [[ "$DRY_RUN" -eq 0 ]] && ! sudo -n true 2>/dev/null; then
-        sudo -v
+    # Proactively validate and refresh sudo in foreground to prevent background prompt deadlock under gum spin
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        if ! sudo -n true 2>/dev/null; then
+            sudo -v
+        else
+            sudo -n -v 2>/dev/null || sudo -v
+        fi
     fi
     if use_tui; then
         printf '\n=== %s (%s) ===\n' "$title" "$(date '+%H:%M:%S')" >> "$LOG_FILE"
-        "$@" >> "$LOG_FILE" 2>&1 &
+        "$@" < /dev/null >> "$LOG_FILE" 2>&1 &
         local step_pid=$!
         if ! gum spin --spinner dot --title "$title" -- tail --pid="$step_pid" -f /dev/null; then
             pkill -P "$step_pid" 2>/dev/null || true
@@ -129,7 +133,7 @@ run_step() {
         printf '[inerium-shell] [✓] %s\n' "$title"
     else
         log "$title"
-        "$@"
+        "$@" < /dev/null
         printf '[inerium-shell] [✓] %s\n' "$title"
     fi
 }

@@ -27,10 +27,49 @@ install_pkgs() {
     if [[ ${#missing[@]} -eq 0 ]]; then
         return 0
     fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '[DRY-RUN] paru -S --needed --noconfirm %s\n' "${missing[*]}"
-    else
-        paru -S --needed --noconfirm "${missing[@]}"
+
+    # Fast path: if all missing packages exist in official sync repos, install directly via sudo pacman.
+    # This completely avoids paru interactive review prompts, AUR queries, and nested sudo deadlocks.
+    if pacman -Si "${missing[@]}" >/dev/null 2>&1; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] sudo pacman -S --needed --noconfirm %s\n' "${missing[*]}"
+        else
+            sudo pacman -S --needed --noconfirm "${missing[@]}"
+        fi
+        return 0
+    fi
+
+    # Mixed path: separate official repository packages from AUR packages
+    local -a repo_pkgs=()
+    local -a aur_pkgs=()
+    local -A is_repo=()
+
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && is_repo["$p"]=1
+    done < <(pacman -Slq | sort -u)
+
+    for pkg in "${missing[@]}"; do
+        if [[ -n "${is_repo["$pkg"]:-}" ]]; then
+            repo_pkgs+=("$pkg")
+        else
+            aur_pkgs+=("$pkg")
+        fi
+    done
+
+    if [[ ${#repo_pkgs[@]} -gt 0 ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] sudo pacman -S --needed --noconfirm %s\n' "${repo_pkgs[*]}"
+        else
+            sudo pacman -S --needed --noconfirm "${repo_pkgs[@]}"
+        fi
+    fi
+
+    if [[ ${#aur_pkgs[@]} -gt 0 ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] paru -S --needed --noconfirm --skipreview --useask --sudoloop %s\n' "${aur_pkgs[*]}"
+        else
+            paru -S --needed --noconfirm --skipreview --useask --sudoloop "${aur_pkgs[@]}"
+        fi
     fi
 }
 
@@ -71,7 +110,7 @@ install_base_packages() {
     fi
 
     if [[ ! -d /usr/share/icons/Bibata-Modern-Ice && ! -d "$HOME/.local/share/icons/Bibata-Modern-Ice" ]]; then
-        run_step "Installing Bibata cursor theme..." bash -c 'paru -S --needed --noconfirm bibata-cursor-theme-bin || true'
+        run_step "Installing Bibata cursor theme..." bash -c 'paru -S --needed --noconfirm --skipreview --useask --sudoloop bibata-cursor-theme-bin || true'
     fi
 
     if [[ ! -d /usr/share/icons/Colloid-Dark && ! -d "$HOME/.local/share/icons/Colloid-Dark" ]]; then
@@ -85,7 +124,7 @@ install_base_packages() {
                 done
                 rm -rf "$tmp_colloid"
             else
-                paru -S --needed --noconfirm colloid-icon-theme-git || true
+                paru -S --needed --noconfirm --skipreview --useask --sudoloop colloid-icon-theme-git || true
             fi
         '
     fi
