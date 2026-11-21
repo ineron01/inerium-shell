@@ -1109,6 +1109,7 @@ dependencies = [
  "glib",
  "gtk4",
  "gtk4-layer-shell",
+ "image",
  "inerium-hw",
  "inerium-i18n",
  "relm4",

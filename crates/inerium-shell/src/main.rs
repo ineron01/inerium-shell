@@ -14,6 +14,7 @@ use gtk4::{Application, ApplicationWindow, CssProvider, EventControllerKey};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use serde_json::Value;
 
+mod bg_generator;
 mod hw;
 mod theme;
 mod views;

@@ -8,6 +8,7 @@ use gtk4::{Box as GtkBox, Button, FileDialog, FileFilter, Label, Orientation, Pi
 use inerium_i18n::tr;
 use relm4::prelude::*;
 
+use crate::bg_generator::{BackgroundSpec, BgMode, GradientDirection};
 use crate::hw;
 
 #[derive(Clone, Debug)]
@@ -68,6 +69,11 @@ pub struct AppearanceModel {
     pub active_wallpapers: HashMap<String, String>,
     pub wallpapers: Vec<hw::WallpaperItem>,
     pub has_multiple_monitors: bool,
+    pub show_custom_bg: bool,
+    pub custom_bg_mode: BgMode,
+    pub custom_color_start: (u8, u8, u8),
+    pub custom_color_end: (u8, u8, u8),
+    pub custom_direction: GradientDirection,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
@@ -84,6 +90,13 @@ pub enum AppearanceMsg {
     OpenWallpapersFolder,
     AddWallpapersDialog,
     WallpapersAdded,
+    ToggleCustomBg,
+    SetBgMode(BgMode),
+    SetBgColorStart((u8, u8, u8)),
+    SetBgColorEnd((u8, u8, u8)),
+    SetBgDirection(GradientDirection),
+    ApplyCustomBg,
+    SaveCustomBg,
     Back,
 }
 
@@ -210,6 +223,25 @@ impl SimpleComponent for AppearanceModel {
                                 set_tooltip_text: Some(tr("Add wallpapers from files", "Добавить свои обои из файлов")),
                                 connect_clicked => AppearanceMsg::AddWallpapersDialog,
                             },
+
+                            gtk4::Button {
+                                add_css_class: "cc-chip",
+                                #[watch]
+                                set_css_classes: if model.show_custom_bg { &["cc-chip", "active"] } else { &["cc-chip"] },
+                                set_label: &tr("󰸌  Custom", "󰸌  Свой фон"),
+                                set_tooltip_text: Some(tr("Create solid color or gradient background", "Создать сплошной цвет или градиент")),
+                                connect_clicked => AppearanceMsg::ToggleCustomBg,
+                            },
+                        },
+
+                        // Custom Background Drawer
+                        #[name = "custom_bg_box"]
+                        gtk4::Box {
+                            set_orientation: Orientation::Vertical,
+                            set_spacing: 8,
+                            add_css_class: "cc-card",
+                            #[watch]
+                            set_visible: model.show_custom_bg,
                         },
 
                         // Monitor target pills (if multiple monitors)
@@ -254,6 +286,11 @@ impl SimpleComponent for AppearanceModel {
             active_wallpapers,
             wallpapers,
             has_multiple_monitors,
+            show_custom_bg: false,
+            custom_bg_mode: BgMode::Solid,
+            custom_color_start: (0x18, 0x16, 0x16),
+            custom_color_end: (0x28, 0x27, 0x28),
+            custom_direction: GradientDirection::Vertical,
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
@@ -261,6 +298,7 @@ impl SimpleComponent for AppearanceModel {
         let widgets = view_output!();
         populate_theme_list(&widgets.theme_list_box, &model.themes, &sender);
         populate_monitor_pills(&widgets.monitor_box, &model, &sender);
+        populate_custom_bg_controls(&widgets.custom_bg_box, &model, &sender);
         populate_wallpapers_strip(&widgets.wall_strip, &model, &sender);
 
         ComponentParts { model, widgets }
@@ -269,6 +307,7 @@ impl SimpleComponent for AppearanceModel {
     fn post_view() {
         populate_theme_list(theme_list_box, &self.themes, &sender);
         populate_monitor_pills(monitor_box, self, &sender);
+        populate_custom_bg_controls(custom_bg_box, self, &sender);
         populate_wallpapers_strip(wall_strip, self, &sender);
     }
 
@@ -373,6 +412,79 @@ impl SimpleComponent for AppearanceModel {
             AppearanceMsg::WallpapersAdded => {
                 self.wallpapers = hw::list_available_wallpapers();
             }
+            AppearanceMsg::ToggleCustomBg => {
+                self.show_custom_bg = !self.show_custom_bg;
+            }
+            AppearanceMsg::SetBgMode(mode) => {
+                self.custom_bg_mode = mode;
+            }
+            AppearanceMsg::SetBgColorStart(c) => {
+                self.custom_color_start = c;
+            }
+            AppearanceMsg::SetBgColorEnd(c) => {
+                self.custom_color_end = c;
+            }
+            AppearanceMsg::SetBgDirection(dir) => {
+                self.custom_direction = dir;
+            }
+            AppearanceMsg::ApplyCustomBg => {
+                let spec = BackgroundSpec {
+                    mode: self.custom_bg_mode,
+                    color_start: self.custom_color_start,
+                    color_end: self.custom_color_end,
+                    direction: self.custom_direction,
+                };
+                let dir = hw::inerium_wallpapers_dir();
+                if let Ok(path) = spec.generate_and_save(&dir) {
+                    let path_str = path.to_string_lossy().to_string();
+                    let mon_opt = if self.selected_monitor == "all" {
+                        None
+                    } else {
+                        Some(self.selected_monitor.clone())
+                    };
+                    hw::set_wallpaper_async(path_str.clone(), mon_opt);
+                    if self.selected_monitor == "all" {
+                        for m in &self.connected_monitors {
+                            self.active_wallpapers.insert(m.name.clone(), path_str.clone());
+                        }
+                    } else {
+                        self.active_wallpapers.insert(self.selected_monitor.clone(), path_str);
+                    }
+                    self.wallpapers = hw::list_available_wallpapers();
+                }
+            }
+            AppearanceMsg::SaveCustomBg => {
+                let spec = BackgroundSpec {
+                    mode: self.custom_bg_mode,
+                    color_start: self.custom_color_start,
+                    color_end: self.custom_color_end,
+                    direction: self.custom_direction,
+                };
+                let dir = hw::inerium_wallpapers_dir();
+                if let Ok(path) = spec.generate_and_save(&dir) {
+                    let path_str = path.to_string_lossy().to_string();
+                    let mon_opt = if self.selected_monitor == "all" {
+                        None
+                    } else {
+                        Some(self.selected_monitor.clone())
+                    };
+                    hw::set_wallpaper_async(path_str.clone(), mon_opt);
+                    if self.selected_monitor == "all" {
+                        for m in &self.connected_monitors {
+                            self.active_wallpapers.insert(m.name.clone(), path_str.clone());
+                        }
+                    } else {
+                        self.active_wallpapers.insert(self.selected_monitor.clone(), path_str.clone());
+                    }
+                    self.wallpapers = hw::list_available_wallpapers();
+
+                    let notify_title = tr("Wallpaper Saved", "Фон сохранен");
+                    let notify_body = tr("Background added to wallpapers folder", "Фон добавлен в папку обоев");
+                    let _ = Command::new("notify-send")
+                        .args(["-a", "Обои", "-i", &path_str, notify_title, notify_body])
+                        .output();
+                }
+            }
             AppearanceMsg::Back => {
                 (self.nav_cb)("control");
             }
@@ -476,6 +588,244 @@ fn populate_monitor_pills(box_widget: &GtkBox, model: &AppearanceModel, sender: 
         });
         box_widget.append(&btn);
     }
+}
+
+fn populate_custom_bg_controls(
+    container: &GtkBox,
+    model: &AppearanceModel,
+    sender: &ComponentSender<AppearanceModel>,
+) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
+    if !model.show_custom_bg {
+        container.set_visible(false);
+        return;
+    }
+    container.set_visible(true);
+
+    // --- Header row: Mode Switcher + Close button ---
+    let header_row = GtkBox::new(Orientation::Horizontal, 6);
+
+    let btn_solid = Button::with_label(tr("󰸌  Solid Color", "󰸌  Сплошной цвет"));
+    btn_solid.add_css_class("cc-chip");
+    if model.custom_bg_mode == BgMode::Solid {
+        btn_solid.add_css_class("active");
+    }
+    let s = sender.clone();
+    btn_solid.connect_clicked(move |_| {
+        s.input(AppearanceMsg::SetBgMode(BgMode::Solid));
+    });
+    header_row.append(&btn_solid);
+
+    let btn_gradient = Button::with_label(tr("󰔎  Gradient", "󰔎  Градиент"));
+    btn_gradient.add_css_class("cc-chip");
+    if model.custom_bg_mode == BgMode::Gradient {
+        btn_gradient.add_css_class("active");
+    }
+    let s = sender.clone();
+    btn_gradient.connect_clicked(move |_| {
+        s.input(AppearanceMsg::SetBgMode(BgMode::Gradient));
+    });
+    header_row.append(&btn_gradient);
+
+    let spacer = GtkBox::new(Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    header_row.append(&spacer);
+
+    let btn_close = Button::with_label("󰅖");
+    btn_close.add_css_class("del-btn");
+    btn_close.set_tooltip_text(Some(tr("Close", "Закрыть")));
+    let s = sender.clone();
+    btn_close.connect_clicked(move |_| {
+        s.input(AppearanceMsg::ToggleCustomBg);
+    });
+    header_row.append(&btn_close);
+    container.append(&header_row);
+
+    // --- Controls Section ---
+    match model.custom_bg_mode {
+        BgMode::Solid => {
+            let color_row = GtkBox::new(Orientation::Horizontal, 8);
+            let lbl = Label::new(Some(tr("Color:", "Цвет:")));
+            lbl.add_css_class("cc-label");
+            color_row.append(&lbl);
+
+            let dialog = gtk4::ColorDialog::builder()
+                .title(tr("Select Color", "Выберите цвет"))
+                .with_alpha(false)
+                .build();
+            let c = model.custom_color_start;
+            let rgba = gdk4::RGBA::new(c.0 as f32 / 255.0, c.1 as f32 / 255.0, c.2 as f32 / 255.0, 1.0);
+            let color_btn = gtk4::ColorDialogButton::builder()
+                .dialog(&dialog)
+                .rgba(&rgba)
+                .build();
+            let s = sender.clone();
+            color_btn.connect_rgba_notify(move |btn| {
+                let rgba = btn.rgba();
+                let r = (rgba.red() * 255.0).round() as u8;
+                let g = (rgba.green() * 255.0).round() as u8;
+                let b = (rgba.blue() * 255.0).round() as u8;
+                s.input(AppearanceMsg::SetBgColorStart((r, g, b)));
+            });
+            color_row.append(&color_btn);
+
+            // Quick color chips
+            let presets = [
+                ("Obsidian", (0x10, 0x10, 0x12)),
+                ("Sumi", (0x18, 0x16, 0x16)),
+                ("Slate", (0x1e, 0x20, 0x24)),
+                ("Navy", (0x0f, 0x17, 0x2a)),
+                ("Snow", (0xf5, 0xf5, 0xf7)),
+            ];
+            for (name, col) in presets {
+                let chip = Button::with_label(name);
+                chip.add_css_class("cc-chip");
+                if model.custom_color_start == col {
+                    chip.add_css_class("active");
+                }
+                let s = sender.clone();
+                chip.connect_clicked(move |_| {
+                    s.input(AppearanceMsg::SetBgColorStart(col));
+                });
+                color_row.append(&chip);
+            }
+            container.append(&color_row);
+        }
+        BgMode::Gradient => {
+            // Colors row: From & To
+            let colors_row = GtkBox::new(Orientation::Horizontal, 8);
+
+            let lbl_from = Label::new(Some(tr("From:", "От:")));
+            lbl_from.add_css_class("cc-label");
+            colors_row.append(&lbl_from);
+
+            let dialog1 = gtk4::ColorDialog::builder()
+                .title(tr("Start Color", "Начальный цвет"))
+                .with_alpha(false)
+                .build();
+            let c1 = model.custom_color_start;
+            let rgba1 = gdk4::RGBA::new(c1.0 as f32 / 255.0, c1.1 as f32 / 255.0, c1.2 as f32 / 255.0, 1.0);
+            let btn1 = gtk4::ColorDialogButton::builder()
+                .dialog(&dialog1)
+                .rgba(&rgba1)
+                .build();
+            let s = sender.clone();
+            btn1.connect_rgba_notify(move |btn| {
+                let rgba = btn.rgba();
+                let r = (rgba.red() * 255.0).round() as u8;
+                let g = (rgba.green() * 255.0).round() as u8;
+                let b = (rgba.blue() * 255.0).round() as u8;
+                s.input(AppearanceMsg::SetBgColorStart((r, g, b)));
+            });
+            colors_row.append(&btn1);
+
+            let lbl_to = Label::new(Some(tr("To:", "До:")));
+            lbl_to.add_css_class("cc-label");
+            colors_row.append(&lbl_to);
+
+            let dialog2 = gtk4::ColorDialog::builder()
+                .title(tr("End Color", "Конечный цвет"))
+                .with_alpha(false)
+                .build();
+            let c2 = model.custom_color_end;
+            let rgba2 = gdk4::RGBA::new(c2.0 as f32 / 255.0, c2.1 as f32 / 255.0, c2.2 as f32 / 255.0, 1.0);
+            let btn2 = gtk4::ColorDialogButton::builder()
+                .dialog(&dialog2)
+                .rgba(&rgba2)
+                .build();
+            let s = sender.clone();
+            btn2.connect_rgba_notify(move |btn| {
+                let rgba = btn.rgba();
+                let r = (rgba.red() * 255.0).round() as u8;
+                let g = (rgba.green() * 255.0).round() as u8;
+                let b = (rgba.blue() * 255.0).round() as u8;
+                s.input(AppearanceMsg::SetBgColorEnd((r, g, b)));
+            });
+            colors_row.append(&btn2);
+            container.append(&colors_row);
+
+            // Direction row
+            let dir_row = GtkBox::new(Orientation::Horizontal, 6);
+            let lbl_dir = Label::new(Some(tr("Direction:", "Направление:")));
+            lbl_dir.add_css_class("cc-label");
+            dir_row.append(&lbl_dir);
+
+            let dirs = [
+                (GradientDirection::Vertical, "↓", tr("Vertical (down)", "Сверху вниз")),
+                (GradientDirection::Horizontal, "→", tr("Horizontal (right)", "Слева направо")),
+                (GradientDirection::Diagonal, "↘", tr("Diagonal", "По диагонали")),
+                (GradientDirection::Radial, "◉", tr("Radial", "Радиальный")),
+            ];
+            for (dir, symbol, tip) in dirs {
+                let btn_d = Button::with_label(symbol);
+                btn_d.add_css_class("cc-chip");
+                btn_d.set_tooltip_text(Some(tip));
+                if model.custom_direction == dir {
+                    btn_d.add_css_class("active");
+                }
+                let s = sender.clone();
+                btn_d.connect_clicked(move |_| {
+                    s.input(AppearanceMsg::SetBgDirection(dir));
+                });
+                dir_row.append(&btn_d);
+            }
+            container.append(&dir_row);
+
+            // Gradient Presets row
+            let presets_row = GtkBox::new(Orientation::Horizontal, 6);
+            let lbl_presets = Label::new(Some(tr("Presets:", "Пресеты:")));
+            lbl_presets.add_css_class("cc-label");
+            presets_row.append(&lbl_presets);
+
+            let grad_presets = [
+                ("Kanagawa", (0x18, 0x16, 0x16), (0x28, 0x27, 0x28)),
+                ("Obsidian", (0x0a, 0x0a, 0x0c), (0x1a, 0x1a, 0x24)),
+                ("Nordic", (0x1e, 0x23, 0x2a), (0x38, 0x43, 0x4f)),
+                ("Sunset", (0x1c, 0x10, 0x24), (0x3d, 0x1a, 0x33)),
+                ("Cyber", (0x0a, 0x19, 0x2f), (0x17, 0x2a, 0x45)),
+            ];
+            for (name, c_start, c_end) in grad_presets {
+                let chip = Button::with_label(name);
+                chip.add_css_class("cc-chip");
+                if model.custom_color_start == c_start && model.custom_color_end == c_end {
+                    chip.add_css_class("active");
+                }
+                let s = sender.clone();
+                chip.connect_clicked(move |_| {
+                    s.input(AppearanceMsg::SetBgColorStart(c_start));
+                    s.input(AppearanceMsg::SetBgColorEnd(c_end));
+                });
+                presets_row.append(&chip);
+            }
+            container.append(&presets_row);
+        }
+    }
+
+    // --- Action row: Apply & Save ---
+    let action_row = GtkBox::new(Orientation::Horizontal, 8);
+
+    let btn_apply = Button::with_label(tr("󰄬  Apply", "󰄬  Применить"));
+    btn_apply.add_css_class("cc-chip");
+    btn_apply.set_hexpand(true);
+    let s = sender.clone();
+    btn_apply.connect_clicked(move |_| {
+        s.input(AppearanceMsg::ApplyCustomBg);
+    });
+    action_row.append(&btn_apply);
+
+    let btn_save = Button::with_label(tr("󰆓  Save to Wallpapers", "󰆓  Сохранить в обои"));
+    btn_save.add_css_class("cc-chip");
+    btn_save.set_hexpand(true);
+    let s = sender.clone();
+    btn_save.connect_clicked(move |_| {
+        s.input(AppearanceMsg::SaveCustomBg);
+    });
+    action_row.append(&btn_save);
+
+    container.append(&action_row);
 }
 
 fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &ComponentSender<AppearanceModel>) {

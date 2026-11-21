@@ -18,3 +18,4 @@ gtk4-layer-shell = "0.8"
 relm4 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["png"] }
