@@ -932,12 +932,21 @@ fn populate_wallpaper_strip(
             }
 
             let inner = Box::new(Orientation::Vertical, 4);
-            let pic = Picture::for_filename(&wpath);
+            let file = gtk4::gio::File::for_path(&wpath);
+            let pic = if let Ok(tex) = gdk4::Texture::from_file(&file) {
+                Picture::for_paintable(&tex)
+            } else {
+                Picture::for_filename(&wpath)
+            };
             pic.set_content_fit(ContentFit::Cover);
             pic.set_can_shrink(true);
             pic.set_size_request(144, 82);
             pic.add_css_class("wall-thumb");
             inner.append(&pic);
+
+            let active_dir = paths.inerium_wallpapers_dir();
+            let is_extra = !wpath.starts_with(&active_dir)
+                || wpath.parent() != Some(&active_dir);
 
             let fname = wpath
                 .file_name()
@@ -948,16 +957,24 @@ fn populate_wallpaper_strip(
             lbl.add_css_class("wall-name");
             inner.append(&lbl);
 
+            if is_extra {
+                let badge = Label::new(Some("[extra]"));
+                badge.add_css_class("card-meta");
+                inner.append(&badge);
+            }
+
             btn.set_child(Some(&inner));
             wall_buttons.borrow_mut().push((wpath.clone(), btn.clone()));
             wall_strip.append(&btn);
         }
     }
 
+    let paths_click = paths.clone();
     for (wpath, btn) in wall_buttons.borrow().iter() {
         let wpath = wpath.clone();
         let wall_buttons = wall_buttons.clone();
         let status_cb = status_cb.clone();
+        let paths = paths_click.clone();
         btn.connect_clicked(move |_| {
             for (p, b) in wall_buttons.borrow().iter() {
                 if p == &wpath {
@@ -966,15 +983,28 @@ fn populate_wallpaper_strip(
                     b.remove_css_class("active");
                 }
             }
-            let wpath_bg = wpath.clone();
+            let wpath_orig = wpath.clone();
             let status_cb = status_cb.clone();
+            let active_dir = paths.inerium_wallpapers_dir();
             status_cb.warn(tr(lang, "Applying wallpaper...", "Применение обоев..."));
             glib::MainContext::default().spawn_local(async move {
-                let fname = wpath_bg
+                let fname = wpath_orig
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("wallpaper")
                     .to_string();
+                let is_extra = !wpath_orig.starts_with(&active_dir)
+                    || wpath_orig.parent() != Some(&active_dir);
+
+                let wpath_bg = if is_extra {
+                    let _ = std::fs::create_dir_all(&active_dir);
+                    let target = active_dir.join(&fname);
+                    let _ = std::fs::copy(&wpath_orig, &target);
+                    target
+                } else {
+                    wpath_orig
+                };
+
                 let res = gio::spawn_blocking(move || apply_wallpaper(&wpath_bg))
                     .await
                     .unwrap_or_else(|e| Err(format!("Task panicked: {e:?}")));

@@ -855,7 +855,17 @@ fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &C
             card.add_css_class("active");
         }
 
-        let pic = Picture::for_filename(item.thumb_path.as_deref().unwrap_or(&item.path));
+        let pic = if let Some(thumb) = &item.thumb_path {
+            Picture::for_filename(thumb)
+        } else {
+            let file = gio::File::for_path(&item.path);
+            if let Ok(tex) = gdk4::Texture::from_file(&file) {
+                Picture::for_paintable(&tex)
+            } else {
+                Picture::for_filename(&item.path)
+            }
+        };
+        pic.set_content_fit(gtk4::ContentFit::Cover);
         pic.set_size_request(120, 68);
         pic.set_can_shrink(true);
         pic.add_css_class("wall-thumb");

@@ -99,6 +99,10 @@ impl SetupPaths {
         self.home.join(".local/share/inerium/wallpapers")
     }
 
+    pub fn inerium_extra_wallpapers_dir(&self) -> PathBuf {
+        self.home.join(".local/share/inerium/wallpapers/extra")
+    }
+
     pub fn first_login_steps_dir(&self) -> PathBuf {
         self.config_home.join("inerium/first-login.d")
     }
@@ -112,7 +116,10 @@ impl SetupPaths {
     }
 
     pub fn wallpaper_dirs(&self) -> Vec<PathBuf> {
-        vec![self.inerium_wallpapers_dir()]
+        vec![
+            self.inerium_wallpapers_dir(),
+            self.inerium_extra_wallpapers_dir(),
+        ]
     }
 }
 
@@ -612,10 +619,10 @@ pub fn scan_wallpapers(dirs: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 pub fn ensure_default_wallpapers(paths: &SetupPaths) {
-    let dest_dir = paths.inerium_wallpapers_dir();
+    let dest_dir = paths.inerium_extra_wallpapers_dir();
     let _ = fs::create_dir_all(&dest_dir);
 
-    // If destination already has images, nothing to do
+    // If extra destination already has images, nothing to do
     let has_any = fs::read_dir(&dest_dir)
         .map(|entries| {
             entries.flatten().any(|e| {
@@ -1310,7 +1317,10 @@ wallpaper {
         };
         assert_eq!(
             test_paths.wallpaper_dirs(),
-            vec![PathBuf::from("/home/testuser/.local/share/inerium/wallpapers")]
+            vec![
+                PathBuf::from("/home/testuser/.local/share/inerium/wallpapers"),
+                PathBuf::from("/home/testuser/.local/share/inerium/wallpapers/extra"),
+            ]
         );
     }
 
