@@ -1,0 +1,490 @@
+//! Atomic application of themes across desktop environments and applications.
+
+use std::fs;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixStream;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use crate::emit::*;
+use crate::loader::get_home;
+use crate::model::ThemeConfig;
+
+pub fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
+    let resolved = if let Ok(canon) = path.canonicalize() {
+        canon
+    } else {
+        let mut curr = path.to_path_buf();
+        let mut depth = 0;
+        while curr.is_symlink() && depth < 16 {
+            depth += 1;
+            match fs::read_link(&curr) {
+                Ok(target) => {
+                    curr = if target.is_relative() {
+                        curr.parent().map(|p| p.join(&target)).unwrap_or(target)
+                    } else {
+                        target
+                    };
+                    if let Ok(canon) = curr.canonicalize() {
+                        curr = canon;
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        curr
+    };
+    let path = &resolved;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let pid = std::process::id();
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("inerium");
+    let tmp_name = format!(".{filename}.tmp.{pid}");
+    let tmp_path = path.with_file_name(tmp_name);
+
+    let mut file = fs::File::create(&tmp_path)?;
+    file.write_all(content.as_bytes())?;
+    file.sync_all()?;
+    fs::rename(&tmp_path, path)?;
+    Ok(())
+}
+
+pub fn update_kdeglobals(path: &Path, scheme_name: &str, theme_name: &str, icon_theme: &str, kde_colors: &str) {
+    let existing = fs::read_to_string(path).unwrap_or_default();
+    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
+    let mut current_sec_name = String::new();
+    let mut current_lines = Vec::new();
+
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if !current_sec_name.is_empty() || !current_lines.is_empty() {
+                sections.push((current_sec_name, current_lines));
+            }
+            current_sec_name = trimmed.to_string();
+            current_lines = Vec::new();
+        } else {
+            current_lines.push(line.to_string());
+        }
+    }
+    if !current_sec_name.is_empty() || !current_lines.is_empty() {
+        sections.push((current_sec_name, current_lines));
+    }
+
+    sections.retain(|(name, _)| {
+        !name.starts_with("[Colors:") && !name.starts_with("[ColorEffects:")
+    });
+
+    let general_idx = sections.iter().position(|(name, _)| name == "[General]");
+    if let Some(idx) = general_idx {
+        let lines = &mut sections[idx].1;
+        let mut cs_found = false;
+        let mut name_found = false;
+        for line in lines.iter_mut() {
+            if line.starts_with("ColorScheme=") {
+                *line = format!("ColorScheme={}", scheme_name);
+                cs_found = true;
+            } else if line.starts_with("Name=") {
+                *line = format!("Name={}", theme_name);
+                name_found = true;
+            }
+        }
+        if !cs_found {
+            lines.push(format!("ColorScheme={}", scheme_name));
+        }
+        if !name_found {
+            lines.push(format!("Name={}", theme_name));
+        }
+    } else {
+        sections.insert(
+            0,
+            (
+                "[General]".to_string(),
+                vec![
+                    format!("ColorScheme={}", scheme_name),
+                    format!("Name={}", theme_name),
+                    "TerminalApplication=kitty".to_string(),
+                ],
+            ),
+        );
+    }
+
+    let icons_idx = sections.iter().position(|(name, _)| name == "[Icons]");
+    if let Some(idx) = icons_idx {
+        let lines = &mut sections[idx].1;
+        let mut theme_found = false;
+        for line in lines.iter_mut() {
+            if line.starts_with("Theme=") {
+                *line = format!("Theme={}", icon_theme);
+                theme_found = true;
+            }
+        }
+        if !theme_found {
+            lines.push(format!("Theme={}", icon_theme));
+        }
+    } else {
+        sections.push((
+            "[Icons]".to_string(),
+            vec![format!("Theme={}", icon_theme)],
+        ));
+    }
+
+    if !sections.iter().any(|(name, _)| name == "[KDE]") {
+        sections.push((
+            "[KDE]".to_string(),
+            vec!["contrast=4".to_string(), "widgetStyle=Fusion".to_string()],
+        ));
+    }
+
+    let mut out = String::new();
+    for (sec, lines) in sections {
+        if !sec.is_empty() {
+            out.push_str(&sec);
+            out.push('\n');
+        }
+        for l in lines {
+            out.push_str(&l);
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+
+    let mut in_skip = false;
+    for line in kde_colors.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[General]" {
+            in_skip = true;
+            continue;
+        }
+        if in_skip && trimmed.starts_with('[') {
+            in_skip = false;
+        }
+        if !in_skip {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    let _ = atomic_write(path, out.trim_start());
+}
+
+pub fn apply_display_temperature(temp_kelvin: u32) {
+    let _ = Command::new("pkill")
+        .args(["-x", "hyprsunset"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    if temp_kelvin < 6500 {
+        let _ = Command::new("setsid")
+            .args(["hyprsunset", "-t", &temp_kelvin.to_string()])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+}
+
+pub fn run_theme_hooks(theme: &ThemeConfig) {
+    let home = get_home();
+    let hooks_dir = home.join(".config/inerium/hooks.d");
+    if let Ok(entries) = fs::read_dir(&hooks_dir) {
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|e| e.path());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_file() {
+                // Ignore backup/disabled files and markdown
+                if let Some(ext) = path.extension().and_then(|x| x.to_str())
+                    && matches!(ext, "bak" | "old" | "disabled" | "md" | "txt")
+                {
+                    continue;
+                }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && (name.starts_with('.') || name.ends_with('~'))
+                {
+                    continue;
+                }
+                // Check executable bit (owner, group, or other)
+                if let Ok(meta) = fs::metadata(&path)
+                    && meta.permissions().mode() & 0o111 == 0
+                {
+                    continue;
+                }
+                let _ = Command::new(&path)
+                    .args([
+                        &theme.theme.variant,
+                        &theme.theme.id,
+                        &theme.theme.name,
+                        &theme.theme.author,
+                    ])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn();
+            }
+        }
+    }
+}
+
+fn get_runtime_dir() -> PathBuf {
+    if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
+        PathBuf::from(rt)
+    } else {
+        #[cfg(unix)]
+        let uid = unsafe {
+            unsafe extern "C" {
+                fn getuid() -> u32;
+            }
+            getuid()
+        };
+        #[cfg(not(unix))]
+        let uid = 1000;
+        PathBuf::from(format!("/run/user/{}", uid))
+    }
+}
+
+pub fn apply_theme(theme: &ThemeConfig) {
+    let home = get_home();
+    let is_dark = theme.theme.variant == "dark";
+    let kde_scheme_name = format!("Inerium-{}", theme.theme.id);
+
+    // 0. Ensure target directories exist
+    let inerium_cfg_dir = home.join(".config/inerium");
+    let _ = fs::create_dir_all(&inerium_cfg_dir);
+    let _ = fs::create_dir_all(inerium_cfg_dir.join("hooks.d"));
+    let _ = fs::create_dir_all(home.join(".config/hypr/config"));
+    let _ = fs::create_dir_all(home.join(".config/waybar"));
+    let _ = fs::create_dir_all(home.join(".config/rofi"));
+    let _ = fs::create_dir_all(home.join(".config/kitty/themes"));
+    let _ = fs::create_dir_all(home.join(".config/mako"));
+    let _ = fs::create_dir_all(home.join(".local/share/color-schemes"));
+
+    // 1. Write metadata current.json & theme-vars.css
+    let current_json = inerium_cfg_dir.join("current.json");
+    if let Ok(json_str) = serde_json::to_string_pretty(&theme.theme) {
+        let _ = atomic_write(&current_json, &(json_str + "\n"));
+    }
+
+    let theme_vars_css = inerium_cfg_dir.join("theme-vars.css");
+    let _ = atomic_write(&theme_vars_css, &emit_gtk_vars(theme));
+
+    // 2. GSettings (Portal, Browsers, VS Code, GTK)
+    let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
+        ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark")
+    } else {
+        ("prefer-light", "adw-gtk3", "Papirus-Light")
+    };
+
+    let _ = Command::new("gsettings")
+        .args(["set", "org.gnome.desktop.interface", "color-scheme", gsettings_scheme])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = Command::new("gsettings")
+        .args(["set", "org.gnome.desktop.interface", "gtk-theme", gtk_theme])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = Command::new("gsettings")
+        .args(["set", "org.gnome.desktop.interface", "icon-theme", icon_theme])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 2b. Typography (GSettings and GTK settings.ini)
+    if let Some(typo) = &theme.typography {
+        let font_ui_str = format!("{} {}", typo.get_ui_font(), typo.get_size());
+        let font_mono_str = format!("{} {}", typo.get_mono_font(), typo.get_size());
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "font-name", &font_ui_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "document-font-name", &font_ui_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "monospace-font-name", &font_mono_str])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    // 3. GTK 3 & GTK 4 settings.ini and Libadwaita CSS
+    let prefer_dark_str = if is_dark { "1" } else { "0" };
+    let libadwaita_css = emit_libadwaita_css(theme);
+    let font_spec = theme.typography.as_ref().map(|t| format!("{} {}", t.get_ui_font(), t.get_size()));
+    for gtk_ver in &["gtk-3.0", "gtk-4.0"] {
+        let dir = home.join(format!(".config/{}", gtk_ver));
+        let _ = fs::create_dir_all(&dir);
+        let _ = atomic_write(&dir.join("gtk.css"), &libadwaita_css);
+
+        let path = dir.join("settings.ini");
+        if let Ok(content) = fs::read_to_string(&path) {
+            let mut lines = Vec::new();
+            let mut font_written = false;
+            for line in content.lines() {
+                if line.starts_with("gtk-theme-name=") {
+                    lines.push(format!("gtk-theme-name={}", gtk_theme));
+                } else if line.starts_with("gtk-application-prefer-dark-theme=") {
+                    lines.push(format!("gtk-application-prefer-dark-theme={}", prefer_dark_str));
+                } else if line.starts_with("gtk-icon-theme-name=") {
+                    lines.push(format!("gtk-icon-theme-name={}", icon_theme));
+                } else if line.starts_with("gtk-font-name=") {
+                    if let Some(ref f) = font_spec {
+                        lines.push(format!("gtk-font-name={}", f));
+                        font_written = true;
+                    } else {
+                        lines.push(line.to_string());
+                    }
+                } else {
+                    lines.push(line.to_string());
+                }
+            }
+            if !font_written && let Some(ref f) = font_spec {
+                lines.push(format!("gtk-font-name={}", f));
+            }
+            let _ = atomic_write(&path, &(lines.join("\n") + "\n"));
+        }
+    }
+
+    // 3b. XDG Desktop Portal GTK (refresh CSS cache for file/app choosers)
+    let _ = Command::new("systemctl")
+        .args(["--user", "try-restart", "xdg-desktop-portal-gtk"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 4. KDE / Dolphin / Qt
+    let kde_colors_content = emit_kde_colors(theme);
+    let kde_colors_path = home.join(format!(".local/share/color-schemes/{}.colors", kde_scheme_name));
+    let _ = atomic_write(&kde_colors_path, &kde_colors_content);
+
+    let kde_icon_theme = if is_dark { "Colloid-Dark" } else { "Colloid-Light" };
+    let kdeglobals_path = home.join(".config/kdeglobals");
+    update_kdeglobals(&kdeglobals_path, &kde_scheme_name, &theme.theme.name, kde_icon_theme, &kde_colors_content);
+
+    let dolphinrc_path = home.join(".config/dolphinrc");
+    if let Ok(content) = fs::read_to_string(&dolphinrc_path) {
+        let mut lines = Vec::new();
+        let mut has_ui = false;
+        let mut in_ui = false;
+        for line in content.lines() {
+            if line.trim() == "[UiSettings]" {
+                in_ui = true;
+                has_ui = true;
+                lines.push(line.to_string());
+                continue;
+            }
+            if in_ui && line.starts_with('[') {
+                in_ui = false;
+            }
+            if in_ui && line.starts_with("ColorScheme=") {
+                lines.push(format!("ColorScheme={}", kde_scheme_name));
+                continue;
+            }
+            lines.push(line.to_string());
+        }
+        if !has_ui {
+            lines.push("[UiSettings]".to_string());
+            lines.push(format!("ColorScheme={}", kde_scheme_name));
+        }
+        let _ = atomic_write(&dolphinrc_path, &(lines.join("\n") + "\n"));
+    }
+
+    let _ = Command::new("plasma-apply-colorscheme")
+        .arg(&kde_scheme_name)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 5. Waybar
+    let waybar_colors = home.join(".config/waybar/colors.css");
+    let _ = atomic_write(&waybar_colors, &emit_waybar_css(theme));
+    let _ = Command::new("pkill")
+        .args(["-SIGUSR2", "waybar"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 6. Rofi
+    let rofi_colors = home.join(".config/rofi/colors.rasi");
+    let _ = atomic_write(&rofi_colors, &emit_rofi_rasi(theme));
+
+    // 7. Kitty
+    let kitty_theme = home.join(".config/kitty/themes/current-theme.conf");
+    let _ = atomic_write(&kitty_theme, &emit_kitty_conf(theme));
+    let _ = Command::new("pkill")
+        .args(["-SIGUSR1", "-x", "kitty"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 8. Mako
+    let mako_cfg = home.join(".config/mako/config");
+    let _ = atomic_write(&mako_cfg, &emit_mako_config(theme));
+    let _ = Command::new("makoctl")
+        .arg("reload")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 9. Hyprland
+    let hypr_colors = home.join(".config/hypr/config/colors.lua");
+    let _ = atomic_write(&hypr_colors, &emit_hyprland_lua(theme));
+    let _ = Command::new("hyprctl")
+        .arg("reload")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 10. SwayOSD
+    let _ = Command::new("systemctl")
+        .args(["--user", "try-restart", "swayosd-server.service"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    // 11. Hyprlock & Greeter
+    let hyprlock_colors = home.join(".config/hypr/hyprlock-colors.conf");
+    let _ = atomic_write(&hyprlock_colors, &emit_hyprlock_conf(theme));
+
+    let greeter_css = emit_greeter_css(theme);
+    let greeter_targets = [
+        PathBuf::from("/var/cache/inerium/greeter-theme.css"),
+        PathBuf::from("/var/tmp/inerium/greeter-theme.css"),
+    ];
+    for t in &greeter_targets {
+        if let Ok(()) = atomic_write(t, &greeter_css) {
+            let _ = fs::set_permissions(t, fs::Permissions::from_mode(0o644));
+        }
+    }
+
+    // 11. Display Color Temperature (Harmonization for paper light themes)
+    let temp = theme
+        .display
+        .as_ref()
+        .and_then(|d| d.temperature)
+        .unwrap_or(6500);
+    apply_display_temperature(temp);
+
+    // 11. Custom User & App Hooks (~/.config/inerium/hooks.d/*)
+    run_theme_hooks(theme);
+
+    // 12. Inerium Shell Daemon Hot-Reload via UNIX domain socket
+    let sock_path = get_runtime_dir().join("inerium-popups.sock");
+    if let Ok(mut stream) = UnixStream::connect(&sock_path) {
+        let msg = format!("theme {}\n", theme.theme.variant);
+        let _ = stream.write_all(msg.as_bytes());
+    }
+}

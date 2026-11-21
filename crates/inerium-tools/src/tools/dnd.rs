@@ -131,19 +131,19 @@ fn format_output(dnd: bool) -> String {
 }
 
 pub fn run(args: &[String]) {
-    if args.iter().any(|a| a == "--toggle") {
+    if args.iter().any(|a| a == "--toggle" || a == "toggle") {
         toggle_dnd();
         let cur = is_dnd_active();
         println!("{}", if cur { "on" } else { "off" });
         return;
     }
 
-    if args.iter().any(|a| a == "--notify") {
+    if args.iter().any(|a| a == "--notify" || a == "notify") {
         notify_dnd();
         return;
     }
 
-    if args.iter().any(|a| a == "--status") {
+    if args.iter().any(|a| a == "--status" || a == "status") {
         println!("{}", if is_dnd_active() { "on" } else { "off" });
         return;
     }

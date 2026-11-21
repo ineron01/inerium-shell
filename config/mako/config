@@ -19,8 +19,6 @@ default-timeout=5000
 layer=overlay
 anchor=top-right
 
-on-notify=exec pw-play --media-role=Notification /usr/share/sounds/freedesktop/stereo/message.oga
-
 history=0
 max-history=0
 
@@ -36,6 +34,18 @@ default-timeout=5000
 border-color=#c4746e
 format=<span color="#c4746e"><b>%s</b></span>\n%b
 default-timeout=0
+
+[app-name="Telegram Desktop"]
+on-notify=exec inerium-ctl notify-sound
+
+[app-name="discord"]
+on-notify=exec inerium-ctl notify-sound
+
+[app-name="vesktop"]
+on-notify=exec inerium-ctl notify-sound
+
+[urgency=critical]
+on-notify=exec inerium-ctl notify-sound --sound /usr/share/sounds/freedesktop/stereo/dialog-warning.oga --cooldown-ms 500
 
 [mode=dnd]
 invisible=1

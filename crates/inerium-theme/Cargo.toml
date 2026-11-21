@@ -3,9 +3,12 @@ name = "inerium-theme"
 description = "Shared color palettes, semantic CSS tokens, and theme detection for Inerium"
 version.workspace = true
 edition.workspace = true
+repository.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-serde = { workspace = true }
+inerium-i18n = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+toml = "0.8"
