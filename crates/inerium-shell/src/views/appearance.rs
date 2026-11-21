@@ -350,14 +350,14 @@ impl SimpleComponent for AppearanceModel {
                             set_policy: (PolicyType::Automatic, PolicyType::Never),
                             set_overlay_scrolling: false,
                             set_propagate_natural_height: true,
-                            set_min_content_height: 136,
+                            set_min_content_height: 128,
                             set_propagate_natural_width: true,
 
                             #[name = "wall_strip"]
                             gtk4::Box {
                                 set_orientation: Orientation::Horizontal,
                                 set_spacing: 8,
-                                set_margin_bottom: 8,
+                                set_margin_bottom: 6,
                                 set_margin_top: 2,
                             },
                         },
@@ -1317,14 +1317,9 @@ fn update_bottom_row(
     }
 
     if is_confirming {
-        let lbl_confirm = Label::new(Some(tr("Delete?", "Удалить?")));
-        lbl_confirm.add_css_class("wall-name");
-        lbl_confirm.set_hexpand(true);
-        lbl_confirm.set_xalign(0.0);
-        bottom_row.append(&lbl_confirm);
-
-        let btn_yes = Button::with_label(tr("󰄬 Yes", "󰄬 Да"));
+        let btn_yes = Button::with_label(tr("󰆴 Delete", "󰆴 Удалить"));
         btn_yes.add_css_class("wall-del-confirm");
+        btn_yes.set_hexpand(true);
         let s_del = sender.clone();
         let path_del = item.path.clone();
         btn_yes.connect_clicked(move |_| {
@@ -1332,8 +1327,9 @@ fn update_bottom_row(
         });
         bottom_row.append(&btn_yes);
 
-        let btn_no = Button::with_label(tr("󰅖 No", "󰅖 Нет"));
+        let btn_no = Button::with_label(tr("󰅖 Cancel", "󰅖 Отмена"));
         btn_no.add_css_class("wall-del-cancel");
+        btn_no.set_hexpand(true);
         let s_cancel = sender.clone();
         btn_no.connect_clicked(move |_| {
             s_cancel.input(AppearanceMsg::CancelDeleteWallpaper);
@@ -1441,7 +1437,8 @@ fn populate_wallpapers_strip(
     for item in &model.wallpapers {
         let card = GtkBox::new(Orientation::Vertical, 4);
         card.add_css_class("wall-card");
-        card.set_valign(gtk4::Align::Start);
+        card.set_size_request(140, 114);
+        card.set_valign(gtk4::Align::Center);
         card.set_widget_name(&item.path);
 
         let is_active = active_wall.map(|w| w == &item.path).unwrap_or(false);
@@ -1461,12 +1458,14 @@ fn populate_wallpapers_strip(
             }
         };
         pic.set_content_fit(gtk4::ContentFit::Cover);
-        pic.set_size_request(130, 72);
+        pic.set_size_request(128, 72);
         pic.set_can_shrink(true);
         pic.add_css_class("wall-thumb");
 
         let top_btn = Button::new();
         top_btn.add_css_class("wall-btn");
+        top_btn.set_size_request(128, 72);
+        top_btn.set_vexpand(false);
         top_btn.set_child(Some(&pic));
 
         let s_apply = sender.clone();
@@ -1478,6 +1477,8 @@ fn populate_wallpapers_strip(
 
         // Bottom label and clean delete action with confirmation
         let bottom_row = GtkBox::new(Orientation::Horizontal, 4);
+        bottom_row.set_size_request(-1, 24);
+        bottom_row.set_valign(gtk4::Align::Center);
         let is_confirming = model.delete_confirm_path.as_deref() == Some(&item.path);
         update_bottom_row(&bottom_row, item, is_confirming, &inerium_dir_str, sender);
         card.append(&bottom_row);

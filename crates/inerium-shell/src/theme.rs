@@ -772,9 +772,14 @@ window.power-window {
     border: none;
     background: transparent;
     box-shadow: none;
+    min-height: 72px;
+    max-height: 72px;
 }
 .wall-card {
     min-width: 140px;
+    max-width: 140px;
+    min-height: 114px;
+    max-height: 114px;
     border-radius: 12px;
     background-color: @cc_surface;
     border: 1.5px solid @cc_line;
@@ -791,6 +796,8 @@ window.power-window {
 }
 .wall-thumb {
     border-radius: 8px;
+    min-height: 72px;
+    max-height: 72px;
 }
 .wall-caption,
 .wall-name {
@@ -811,6 +818,7 @@ window.power-window {
     background: transparent;
     color: @cc_fg_muted;
     font-size: 12px;
+    transition: all 0.15s ease;
 }
 .wall-del-btn:hover {
     background-color: @cc_red_bg;
@@ -818,28 +826,31 @@ window.power-window {
     color: @cc_red;
 }
 .wall-del-confirm {
-    padding: 2px 8px;
+    padding: 3px 6px;
     border-radius: 6px;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     background-color: @cc_red_bg;
     border: 1px solid @cc_red_border;
     color: @cc_red;
+    transition: all 0.15s ease;
 }
 .wall-del-confirm:hover {
     background-color: @cc_red;
     color: @cc_fg_on_accent;
 }
 .wall-del-cancel {
-    padding: 2px 8px;
+    padding: 3px 6px;
     border-radius: 6px;
     font-size: 10px;
     font-weight: 600;
     background-color: @cc_surface_hover;
     border: 1px solid @cc_line;
     color: @cc_fg_subtle;
+    transition: all 0.15s ease;
 }
 .wall-del-cancel:hover {
+    background-color: @cc_line_light;
     color: @cc_fg_bright;
 }
 
