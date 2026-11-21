@@ -237,14 +237,13 @@ impl SimpleComponent for AppearanceModel {
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::Automatic),
-                set_propagate_natural_height: true,
-                set_min_content_height: 480,
-                set_max_content_height: 680,
+                set_min_content_height: 350,
                 set_vexpand: true,
 
                 gtk4::Box {
                     set_orientation: Orientation::Vertical,
                     set_spacing: 12,
+                    set_margin_bottom: 28,
 
                     // ── Section 1: Themes ─────────────────────────
                     gtk4::Box {
@@ -963,6 +962,7 @@ fn populate_custom_bg_controls(
             presets_box.append(&lbl_p);
 
             let dots_row = GtkBox::new(Orientation::Horizontal, 6);
+            dots_row.set_halign(gtk4::Align::Center);
             let presets = [
                 ("Sumi", (0x18, 0x16, 0x16)),
                 ("Obsidian", (0x0d, 0x0e, 0x11)),
@@ -1117,6 +1117,7 @@ fn populate_custom_bg_controls(
         }
         BgMode::Gradient => {
             let colors_row = GtkBox::new(Orientation::Horizontal, 8);
+            colors_row.set_halign(gtk4::Align::Center);
 
             // Start Color Box
             let start_box = GtkBox::new(Orientation::Horizontal, 4);
@@ -1224,6 +1225,7 @@ fn populate_custom_bg_controls(
 
             // Direction row
             let dir_row = GtkBox::new(Orientation::Horizontal, 6);
+            dir_row.set_halign(gtk4::Align::Center);
             let lbl_dir = Label::new(Some(tr("Direction:", "Направление:")));
             lbl_dir.add_css_class("cc-label");
             dir_row.append(&lbl_dir);
@@ -1257,7 +1259,9 @@ fn populate_custom_bg_controls(
             presets_box.append(&lbl_presets);
 
             let row1 = GtkBox::new(Orientation::Horizontal, 5);
+            row1.set_halign(gtk4::Align::Center);
             let row2 = GtkBox::new(Orientation::Horizontal, 5);
+            row2.set_halign(gtk4::Align::Center);
 
             let grad_presets = [
                 ("Kanagawa", (0x18, 0x16, 0x16), (0x28, 0x27, 0x28)),
@@ -1521,5 +1525,5 @@ where
     let mut controller = AppearanceModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 455, 640)
+    (root, 455, 660)
 }
