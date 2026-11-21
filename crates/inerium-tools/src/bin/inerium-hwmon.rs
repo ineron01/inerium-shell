@@ -12,6 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use inerium_hw::cooling::read_cpu_temp as read_temp;
+use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
 use inerium_tools::ipc::{PidRegistry, SelfPipe};
 use inerium_tools::sys::posix::*;
@@ -156,13 +157,21 @@ fn format_output(cpu: u32, plain: bool, detailed: bool) -> String {
         }
 
         let tooltip = format!(
-            "Температура CPU: {}°C\nЗагрузка CPU: {}%\nОЗУ: {:.1} / {:.1} ГиБ ({}%)\n\nЛКМ: {} · ПКМ: btop",
+            "{}: {}°C\n{}: {}%\n{}: {:.1} / {:.1} {} ({}%)\n\n{}",
+            tr("CPU Temperature", "Температура CPU"),
             t.map(|v| v.to_string()).unwrap_or_else(|| "--".to_string()),
+            tr("CPU Usage", "Загрузка CPU"),
             cpu,
+            tr("RAM", "ОЗУ"),
             used_gib,
             total_gib,
+            tr("GiB", "ГиБ"),
             mem_pct,
-            if detailed { "Свернуть" } else { "Подробнее (CPU, ОЗУ)" }
+            if detailed {
+                tr("LMB: Collapse · RMB: btop", "ЛКМ: Свернуть · ПКМ: btop")
+            } else {
+                tr("LMB: Details (CPU, RAM) · RMB: btop", "ЛКМ: Подробнее (CPU, ОЗУ) · ПКМ: btop")
+            }
         );
 
         format!(

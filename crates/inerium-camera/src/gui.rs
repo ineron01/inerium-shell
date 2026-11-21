@@ -8,6 +8,7 @@ use gtk4::{
     Label, Orientation as GtkOrientation, Picture, PolicyType, ScrolledWindow,
     Spinner, ToggleButton,
 };
+use inerium_i18n::tr;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -174,18 +175,18 @@ fn spawn_stream_watchdog(tx: mpsc::Sender<GuiEvent>) {
                 break;
             }
             let mut failed = false;
-            let mut reason = "Потеряна связь с устройством";
+            let mut reason = tr("Connection lost with device", "Потеряна связь с устройством");
             if let Some(pid) = session.pid {
                 if !StreamingManager::is_pid_alive(pid) {
                     failed = true;
-                    reason = "Процесс видеопотока завершился";
+                    reason = tr("Video stream process exited", "Процесс видеопотока завершился");
                 }
             }
             if !failed {
                 for &aux in &session.aux_pids {
                     if aux > 0 && !StreamingManager::is_pid_alive(aux) {
                         failed = true;
-                        reason = "Камера телефона отключена или разрядилась";
+                        reason = tr("Phone camera disconnected or discharged", "Камера телефона отключена или разрядилась");
                         break;
                     }
                 }
@@ -205,13 +206,25 @@ pub fn run_gui() {
         .build();
 
     app.connect_startup(|_| {
-        let provider = gtk4::CssProvider::new();
-        provider.load_from_data(INERIUM_CSS);
         if let Some(display) = gdk4::Display::default() {
+            if let Some(home) = std::env::var_os("HOME") {
+                let vars_path = std::path::PathBuf::from(home).join(".config/inerium/theme-vars.css");
+                if let Ok(vars) = std::fs::read_to_string(&vars_path) {
+                    let vars_provider = gtk4::CssProvider::new();
+                    vars_provider.load_from_data(&vars);
+                    gtk4::style_context_add_provider_for_display(
+                        &display,
+                        &vars_provider,
+                        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                    );
+                }
+            }
+            let provider = gtk4::CssProvider::new();
+            provider.load_from_data(INERIUM_CSS);
             gtk4::style_context_add_provider_for_display(
                 &display,
                 &provider,
-                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
             );
         }
     });
@@ -223,7 +236,7 @@ pub fn run_gui() {
 fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
-        .title("Камера")
+        .title(tr("Camera", "Камера"))
         .default_width(380)
         .default_height(500)
         .resizable(true)
@@ -234,11 +247,11 @@ fn build_ui(app: &Application) {
 
     // Header
     let header_box = GtkBox::new(GtkOrientation::Vertical, 2);
-    let title_label = Label::new(Some("Камера"));
+    let title_label = Label::new(Some(tr("Camera", "Камера")));
     title_label.add_css_class("header-title");
     title_label.set_halign(Align::Start);
 
-    let status_subtitle = Label::new(Some("Инициализация устройств..."));
+    let status_subtitle = Label::new(Some(tr("Initializing devices...", "Инициализация устройств...")));
     status_subtitle.add_css_class("header-subtitle");
     status_subtitle.set_halign(Align::Start);
 
@@ -249,19 +262,19 @@ fn build_ui(app: &Application) {
     // Source Card
     let source_card = GtkBox::new(GtkOrientation::Vertical, 6);
     source_card.add_css_class("card-box");
-    let source_title = Label::new(Some("Источник видео"));
+    let source_title = Label::new(Some(tr("Video Source", "Источник видео")));
     source_title.add_css_class("section-label");
     source_title.set_halign(Align::Start);
     source_card.append(&source_title);
 
     let source_btn_box = GtkBox::new(GtkOrientation::Horizontal, 6);
-    let btn_src_builtin = ToggleButton::with_label("Встроенная");
-    let btn_src_back = ToggleButton::with_label("Основная");
-    let btn_src_front = ToggleButton::with_label("Фронтальная");
+    let btn_src_builtin = ToggleButton::with_label(tr("Built-in", "Встроенная"));
+    let btn_src_back = ToggleButton::with_label(tr("Main", "Основная"));
+    let btn_src_front = ToggleButton::with_label(tr("Front", "Фронтальная"));
 
-    btn_src_builtin.set_tooltip_text(Some("Встроенная веб-камера ноутбука (Fn + F6)"));
-    btn_src_back.set_tooltip_text(Some("Основная тыловая камера смартфона"));
-    btn_src_front.set_tooltip_text(Some("Фронтальная селфи-камера смартфона"));
+    btn_src_builtin.set_tooltip_text(Some(tr("Built-in laptop webcam (Fn + F6)", "Встроенная веб-камера ноутбука (Fn + F6)")));
+    btn_src_back.set_tooltip_text(Some(tr("Main rear smartphone camera", "Основная тыловая камера смартфона")));
+    btn_src_front.set_tooltip_text(Some(tr("Front selfie smartphone camera", "Фронтальная селфи-камера смартфона")));
 
     btn_src_builtin.add_css_class("segmented-btn");
     btn_src_back.add_css_class("segmented-btn");
@@ -280,14 +293,14 @@ fn build_ui(app: &Application) {
     // Orientation Card
     let orient_card = GtkBox::new(GtkOrientation::Vertical, 6);
     orient_card.add_css_class("card-box");
-    let orient_title = Label::new(Some("Ориентация"));
+    let orient_title = Label::new(Some(tr("Orientation", "Ориентация")));
     orient_title.add_css_class("section-label");
     orient_title.set_halign(Align::Start);
     orient_card.append(&orient_title);
 
     let orient_btn_box = GtkBox::new(GtkOrientation::Horizontal, 6);
-    let btn_orient_land = ToggleButton::with_label("16:9 (Альбомная)");
-    let btn_orient_port = ToggleButton::with_label("9:16 (Портретная)");
+    let btn_orient_land = ToggleButton::with_label(tr("16:9 (Landscape)", "16:9 (Альбомная)"));
+    let btn_orient_port = ToggleButton::with_label(tr("9:16 (Portrait)", "9:16 (Портретная)"));
 
     btn_orient_land.add_css_class("segmented-btn");
     btn_orient_port.add_css_class("segmented-btn");
@@ -302,25 +315,25 @@ fn build_ui(app: &Application) {
     // Extra Toggles Card
     let extra_card = GtkBox::new(GtkOrientation::Vertical, 6);
     extra_card.add_css_class("card-box");
-    let extra_title = Label::new(Some("Параметры и сеть"));
+    let extra_title = Label::new(Some(tr("Settings & Network", "Параметры и сеть")));
     extra_title.add_css_class("section-label");
     extra_title.set_halign(Align::Start);
     extra_card.append(&extra_title);
 
     let toggles_row = GtkBox::new(GtkOrientation::Horizontal, 16);
-    let chk_torch = CheckButton::with_label("Вспышка (Фонарик)");
-    let chk_audio = CheckButton::with_label("Микрофон");
+    let chk_torch = CheckButton::with_label(tr("Flashlight", "Вспышка (Фонарик)"));
+    let chk_audio = CheckButton::with_label(tr("Microphone", "Микрофон"));
 
     toggles_row.append(&chk_torch);
     toggles_row.append(&chk_audio);
     extra_card.append(&toggles_row);
 
     let wifi_row = GtkBox::new(GtkOrientation::Horizontal, 6);
-    let btn_scan_wifi = Button::with_label("Поиск по Wi-Fi");
-    btn_scan_wifi.set_tooltip_text(Some("Найти телефон в локальной Wi-Fi сети или на точке доступа ноутбука"));
+    let btn_scan_wifi = Button::with_label(tr("Wi-Fi Scan", "Поиск по Wi-Fi"));
+    btn_scan_wifi.set_tooltip_text(Some(tr("Find phone on local Wi-Fi or laptop hotspot", "Найти телефон в локальной Wi-Fi сети или на точке доступа ноутбука")));
     btn_scan_wifi.add_css_class("btn-secondary");
-    let btn_enable_tcpip = Button::with_label("Wi-Fi через USB");
-    btn_enable_tcpip.set_tooltip_text(Some("Включить режим ADB TCP/IP 5555 на USB"));
+    let btn_enable_tcpip = Button::with_label(tr("Wi-Fi via USB", "Wi-Fi через USB"));
+    btn_enable_tcpip.set_tooltip_text(Some(tr("Enable ADB TCP/IP port 5555 over USB", "Включить режим ADB TCP/IP 5555 на USB")));
     btn_enable_tcpip.add_css_class("btn-secondary");
 
     wifi_row.append(&btn_scan_wifi);
@@ -340,7 +353,7 @@ fn build_ui(app: &Application) {
     picture.set_can_shrink(true);
     picture.set_size_request(240, 135);
 
-    let preview_placeholder = Label::new(Some("Нажмите «Запустить трансляцию» для активации камеры"));
+    let preview_placeholder = Label::new(Some(tr("Click «Start Streaming» to activate camera", "Нажмите «Запустить трансляцию» для активации камеры")));
     preview_placeholder.add_css_class("header-subtitle");
     preview_placeholder.set_margin_top(6);
     preview_placeholder.set_margin_bottom(6);
@@ -355,11 +368,11 @@ fn build_ui(app: &Application) {
     action_box.set_margin_top(4);
     action_box.set_margin_bottom(2);
 
-    let btn_action = Button::with_label("Запустить трансляцию");
+    let btn_action = Button::with_label(tr("Start Streaming", "Запустить трансляцию"));
     btn_action.add_css_class("btn-primary-start");
 
-    let btn_reset = Button::with_label("Сброс");
-    btn_reset.set_tooltip_text(Some("Аварийный сброс: завершить все процессы, отключить ADB и сбросить видеомост"));
+    let btn_reset = Button::with_label(tr("Reset", "Сброс"));
+    btn_reset.set_tooltip_text(Some(tr("Emergency reset: kill all processes, disconnect ADB, and reset video bridge", "Аварийный сброс: завершить все процессы, отключить ADB и сбросить видеомост")));
     btn_reset.add_css_class("btn-reset");
 
     let spinner = Spinner::new();
@@ -370,7 +383,7 @@ fn build_ui(app: &Application) {
     action_box.append(&spinner);
 
     // Bottom Status Bar (Docked)
-    let status_bar_label = Label::new(Some("Готово к работе"));
+    let status_bar_label = Label::new(Some(tr("Ready", "Готово к работе")));
     status_bar_label.add_css_class("status-bar-text");
     status_bar_label.set_halign(Align::Start);
 
@@ -421,12 +434,12 @@ fn build_ui(app: &Application) {
     chk_audio.set_active(init_session.audio);
 
     if init_session.is_streaming {
-        btn_action.set_label("Остановить трансляцию");
+        btn_action.set_label(tr("Stop Streaming", "Остановить трансляцию"));
         btn_action.remove_css_class("btn-primary-start");
         btn_action.add_css_class("btn-primary-stop");
-        preview_placeholder.set_text("Трансляция активна");
+        preview_placeholder.set_text(tr("Stream is active", "Трансляция активна"));
         if let Err(err) = preview_pipeline.borrow_mut().start(picture.clone()) {
-            preview_placeholder.set_text(&format!("Превью недоступно: {}", err));
+            preview_placeholder.set_text(&format!("{}: {}", tr("Preview unavailable", "Превью недоступно"), err));
         }
         spawn_stream_watchdog(tx.clone());
     } else {
@@ -461,23 +474,23 @@ fn build_ui(app: &Application) {
                 } => {
                     btn_builtin_w.set_sensitive(true);
                     if builtin_hw_disabled {
-                        btn_builtin_w.set_tooltip_text(Some("Встроенная камера (аппаратно отключена Fn + F6)"));
+                        btn_builtin_w.set_tooltip_text(Some(tr("Built-in camera (disabled by Fn + F6 switch)", "Встроенная камера (аппаратно отключена Fn + F6)")));
                     } else {
-                        btn_builtin_w.set_tooltip_text(Some("Встроенная камера ноутбука"));
+                        btn_builtin_w.set_tooltip_text(Some(tr("Built-in laptop webcam", "Встроенная камера ноутбука")));
                     }
 
                     match external_desc {
                         Ok(desc) => {
-                            subtitle_w.set_text(&format!("Подключено: {}", desc));
+                            subtitle_w.set_text(&format!("{}: {}", tr("Connected", "Подключено"), desc));
                             subtitle_w.remove_css_class("status-danger");
                             subtitle_w.remove_css_class("status-warning");
                         }
                         Err(_) => {
                             if builtin_hw_disabled {
-                                subtitle_w.set_text("Внешняя камера не подключена. Встроенная камера выключена (Fn + F6).");
+                                subtitle_w.set_text(tr("External camera not connected. Built-in camera disabled (Fn + F6).", "Внешняя камера не подключена. Встроенная камера выключена (Fn + F6)."));
                                 subtitle_w.add_css_class("status-warning");
                             } else {
-                                subtitle_w.set_text("Внешняя камера не подключена. Доступна встроенная камера.");
+                                subtitle_w.set_text(tr("External camera not connected. Built-in camera available.", "Внешняя камера не подключена. Доступна встроенная камера."));
                             }
                         }
                     }
@@ -491,28 +504,28 @@ fn build_ui(app: &Application) {
                     match res {
                         Ok(info) => {
                             is_streaming_w.set(true);
-                            btn_action_w.set_label("Остановить трансляцию");
+                            btn_action_w.set_label(tr("Stop Streaming", "Остановить трансляцию"));
                             btn_action_w.remove_css_class("btn-primary-start");
                             btn_action_w.add_css_class("btn-primary-stop");
 
-                            subtitle_w.set_text(&format!("Подключено: {}", info.conn_type.as_deref().unwrap_or("Готово")));
-                            status_bar_w.set_text(&format!("Трансляция активна ({}, {})", info.source, info.orientation));
-                            placeholder_w.set_text("Трансляция активна");
+                            subtitle_w.set_text(&format!("{}: {}", tr("Connected", "Подключено"), info.conn_type.as_deref().unwrap_or(tr("Ready", "Готово"))));
+                            status_bar_w.set_text(&format!("{} ({}, {})", tr("Stream is active", "Трансляция активна"), info.source, info.orientation));
+                            placeholder_w.set_text(tr("Stream is active", "Трансляция активна"));
 
                             if !preview_pipeline_ev.borrow().is_running() {
                                 if let Err(err) = preview_pipeline_ev.borrow_mut().start(picture_w.clone()) {
-                                    placeholder_w.set_text(&format!("Превью недоступно: {}", err));
+                                    placeholder_w.set_text(&format!("{}: {}", tr("Preview unavailable", "Превью недоступно"), err));
                                 }
                             }
                             spawn_stream_watchdog(tx_watch.clone());
                         }
                         Err(err) => {
                             is_streaming_w.set(false);
-                            btn_action_w.set_label("Запустить трансляцию");
+                            btn_action_w.set_label(tr("Start Streaming", "Запустить трансляцию"));
                             btn_action_w.remove_css_class("btn-primary-stop");
                             btn_action_w.add_css_class("btn-primary-start");
-                            status_bar_w.set_text(&format!("Ошибка: {}", err));
-                            placeholder_w.set_text("Ошибка при запуске камеры");
+                            status_bar_w.set_text(&format!("{}: {}", tr("Error", "Ошибка"), err));
+                            placeholder_w.set_text(tr("Error starting camera", "Ошибка при запуске камеры"));
                             preview_pipeline_ev.borrow_mut().stop();
                             picture_w.set_paintable(None::<&gdk4::Paintable>);
                         }
@@ -526,11 +539,11 @@ fn build_ui(app: &Application) {
                     btn_action_w.set_sensitive(true);
                     btn_reset_w.set_sensitive(true);
 
-                    btn_action_w.set_label("Запустить трансляцию");
+                    btn_action_w.set_label(tr("Start Streaming", "Запустить трансляцию"));
                     btn_action_w.remove_css_class("btn-primary-stop");
                     btn_action_w.add_css_class("btn-primary-start");
-                    placeholder_w.set_text("Нажмите «Запустить трансляцию» для активации камеры");
-                    status_bar_w.set_text("Трансляция остановлена");
+                    placeholder_w.set_text(tr("Click «Start Streaming» to activate camera", "Нажмите «Запустить трансляцию» для активации камеры"));
+                    status_bar_w.set_text(tr("Stream stopped", "Трансляция остановлена"));
                     preview_pipeline_ev.borrow_mut().stop();
                     picture_w.set_paintable(None::<&gdk4::Paintable>);
                 }
@@ -542,13 +555,13 @@ fn build_ui(app: &Application) {
                     btn_action_w.set_sensitive(true);
                     btn_reset_w.set_sensitive(true);
 
-                    btn_action_w.set_label("Запустить трансляцию");
+                    btn_action_w.set_label(tr("Start Streaming", "Запустить трансляцию"));
                     btn_action_w.remove_css_class("btn-primary-stop");
                     btn_action_w.add_css_class("btn-primary-start");
-                    placeholder_w.set_text("Поток камеры прерван");
-                    subtitle_w.set_text("Внимание: устройство отключено");
+                    placeholder_w.set_text(tr("Camera stream interrupted", "Поток камеры прерван"));
+                    subtitle_w.set_text(tr("Warning: device disconnected", "Внимание: устройство отключено"));
                     subtitle_w.add_css_class("status-danger");
-                    status_bar_w.set_text(&format!("Сбой: {}", reason));
+                    status_bar_w.set_text(&format!("{}: {}", tr("Failure", "Сбой"), reason));
                     preview_pipeline_ev.borrow_mut().stop();
                     picture_w.set_paintable(None::<&gdk4::Paintable>);
                 }
@@ -560,24 +573,24 @@ fn build_ui(app: &Application) {
                     btn_action_w.set_sensitive(true);
                     btn_reset_w.set_sensitive(true);
 
-                    btn_action_w.set_label("Запустить трансляцию");
+                    btn_action_w.set_label(tr("Start Streaming", "Запустить трансляцию"));
                     btn_action_w.remove_css_class("btn-primary-stop");
                     btn_action_w.add_css_class("btn-primary-start");
-                    placeholder_w.set_text("Нажмите «Запустить трансляцию» для активации камеры");
+                    placeholder_w.set_text(tr("Click «Start Streaming» to activate camera", "Нажмите «Запустить трансляцию» для активации камеры"));
                     preview_pipeline_ev.borrow_mut().stop();
                     picture_w.set_paintable(None::<&gdk4::Paintable>);
 
                     match res {
                         Ok(()) => {
-                            subtitle_w.set_text("Сброс выполнен: процессы и мост очищены");
+                            subtitle_w.set_text(tr("Reset completed: processes and bridge cleared", "Сброс выполнен: процессы и мост очищены"));
                             subtitle_w.remove_css_class("status-danger");
                             subtitle_w.remove_css_class("status-warning");
-                            status_bar_w.set_text("Состояние камеры и ADB полностью сброшено");
+                            status_bar_w.set_text(tr("Camera state and ADB completely reset", "Состояние камеры и ADB полностью сброшено"));
                         }
                         Err(e) => {
-                            subtitle_w.set_text("Ошибка при сбросе");
+                            subtitle_w.set_text(tr("Error during reset", "Ошибка при сбросе"));
                             subtitle_w.add_css_class("status-danger");
-                            status_bar_w.set_text(&format!("Ошибка сброса: {}", e));
+                            status_bar_w.set_text(&format!("{}: {}", tr("Reset error", "Ошибка сброса"), e));
                         }
                     }
                 }
@@ -588,22 +601,22 @@ fn build_ui(app: &Application) {
                         spinner_w.set_visible(false);
                     }
                     if let Some(ip) = client_opt {
-                        status_bar_w.set_text(&format!("Найдено устройство: {}", ip));
-                        let net = if ip.starts_with("10.42.0.") { "Точка доступа" } else { "Локальная сеть" };
-                        subtitle_w.set_text(&format!("Подключено: Wi-Fi ({} {})", net, ip));
+                        status_bar_w.set_text(&format!("{}: {}", tr("Found device", "Найдено устройство"), ip));
+                        let net = if ip.starts_with("10.42.0.") { tr("Hotspot", "Точка доступа") } else { tr("Local network", "Локальная сеть") };
+                        subtitle_w.set_text(&format!("{}: Wi-Fi ({} {})", tr("Connected", "Подключено"), net, ip));
                         subtitle_w.remove_css_class("status-danger");
                         subtitle_w.remove_css_class("status-warning");
                     } else {
-                        status_bar_w.set_text("Телефон в сетях Wi-Fi не найден");
+                        status_bar_w.set_text(tr("Phone not found on Wi-Fi networks", "Телефон в сетях Wi-Fi не найден"));
                     }
                 }
                 GuiEvent::TcpipEnabled(res) => {
                     match res {
                         Ok(()) => {
-                            status_bar_w.set_text("Режим TCP/IP 5555 успешно включен. Теперь можно отключить кабель.");
+                            status_bar_w.set_text(tr("TCP/IP 5555 mode enabled successfully. Cable can now be disconnected.", "Режим TCP/IP 5555 успешно включен. Теперь можно отключить кабель."));
                         }
                         Err(e) => {
-                            status_bar_w.set_text(&format!("Ошибка: {}", e));
+                            status_bar_w.set_text(&format!("{}: {}", tr("Error", "Ошибка"), e));
                         }
                     }
                 }
@@ -654,7 +667,7 @@ fn build_ui(app: &Application) {
             let audio = chk_audio.is_active();
             let tx_w = tx.clone();
 
-            status_bar.set_text("Обновление конфигурации...");
+            status_bar.set_text(tr("Updating configuration...", "Обновление конфигурации..."));
             tokio::spawn(async move {
                 let res = StreamingManager::start_stream(source, orientation, torch, audio, None).await;
                 let _ = tx_w.send(GuiEvent::StreamStarted(res)).await;
@@ -665,7 +678,7 @@ fn build_ui(app: &Application) {
     // Source button handlers
     {
         let chk_torch_c = chk_torch.clone();
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
@@ -681,24 +694,24 @@ fn build_ui(app: &Application) {
 
             match DeviceManager::detect_builtin_webcam() {
                 BuiltinStatus::Available { ref device_path, .. } => {
-                    status_bar_c.set_text(&format!("Встроенная камера готова ({})", device_path));
-                    subtitle_c.set_text("Встроенная камера подключена");
+                    status_bar_c.set_text(&format!("{}: ({})", tr("Built-in camera ready", "Встроенная камера готова"), device_path));
+                    subtitle_c.set_text(tr("Built-in camera connected", "Встроенная камера подключена"));
                     subtitle_c.remove_css_class("status-danger");
                     subtitle_c.remove_css_class("status-warning");
                 }
                 BuiltinStatus::HardwareDisabled | BuiltinStatus::NotFound => {
-                    status_bar_c.set_text("Встроенная камера отключена (Fn + F6) или не найдена");
-                    subtitle_c.set_text("Встроенная камера отключена (Fn + F6)");
+                    status_bar_c.set_text(tr("Built-in camera disabled (Fn + F6) or not found", "Встроенная камера отключена (Fn + F6) или не найдена"));
+                    subtitle_c.set_text(tr("Built-in camera disabled (Fn + F6)", "Встроенная камера отключена (Fn + F6)"));
                     subtitle_c.add_css_class("status-warning");
                 }
             }
-            tr(CameraSource::Builtin, cur_orient.get());
+            trig(CameraSource::Builtin, cur_orient.get());
         });
     }
 
     {
         let chk_torch_c = chk_torch.clone();
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
@@ -709,14 +722,14 @@ fn build_ui(app: &Application) {
             }
             cur_src.set(CameraSource::ExternalBack);
             chk_torch_c.set_sensitive(true);
-            status_bar_c.set_text("Выбрана внешняя (основная) камера");
-            tr(CameraSource::ExternalBack, cur_orient.get());
+            status_bar_c.set_text(tr("Selected external (main) camera", "Выбрана внешняя (основная) камера"));
+            trig(CameraSource::ExternalBack, cur_orient.get());
         });
     }
 
     {
         let chk_torch_c = chk_torch.clone();
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
@@ -727,14 +740,14 @@ fn build_ui(app: &Application) {
             }
             cur_src.set(CameraSource::ExternalFront);
             chk_torch_c.set_sensitive(false);
-            status_bar_c.set_text("Выбрана внешняя (фронтальная) камера");
-            tr(CameraSource::ExternalFront, cur_orient.get());
+            status_bar_c.set_text(tr("Selected external (front) camera", "Выбрана внешняя (фронтальная) камера"));
+            trig(CameraSource::ExternalFront, cur_orient.get());
         });
     }
 
     // Orientation button handlers
     {
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
@@ -744,13 +757,13 @@ fn build_ui(app: &Application) {
                 return;
             }
             cur_orient.set(Orientation::Landscape);
-            status_bar_c.set_text("Ориентация: 16:9 (Альбомная)");
-            tr(cur_src.get(), Orientation::Landscape);
+            status_bar_c.set_text(tr("Orientation: 16:9 (Landscape)", "Ориентация: 16:9 (Альбомная)"));
+            trig(cur_src.get(), Orientation::Landscape);
         });
     }
 
     {
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
@@ -760,32 +773,32 @@ fn build_ui(app: &Application) {
                 return;
             }
             cur_orient.set(Orientation::Portrait);
-            status_bar_c.set_text("Ориентация: 9:16 (Портретная)");
-            tr(cur_src.get(), Orientation::Portrait);
+            status_bar_c.set_text(tr("Orientation: 9:16 (Portrait)", "Ориентация: 9:16 (Портретная)"));
+            trig(cur_src.get(), Orientation::Portrait);
         });
     }
 
     // Toggle handlers
     {
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let is_stream = is_streaming.clone();
         chk_torch.connect_toggled(move |_| {
             if cur_src.get() == CameraSource::ExternalBack && is_stream.get() {
-                tr(cur_src.get(), cur_orient.get());
+                trig(cur_src.get(), cur_orient.get());
             }
         });
     }
 
     {
-        let tr = trigger_refresh.clone();
+        let trig = trigger_refresh.clone();
         let cur_src = current_source.clone();
         let cur_orient = current_orientation.clone();
         let is_stream = is_streaming.clone();
         chk_audio.connect_toggled(move |_| {
             if is_stream.get() {
-                tr(cur_src.get(), cur_orient.get());
+                trig(cur_src.get(), cur_orient.get());
             }
         });
     }
@@ -801,7 +814,7 @@ fn build_ui(app: &Application) {
             btn_scan.set_sensitive(false);
             spinner_scan.set_visible(true);
             spinner_scan.start();
-            status_bar.set_text("Поиск телефона в Wi-Fi сетях...");
+            status_bar.set_text(tr("Searching for phone on Wi-Fi networks...", "Поиск телефона в Wi-Fi сетях..."));
             let tx_w = tx_wifi.clone();
             tokio::spawn(async move {
                 let client = DeviceManager::discover_wifi_device().await;
@@ -816,7 +829,7 @@ fn build_ui(app: &Application) {
         let status_bar = status_bar_label.clone();
 
         btn_enable_tcpip.connect_clicked(move |_| {
-            status_bar.set_text("Включение режима TCP/IP 5555 на USB...");
+            status_bar.set_text(tr("Enabling TCP/IP 5555 mode over USB...", "Включение режима TCP/IP 5555 на USB..."));
             let tx_w = tx_tcp.clone();
             tokio::spawn(async move {
                 let res = DeviceManager::enable_tcpip_5555().await;
@@ -850,7 +863,7 @@ fn build_ui(app: &Application) {
 
             if !streaming && source == CameraSource::Builtin {
                 if let BuiltinStatus::HardwareDisabled = DeviceManager::detect_builtin_webcam() {
-                    status_bar.set_text("Встроенная камера отключена аппаратно (Fn + F6)");
+                    status_bar.set_text(tr("Built-in camera disabled by hardware switch (Fn + F6)", "Встроенная камера отключена аппаратно (Fn + F6)"));
                     return;
                 }
             }
@@ -866,13 +879,13 @@ fn build_ui(app: &Application) {
 
             if streaming {
                 preview_pipeline_act.borrow_mut().stop();
-                status_bar.set_text("Остановка трансляции...");
+                status_bar.set_text(tr("Stopping stream...", "Остановка трансляции..."));
                 tokio::spawn(async move {
                     let _ = StreamingManager::stop_stream().await;
                     let _ = tx_w.send(GuiEvent::StreamStopped).await;
                 });
             } else {
-                status_bar.set_text("Запуск трансляции...");
+                status_bar.set_text(tr("Starting stream...", "Запуск трансляции..."));
                 tokio::spawn(async move {
                     let res = StreamingManager::start_stream(source, orientation, torch, audio, None).await;
                     let _ = tx_w.send(GuiEvent::StreamStarted(res)).await;
@@ -902,7 +915,7 @@ fn build_ui(app: &Application) {
             btn_action_ref.set_sensitive(false);
             btn_reset_ref.set_sensitive(false);
             preview_pipeline_rst.borrow_mut().stop();
-            status_bar.set_text("Выполняется аварийный сброс...");
+            status_bar.set_text(tr("Performing emergency reset...", "Выполняется аварийный сброс..."));
 
             let tx_w = tx_rst.clone();
             tokio::spawn(async move {

@@ -8,6 +8,7 @@ use std::env;
 use std::io::{self, Write};
 use std::process::Command;
 
+use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
 use inerium_tools::ipc::{PidRegistry, SelfPipe};
 use inerium_tools::sys::posix::SIGUSR1;
@@ -113,13 +114,19 @@ fn format_output(dnd: bool) -> String {
         (
             "󰂛",
             "on",
-            "Уведомления: выключены (Не беспокоить)\nЛКМ / ПКМ: Включить уведомления",
+            tr(
+                "Notifications: Disabled (Do Not Disturb)\nLMB / RMB: Enable notifications",
+                "Уведомления: выключены (Не беспокоить)\nЛКМ / ПКМ: Включить уведомления",
+            ),
         )
     } else {
         (
             "󰂚",
             "off",
-            "Уведомления: включены\nЛКМ / ПКМ: Выключить уведомления (Не беспокоить)",
+            tr(
+                "Notifications: Enabled\nLMB / RMB: Disable notifications (Do Not Disturb)",
+                "Уведомления: включены\nЛКМ / ПКМ: Выключить уведомления (Не беспокоить)",
+            ),
         )
     };
 

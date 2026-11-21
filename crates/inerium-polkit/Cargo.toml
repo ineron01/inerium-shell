@@ -8,6 +8,7 @@ license = "Apache-2.0"
 authors.workspace = true
 
 [dependencies]
+inerium-i18n = { workspace = true }
 etc-passwd = "0.2"
 eyre = "0.6"
 figment = { version = "0.10", features = ["toml"] }

@@ -1,5 +1,5 @@
 use crate::device::DeviceManager;
-use crate::scrcpy::{INGEST_SOCK_PATH, PREVIEW_SHM_SOCKET, SESSION_STATE_FILE};
+use crate::scrcpy::{ingest_sock_path, preview_shm_socket, session_state_file};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
@@ -65,15 +65,18 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
     gst::init().map_err(|e| format!("Failed to init GStreamer: {}", e))?;
     let v4l2_dev = resolve_v4l2_device(v4l2_opt).await?;
 
-    let _ = fs::remove_file(INGEST_SOCK_PATH);
-    let _ = fs::remove_file(PREVIEW_SHM_SOCKET);
+    let ingest_sock = ingest_sock_path();
+    let preview_sock = preview_shm_socket();
+
+    let _ = fs::remove_file(&ingest_sock);
+    let _ = fs::remove_file(&preview_sock);
 
     let pipe_str = format!(
         "appsrc name=src is-live=true do-timestamp=true format=time stream-type=stream block=false max-bytes=6220800 ! \
          videoconvert ! queue leaky=downstream max-size-buffers=2 ! tee name=t ! \
          queue leaky=downstream max-size-buffers=2 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=\"{}\" sync=false \
          t. ! queue leaky=downstream max-size-buffers=2 ! shmsink socket-path=\"{}\" wait-for-connection=false sync=false shm-size=33554432",
-        v4l2_dev, PREVIEW_SHM_SOCKET
+        v4l2_dev, preview_sock.display()
     );
 
     let element = gst::parse::launch(&pipe_str)
@@ -101,8 +104,8 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
         .set_state(gst::State::Playing)
         .map_err(|e| format!("Failed to start bridge pipeline: {:?}", e))?;
 
-    let listener = UnixListener::bind(INGEST_SOCK_PATH)
-        .map_err(|e| format!("Failed to bind ingest socket {}: {}", INGEST_SOCK_PATH, e))?;
+    let listener = UnixListener::bind(&ingest_sock)
+        .map_err(|e| format!("Failed to bind ingest socket {}: {}", ingest_sock.display(), e))?;
 
     let black = build_black_i420();
     let running = Arc::new(AtomicBool::new(true));
@@ -194,7 +197,7 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
                 // 2) No active readers for > 1s even if session file exists (producer died unexpectedly / phone discharged)
                 // 3) Readers connected but no data received for > 2.5s (producer hung/stalled)
                 let should_revert_to_black = if guard.active_readers == 0 {
-                    !Path::new(SESSION_STATE_FILE).exists() || elapsed >= max_frozen_duration
+                    !session_state_file().exists() || elapsed >= max_frozen_duration
                 } else {
                     elapsed >= Duration::from_millis(2500)
                 };
@@ -259,8 +262,8 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
 
     running.store(false, Ordering::SeqCst);
     let _ = pipeline.set_state(gst::State::Null);
-    let _ = fs::remove_file(INGEST_SOCK_PATH);
-    let _ = fs::remove_file(PREVIEW_SHM_SOCKET);
+    let _ = fs::remove_file(ingest_sock_path());
+    let _ = fs::remove_file(preview_shm_socket());
 
     result
 }

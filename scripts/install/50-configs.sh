@@ -478,9 +478,6 @@ enable_user_services_and_defaults() {
         uname="$(basename "$unit")"
         [[ "$uname" == "gdrive.service" ]] && continue
         [[ "$uname" == "inerium-camera-bridge.service" ]] && continue
-        if [[ "$INSTALL_LANG" != "ru" && ("$uname" == "inerium-desktop-indexer.service" || "$uname" == "inerium-desktop-indexer.path") ]]; then
-            continue
-        fi
         link_item "$unit" "$HOME/.config/systemd/user/$uname"
     done
     link_item "$REPO_DIR/config/systemd/user/hypridle.service.d/slice.conf" "$HOME/.config/systemd/user/hypridle.service.d/slice.conf"
@@ -488,10 +485,7 @@ enable_user_services_and_defaults() {
     link_item "$REPO_DIR/config/systemd/user/waybar.service.d/bridge.conf" "$HOME/.config/systemd/user/waybar.service.d/bridge.conf"
     link_item "$REPO_DIR/config/systemd/user/waybar.service.d/slice.conf" "$HOME/.config/systemd/user/waybar.service.d/slice.conf"
 
-    local USER_UNITS="cliphist.service cliphist-images.service hypr-ipc-bridge.service hyprpaper.service hypridle.service inerium-osd-watcher.service inerium-polkit.service inerium-popups.service inerium-updates.timer mako.service swayosd-server.service waybar.service"
-    if [[ "$INSTALL_LANG" == "ru" ]]; then
-        USER_UNITS="$USER_UNITS inerium-desktop-indexer.path"
-    fi
+    local USER_UNITS="cliphist.service cliphist-images.service hypr-ipc-bridge.service hyprpaper.service hypridle.service inerium-desktop-indexer.path inerium-osd-watcher.service inerium-polkit.service inerium-popups.service inerium-updates.timer mako.service swayosd-server.service waybar.service"
     for u in $USER_UNITS; do
         manifest_record_user_unit "$u"
     done

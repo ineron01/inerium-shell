@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use inerium_i18n::tr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CameraSource {
@@ -11,9 +12,9 @@ pub enum CameraSource {
 impl CameraSource {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Builtin => "Встроенная (ноутбук)",
-            Self::ExternalBack => "Внешняя (Основная)",
-            Self::ExternalFront => "Внешняя (Фронтальная)",
+            Self::Builtin => tr("Built-in (laptop)", "Встроенная (ноутбук)"),
+            Self::ExternalBack => tr("External (Main)", "Внешняя (Основная)"),
+            Self::ExternalFront => tr("External (Front)", "Внешняя (Фронтальная)"),
         }
     }
 }
@@ -33,8 +34,8 @@ pub enum Orientation {
 impl Orientation {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Landscape => "16:9 (Альбомная)",
-            Self::Portrait => "9:16 (Портретная)",
+            Self::Landscape => tr("16:9 (Landscape)", "16:9 (Альбомная)"),
+            Self::Portrait => tr("9:16 (Portrait)", "9:16 (Портретная)"),
         }
     }
 

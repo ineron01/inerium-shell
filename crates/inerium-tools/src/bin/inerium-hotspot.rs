@@ -10,6 +10,7 @@ use std::process::{Command, Output};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
+use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
 use inerium_tools::sys::posix::posix_getuid;
 
@@ -182,11 +183,11 @@ fn print_status() {
 
     match get_pending_state() {
         PendingState::Starting => {
-            emit_json("󱜠", "starting", "starting", "Точка доступа: включается…");
+            emit_json("󱜠", "starting", "starting", tr("Hotspot: Starting…", "Точка доступа: включается…"));
             return;
         }
         PendingState::Stopping => {
-            emit_json("󱜡", "stopping", "stopping", "Точка доступа: выключается…");
+            emit_json("󱜡", "stopping", "stopping", tr("Hotspot: Stopping…", "Точка доступа: выключается…"));
             return;
         }
         PendingState::None => {}
@@ -194,14 +195,14 @@ fn print_status() {
 
     if is_hotspot_active() {
         let conn = find_hotspot_connection().unwrap_or_else(|| "Hotspot".to_string());
-        let tt = format!("Точка доступа: Включена\nSSID: {}\n\nЛКМ: Выключить", conn);
+        let tt = format!("{}\nSSID: {}\n\n{}", tr("Hotspot: Enabled", "Точка доступа: Включена"), conn, tr("LMB: Disable", "ЛКМ: Выключить"));
         emit_json("󱜠", "active", "active", &tt);
     } else {
         emit_json(
             "󱜡",
             "inactive",
             "inactive",
-            "Точка доступа: Выключена\n\nЛКМ: Включить",
+            tr("Hotspot: Disabled\n\nLMB: Enable", "Точка доступа: Выключена\n\nЛКМ: Включить"),
         );
     }
 }
@@ -249,7 +250,7 @@ fn notify(urgency_critical: bool, summary: &str, body: &str) {
         cmd.args(["-u", "critical"]);
     }
     let _ = cmd
-        .args(["-a", "Сеть", "-i", icon, summary, body])
+        .args(["-a", tr("Network", "Сеть"), "-i", icon, summary, body])
         .output();
 }
 
@@ -321,7 +322,7 @@ fn disable_wifi_if_ethernet_up() {
 
 fn toggle_hotspot() {
     let Some(iface) = get_wifi_interface() else {
-        notify(true, "Точка доступа", "Wi-Fi адаптер не найден");
+        notify(true, tr("Hotspot", "Точка доступа"), tr("Wi-Fi adapter not found", "Wi-Fi адаптер не найден"));
         return;
     };
 
@@ -351,15 +352,18 @@ fn toggle_hotspot() {
         disable_wifi_if_ethernet_up();
 
         drop(guard);
-        notify(false, "Точка доступа", "Выключена");
+        notify(false, tr("Hotspot", "Точка доступа"), tr("Disabled", "Выключена"));
         return;
     }
 
     if missing_kernel_crypto_ccm() {
         notify(
             true,
-            "Точка доступа",
-            "Не удалось включить: ядро обновилось (нет модуля ccm), нужна перезагрузка",
+            tr("Hotspot", "Точка доступа"),
+            tr(
+                "Failed to start: kernel updated (missing ccm module), reboot required",
+                "Не удалось включить: ядро обновилось (нет модуля ccm), нужна перезагрузка",
+            ),
         );
         return;
     }
@@ -392,14 +396,14 @@ fn toggle_hotspot() {
 
     if succeeded {
         let label = existing_conn.unwrap_or_else(|| "Inerium-Hotspot".to_string());
-        notify(false, "Точка доступа", &format!("Включена ({})", label));
+        notify(false, tr("Hotspot", "Точка доступа"), &format!("{} ({})", tr("Enabled", "Включена"), label));
     } else {
         let detail = result
             .ok()
             .map(|o| String::from_utf8_lossy(&o.stderr).trim().to_string())
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "Не удалось включить".to_string());
-        notify(true, "Точка доступа", &detail);
+            .unwrap_or_else(|| tr("Failed to start", "Не удалось включить").to_string());
+        notify(true, tr("Hotspot", "Точка доступа"), &detail);
     }
 }
 

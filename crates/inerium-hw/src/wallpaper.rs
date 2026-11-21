@@ -4,6 +4,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use inerium_i18n::tr;
+
 #[derive(serde::Deserialize)]
 struct MonitorInfo {
     name: String,
@@ -130,7 +132,7 @@ pub fn apply_wallpaper(image_path: &Path, target_monitor: Option<&str>, notify: 
             mon_map.insert(mon.clone(), path_str.to_string());
         }
         fallback = Some(path_str.to_string());
-        "Обои обновлены (все экраны)".to_string()
+        tr("Wallpaper updated (all displays)", "Обои обновлены (все экраны)").to_string()
     } else {
         let _ = Command::new("hyprctl")
             .args(["hyprpaper", "wallpaper", &format!("{target},{path_str}")])
@@ -147,7 +149,7 @@ pub fn apply_wallpaper(image_path: &Path, target_monitor: Option<&str>, notify: 
         if fallback.is_none() {
             fallback = Some(path_str.to_string());
         }
-        format!("Обои обновлены ({target})")
+        format!("{} ({target})", tr("Wallpaper updated", "Обои обновлены"))
     };
 
     write_hyprpaper_conf(&conf_path, &mon_map, fallback.as_deref())
@@ -156,7 +158,7 @@ pub fn apply_wallpaper(image_path: &Path, target_monitor: Option<&str>, notify: 
     if notify {
         let filename = abs_path.file_name().and_then(|f| f.to_str()).unwrap_or("image");
         let _ = Command::new("notify-send")
-            .args(["-a", "Обои", "-i", path_str, &notify_title, filename])
+            .args(["-a", tr("Wallpaper", "Обои"), "-i", path_str, &notify_title, filename])
             .output();
     }
 

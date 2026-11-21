@@ -271,17 +271,19 @@ def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bo
             if in_main and not has_inserted_kw:
                 new_lines.append(f"Keywords={kw_string}\n")
                 new_lines.append(f"Keywords[ru]={kw_string}\n")
+                new_lines.append("X-Inerium-Indexed=true\n")
                 has_inserted_kw = True
             in_main = False
             new_lines.append(line)
             continue
 
         if in_main:
-            if sline.startswith("Keywords=") or sline.startswith("Keywords["):
+            if sline.startswith("Keywords=") or sline.startswith("Keywords[") or sline.startswith("X-Inerium-Indexed="):
                 # Replace existing keyword lines with our comprehensive set
                 if not has_inserted_kw:
                     new_lines.append(f"Keywords={kw_string}\n")
                     new_lines.append(f"Keywords[ru]={kw_string}\n")
+                    new_lines.append("X-Inerium-Indexed=true\n")
                     has_inserted_kw = True
                 continue
 
@@ -290,6 +292,7 @@ def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bo
     if in_main and not has_inserted_kw:
         new_lines.append(f"Keywords={kw_string}\n")
         new_lines.append(f"Keywords[ru]={kw_string}\n")
+        new_lines.append("X-Inerium-Indexed=true\n")
 
     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
     try:
@@ -419,12 +422,34 @@ def index_all():
     for USER_DIR in USER_DIRS:
         run_as_owner(USER_DIR, process_user_dir)
 
-    # 3. Clean up deleted applications from TARGET_DIR (only when running as root for system directory)
-    if os.geteuid() == 0:
-        for dst_file in glob.glob(os.path.join(TARGET_DIR, "*.desktop")):
-            fname = os.path.basename(dst_file)
-            src_exists = any(os.path.isfile(os.path.join(s, fname)) for s in SOURCE_DIRS)
-            if not src_exists:
+    # 3. Clean up broken symlinks and deleted applications
+    dirs_to_clean = set([TARGET_DIR] + USER_DIRS)
+    for d in dirs_to_clean:
+        if not os.path.isdir(d):
+            continue
+        for entry in os.listdir(d):
+            full_path = os.path.join(d, entry)
+            # Remove broken symlinks
+            if os.path.islink(full_path) and not os.path.exists(full_path):
+                try:
+                    os.unlink(full_path)
+                except Exception:
+                    pass
+
+    # Clean up deleted application files in TARGET_DIR
+    for dst_file in glob.glob(os.path.join(TARGET_DIR, "*.desktop")):
+        fname = os.path.basename(dst_file)
+        src_exists = any(os.path.isfile(os.path.join(s, fname)) for s in SOURCE_DIRS)
+        if not src_exists:
+            should_remove = os.geteuid() == 0
+            if not should_remove:
+                try:
+                    with open(dst_file, "r", encoding="utf-8", errors="ignore") as f:
+                        if "X-Inerium-Indexed=true" in f.read():
+                            should_remove = True
+                except Exception:
+                    pass
+            if should_remove:
                 try:
                     os.remove(dst_file)
                 except Exception:

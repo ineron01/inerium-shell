@@ -13,6 +13,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use inerium_i18n::tr;
 use inerium_tools::sys::posix::posix_localtime_r;
 
 const THUMB_SIZE: u32 = 56;
@@ -188,16 +189,16 @@ fn process_image_item(
         Ok(out) if out.status.success() => out.stdout,
         _ => {
             let label = if dim_str.is_empty() {
-                "󰋩  [Изображение]".to_string()
+                format!("󰋩  [{}]", tr("Image", "Изображение"))
             } else {
-                format!("󰋩  [Изображение {}]", dim_str)
+                format!("󰋩  [{} {}]", tr("Image", "Изображение"), dim_str)
             };
             return (label, "image-x-generic".to_string());
         }
     };
 
     if img_data.is_empty() {
-        return ("󰋩  [Пустое изображение]".to_string(), "image-x-generic".to_string());
+        return (format!("󰋩  [{}]", tr("Empty image", "Пустое изображение")), "image-x-generic".to_string());
     }
 
     // Generate thumbnail using ImageMagick
@@ -224,7 +225,7 @@ fn process_image_item(
         if !info.filename.is_empty() {
             format!("󰋩  {}  {}", info.filename, dim_str).trim().to_string()
         } else {
-            format!("󰋩  Скриншот {}  {}", info.datetime, dim_str).trim().to_string()
+            format!("󰋩  {} {}  {}", tr("Screenshot", "Скриншот"), info.datetime, dim_str).trim().to_string()
         }
     } else {
         let (now_str, fname) = format_current_timestamp();
@@ -238,7 +239,7 @@ fn process_image_item(
             },
         );
         *meta_modified = true;
-        format!("󰋩  Изображение {}  {}", now_str, dim_str).trim().to_string()
+        format!("󰋩  {} {}  {}", tr("Image", "Изображение"), now_str, dim_str).trim().to_string()
     };
 
     // Cache computed label
@@ -323,7 +324,7 @@ fn main() {
         save_metadata(meta_registry);
     }
 
-    let prompt = "󰅍  Буфер обмена";
+    let prompt = format!("󰅍  {}", tr("Clipboard", "Буфер обмена"));
     let theme_file = home_dir().join(".config/rofi/clipboard.rasi");
 
     let mut rofi_cmd = Command::new("rofi");
@@ -331,7 +332,7 @@ fn main() {
         "-dmenu",
         "-i",
         "-p",
-        prompt,
+        &prompt,
         "-format",
         "i",
         "-theme",

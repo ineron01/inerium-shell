@@ -3,6 +3,7 @@ use gtk4::{
     glib::{clone, spawn_future_local},
     prelude::OrientableExt,
 };
+use inerium_i18n::tr;
 use relm4::prelude::*;
 use tokio::sync::mpsc;
 
@@ -159,7 +160,7 @@ impl AsyncComponent for App {
 
     view! {
         gtk::Window {
-            set_title: Some("Подтверждение действия"),
+            set_title: Some(tr("Action Authentication", "Подтверждение действия")),
             set_default_width: 440,
             set_resizable: false,
             set_modal: false,
@@ -207,13 +208,13 @@ impl AsyncComponent for App {
                         set_valign: gtk::Align::Center,
 
                         gtk::Label {
-                            set_label: "Подтверждение действия",
+                            set_label: tr("Action Authentication", "Подтверждение действия"),
                             set_xalign: 0.0,
                             add_css_class: "polkit-title",
                         },
 
                         gtk::Label {
-                            set_label: "Повышение привилегий суперпользователя",
+                            set_label: tr("Superuser privilege elevation", "Повышение привилегий суперпользователя"),
                             set_xalign: 0.0,
                             add_css_class: "polkit-subtitle",
                         },
@@ -270,7 +271,7 @@ impl AsyncComponent for App {
                 #[name = "password_entry"]
                 gtk::PasswordEntry {
                     set_hexpand: true,
-                    set_placeholder_text: Some("Введите пароль администратора..."),
+                    set_placeholder_text: Some(tr("Enter administrator password...", "Введите пароль администратора...")),
                     set_show_peek_icon: true,
                     add_css_class: "inerium-input",
                     #[watch]
@@ -290,7 +291,7 @@ impl AsyncComponent for App {
 
                     #[name = "cancel_button"]
                     gtk::Button {
-                        set_label: "Отмена",
+                        set_label: tr("Cancel", "Отмена"),
                         add_css_class: "btn-cancel",
                         connect_clicked[sender, password_entry] => move |_| {
                             sender.input(AppMsg::Cancel);
@@ -300,7 +301,7 @@ impl AsyncComponent for App {
 
                     #[name = "confirm_button"]
                     gtk::Button {
-                        set_label: "Подтвердить",
+                        set_label: tr("Authenticate", "Подтвердить"),
                         add_css_class: "btn-confirm",
                         #[watch]
                         set_sensitive: !model.authenticating,
@@ -376,7 +377,7 @@ impl AsyncComponent for App {
                         })
                         .await
                         .unwrap();
-                    self.retry_message = Some("Проверка пароля...".to_string());
+                    self.retry_message = Some(tr("Verifying password...", "Проверка пароля...").to_string());
                     self.authenticating = true;
                 }
             }
@@ -437,7 +438,7 @@ impl AsyncComponent for App {
                     if let Some(c) = &self.cookie
                         && c == cookie
                     {
-                        self.retry_message = retry_message.clone().or_else(|| Some("Неверный пароль. Повторите попытку.".to_string()));
+                        self.retry_message = retry_message.clone().or_else(|| Some(tr("Incorrect password. Please try again.", "Неверный пароль. Повторите попытку.").to_string()));
                         self.authenticating = false;
                     }
                 }

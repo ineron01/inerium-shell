@@ -5,18 +5,47 @@ use nix::unistd::Pid;
 use std::fs::{self, File, OpenOptions};
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::time::sleep;
+use inerium_i18n::tr;
 
-pub const SESSION_STATE_FILE: &str = "/tmp/inerium-camera.json";
-pub const PREVIEW_SHM_SOCKET: &str = "/tmp/inerium-cam-preview.sock";
-pub const INGEST_SOCK_PATH: &str = "/tmp/inerium-cam-ingest.sock";
-pub const STREAM_FIFO_PATH: &str = "/tmp/inerium-camera-stream.fifo";
-const BRIDGE_LOG_FILE: &str = "/tmp/inerium-camera-bridge.log";
-const GST_LOG_FILE: &str = "/tmp/inerium-camera-gst.log";
-const SCRCPY_LOG_FILE: &str = "/tmp/inerium-camera-scrcpy.log";
+pub fn runtime_dir() -> PathBuf {
+    let rt = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| format!("/run/user/{}", nix::unistd::getuid().as_raw()));
+    let dir = PathBuf::from(rt).join("inerium");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+pub fn session_state_file() -> PathBuf {
+    runtime_dir().join("camera.json")
+}
+
+pub fn preview_shm_socket() -> PathBuf {
+    runtime_dir().join("cam-preview.sock")
+}
+
+pub fn ingest_sock_path() -> PathBuf {
+    runtime_dir().join("cam-ingest.sock")
+}
+
+pub fn stream_fifo_path() -> PathBuf {
+    runtime_dir().join("camera-stream.fifo")
+}
+
+pub fn bridge_log_file() -> PathBuf {
+    runtime_dir().join("camera-bridge.log")
+}
+
+pub fn gst_log_file() -> PathBuf {
+    runtime_dir().join("camera-gst.log")
+}
+
+pub fn scrcpy_log_file() -> PathBuf {
+    runtime_dir().join("camera-scrcpy.log")
+}
 
 pub struct StreamingManager;
 
@@ -39,7 +68,7 @@ impl StreamingManager {
 
     /// Load active producer session info (idle persistent _bridge returns is_streaming=false)
     pub fn get_current_session() -> CameraSessionInfo {
-        if let Ok(data) = fs::read_to_string(SESSION_STATE_FILE) {
+        if let Ok(data) = fs::read_to_string(session_state_file()) {
             if let Ok(info) = serde_json::from_str::<CameraSessionInfo>(&data) {
                 if info.is_streaming && info.pid.is_some_and(Self::is_pid_alive) {
                     return info;
@@ -53,12 +82,12 @@ impl StreamingManager {
 
     pub fn save_session(info: &CameraSessionInfo) {
         if let Ok(json) = serde_json::to_string_pretty(info) {
-            let _ = fs::write(SESSION_STATE_FILE, json);
+            let _ = fs::write(session_state_file(), json);
         }
     }
 
     pub fn clear_session() {
-        let _ = fs::remove_file(SESSION_STATE_FILE);
+        let _ = fs::remove_file(session_state_file());
     }
 
     /// Terminate an entire process group gracefully (SIGTERM -> wait -> SIGKILL)
@@ -114,12 +143,12 @@ impl StreamingManager {
     }
 
     fn cleanup_producer_files() {
-        for path in [STREAM_FIFO_PATH, GST_LOG_FILE, SCRCPY_LOG_FILE] {
+        for path in [stream_fifo_path(), gst_log_file(), scrcpy_log_file()] {
             let _ = fs::remove_file(path);
         }
     }
 
-    fn open_log_pair(path: &str) -> (Stdio, Stdio) {
+    fn open_log_pair(path: &Path) -> (Stdio, Stdio) {
         match OpenOptions::new()
             .create(true)
             .write(true)
@@ -134,7 +163,7 @@ impl StreamingManager {
         }
     }
 
-    fn read_log_tail(path: &str) -> String {
+    fn read_log_tail(path: &Path) -> String {
         fs::read_to_string(path)
             .ok()
             .and_then(|s| {
@@ -151,13 +180,13 @@ impl StreamingManager {
     /// Ensure the persistent _bridge daemon is running and owns /dev/video0 + preview SHM
     pub async fn ensure_bridge_ready() -> Result<u32, String> {
         let v4l2_dev = DeviceManager::find_v4l2_loopback()
-            .ok_or_else(|| "Виртуальное устройство PhoneWebcam (/dev/video0) не найдено.".to_string())?;
+            .ok_or_else(|| tr("Virtual device PhoneWebcam (/dev/video0) not found.", "Виртуальное устройство PhoneWebcam (/dev/video0) не найдено.").to_string())?;
         Self::ensure_bridge_running(&v4l2_dev).await
     }
 
     async fn ensure_bridge_running(v4l2_dev: &str) -> Result<u32, String> {
         if let Some(bpid) = Self::find_running_bridge_pid() {
-            if Path::new(INGEST_SOCK_PATH).exists() && Path::new(PREVIEW_SHM_SOCKET).exists() {
+            if ingest_sock_path().exists() && preview_shm_socket().exists() {
                 return Ok(bpid);
             }
         }
@@ -170,7 +199,7 @@ impl StreamingManager {
 
         for _ in 0..30 {
             if let Some(bpid) = Self::find_running_bridge_pid() {
-                if Path::new(INGEST_SOCK_PATH).exists() && Path::new(PREVIEW_SHM_SOCKET).exists() {
+                if ingest_sock_path().exists() && preview_shm_socket().exists() {
                     return Ok(bpid);
                 }
             }
@@ -178,12 +207,12 @@ impl StreamingManager {
         }
 
         Self::kill_by_pattern("inerium-camera _bridge").await;
-        let _ = fs::remove_file(INGEST_SOCK_PATH);
-        let _ = fs::remove_file(PREVIEW_SHM_SOCKET);
+        let _ = fs::remove_file(ingest_sock_path());
+        let _ = fs::remove_file(preview_shm_socket());
 
         let exe = std::env::current_exe()
-            .map_err(|e| format!("Не удалось определить путь бинарника: {}", e))?;
-        let (out_stdio, err_stdio) = Self::open_log_pair(BRIDGE_LOG_FILE);
+            .map_err(|e| format!("{}: {}", tr("Failed to get binary path", "Не удалось определить путь бинарника"), e))?;
+        let (out_stdio, err_stdio) = Self::open_log_pair(&bridge_log_file());
 
         let mut cmd = tokio::process::Command::new(exe);
         cmd.args(["_bridge", "--v4l2", v4l2_dev])
@@ -194,7 +223,7 @@ impl StreamingManager {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("Не удалось запустить процесс-мост _bridge: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to spawn _bridge process", "Не удалось запустить процесс-мост _bridge"), e))?;
         let bpid = child.id().unwrap_or(0);
         tokio::spawn(async move {
             let _ = child.wait().await;
@@ -203,20 +232,20 @@ impl StreamingManager {
         for _ in 0..80 {
             sleep(Duration::from_millis(50)).await;
             if !Self::is_pid_alive(bpid) {
-                let err = Self::read_log_tail(BRIDGE_LOG_FILE);
+                let err = Self::read_log_tail(&bridge_log_file());
                 return Err(if err.is_empty() {
-                    "Процесс-мост _bridge завершился сразу после запуска.".to_string()
+                    tr("Bridge process _bridge exited immediately after start.", "Процесс-мост _bridge завершился сразу после запуска.").to_string()
                 } else {
-                    format!("Ошибка _bridge: {}", err)
+                    format!("{}: {}", tr("Bridge error", "Ошибка _bridge"), err)
                 });
             }
-            if Path::new(INGEST_SOCK_PATH).exists() && Path::new(PREVIEW_SHM_SOCKET).exists() {
+            if ingest_sock_path().exists() && preview_shm_socket().exists() {
                 return Ok(bpid);
             }
         }
 
         Self::kill_pid_gracefully(bpid).await;
-        Err("Превышено время ожидания инициализации _bridge.".to_string())
+        Err(tr("Timeout waiting for _bridge initialization.", "Превышено время ожидания инициализации _bridge.").to_string())
     }
 
     /// Build GStreamer producer tail writing exact 1:1 PAR 1920x1080@30fps I420 frames into stdout (fd=1)
@@ -245,10 +274,10 @@ impl StreamingManager {
     }
 
     async fn spawn_gst_producer(args: Vec<String>) -> Result<u32, String> {
-        let stream = UnixStream::connect(INGEST_SOCK_PATH)
-            .map_err(|e| format!("Не удалось подключиться к сокету моста: {}", e))?;
+        let stream = UnixStream::connect(ingest_sock_path())
+            .map_err(|e| format!("{}: {}", tr("Failed to connect to bridge socket", "Не удалось подключиться к сокету моста"), e))?;
         let stdout_fd: Stdio = OwnedFd::from(stream).into();
-        let stderr_stdio = File::create(GST_LOG_FILE)
+        let stderr_stdio = File::create(gst_log_file())
             .map(Stdio::from)
             .unwrap_or_else(|_| Stdio::null());
 
@@ -262,7 +291,7 @@ impl StreamingManager {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("Не удалось запустить gst-launch-1.0: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to launch gst-launch-1.0", "Не удалось запустить gst-launch-1.0"), e))?;
         let pid = child.id().unwrap_or(0);
         tokio::spawn(async move {
             let _ = child.wait().await;
@@ -288,9 +317,6 @@ impl StreamingManager {
             Self::kill_pid_gracefully(pid).await;
         }
 
-        Self::kill_by_pattern("fdsink fd=1").await;
-        Self::kill_by_pattern("scrcpy.*--video-source=camera").await;
-        Self::kill_by_pattern("scrcpy.*--no-video.*--audio-source=mic").await;
         Self::cleanup_producer_files();
     }
 
@@ -298,22 +324,24 @@ impl StreamingManager {
         for _ in 0..10 {
             sleep(Duration::from_millis(80)).await;
             if !Self::is_pid_alive(gst_pid) {
-                let full_log = fs::read_to_string(GST_LOG_FILE).unwrap_or_default();
+                let full_log = fs::read_to_string(gst_log_file()).unwrap_or_default();
                 let lower = full_log.to_lowercase();
                 if lower.contains("busy")
                     || lower.contains("занято")
                     || lower.contains("resource")
                 {
                     return Err(
-                        "Встроенная камера уже занята браузером/Discord. Переключите камеру в Discord на PhoneWebcam и повторите."
-                            .to_string(),
+                        tr(
+                            "Built-in camera is already in use by browser or Discord. Switch camera in Discord to PhoneWebcam and try again.",
+                            "Встроенная камера уже занята браузером/Discord. Переключите камеру в Discord на PhoneWebcam и повторите."
+                        ).to_string(),
                     );
                 }
-                let err = Self::read_log_tail(GST_LOG_FILE);
+                let err = Self::read_log_tail(&gst_log_file());
                 return Err(if err.is_empty() {
-                    "Встроенная камера завершила поток с ошибкой.".to_string()
+                    tr("Built-in camera stream exited with an error.", "Встроенная камера завершила поток с ошибкой.").to_string()
                 } else {
-                    format!("Ошибка встроенной камеры: {}", err)
+                    format!("{}: {}", tr("Built-in camera error", "Ошибка встроенной камеры"), err)
                 });
             }
         }
@@ -336,20 +364,20 @@ impl StreamingManager {
         let min_bytes = (crate::bridge::FRAME_BYTES as u64) * 3;
         for _ in 0..120 {
             sleep(Duration::from_millis(100)).await;
-            let log = fs::read_to_string(SCRCPY_LOG_FILE).unwrap_or_default();
+            let log = fs::read_to_string(scrcpy_log_file()).unwrap_or_default();
             let camera_failed = log.contains("Camera capture failed") || log.contains("Camera disconnected");
             if camera_failed || !Self::is_pid_alive(gst_pid) || !Self::is_pid_alive(scrcpy_pid) {
-                let scrcpy_err = Self::read_log_tail(SCRCPY_LOG_FILE);
-                let gst_err = Self::read_log_tail(GST_LOG_FILE);
+                let scrcpy_err = Self::read_log_tail(&scrcpy_log_file());
+                let gst_err = Self::read_log_tail(&gst_log_file());
                 let detail = [scrcpy_err, gst_err]
                     .into_iter()
                     .filter(|s| !s.is_empty())
                     .collect::<Vec<_>>()
                     .join(" ; ");
                 return Err(if detail.is_empty() {
-                    "Процесс scrcpy/GStreamer завершился с ошибкой при запуске.".to_string()
+                    tr("scrcpy/GStreamer process exited with error during start.", "Процесс scrcpy/GStreamer завершился с ошибкой при запуске.").to_string()
                 } else {
-                    format!("Ошибка трансляции: {}", detail)
+                    format!("{}: {}", tr("Streaming error", "Ошибка трансляции"), detail)
                 });
             }
 
@@ -357,7 +385,7 @@ impl StreamingManager {
                 return Ok(());
             }
         }
-        Err("Камера телефона не начала передавать видео за 12 секунд.".to_string())
+        Err(tr("Phone camera did not start sending video frames within 12 seconds.", "Камера телефона не начала передавать видео за 12 секунд.").to_string())
     }
 
     /// Spawn scrcpy -> FIFO -> GStreamer ingest producers and wait until real frames reach the bridge
@@ -368,14 +396,17 @@ impl StreamingManager {
         torch: bool,
         audio: bool,
     ) -> Result<(u32, Vec<u32>), String> {
+        let fifo_path = stream_fifo_path();
+        let fifo_str = fifo_path.to_string_lossy().to_string();
         let mkfifo_out = tokio::process::Command::new("mkfifo")
-            .args(["-m", "600", STREAM_FIFO_PATH])
+            .args(["-m", "600", &fifo_str])
             .output()
             .await
-            .map_err(|e| format!("Не удалось вызвать mkfifo: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to invoke mkfifo", "Не удалось вызвать mkfifo"), e))?;
         if !mkfifo_out.status.success() {
             let err = format!(
-                "Не удалось создать FIFO канал: {}",
+                "{}: {}",
+                tr("Failed to create FIFO channel", "Не удалось создать FIFO канал"),
                 String::from_utf8_lossy(&mkfifo_out.stderr).trim()
             );
             return Err(err);
@@ -383,7 +414,7 @@ impl StreamingManager {
 
         let mut gst_args = vec![
             "filesrc".to_string(),
-            format!("location={}", STREAM_FIFO_PATH),
+            format!("location={}", fifo_str),
             "!".to_string(),
             "decodebin".to_string(),
         ];
@@ -407,7 +438,7 @@ impl StreamingManager {
             ))
             .arg("--no-window")
             .arg("--no-audio")
-            .arg(format!("--record={}", STREAM_FIFO_PATH))
+            .arg(format!("--record={}", fifo_str))
             .arg("--record-format=mkv");
 
         match source {
@@ -423,7 +454,7 @@ impl StreamingManager {
             CameraSource::Builtin => unreachable!(),
         }
 
-        let (scrcpy_out, scrcpy_err) = Self::open_log_pair(SCRCPY_LOG_FILE);
+        let (scrcpy_out, scrcpy_err) = Self::open_log_pair(&scrcpy_log_file());
         scrcpy_cmd
             .stdin(Stdio::null())
             .stdout(scrcpy_out)
@@ -434,7 +465,7 @@ impl StreamingManager {
             Ok(c) => c,
             Err(e) => {
                 Self::kill_pid_gracefully(gst_pid).await;
-                return Err(format!("Не удалось запустить scrcpy: {}", e));
+                return Err(format!("{}: {}", tr("Failed to start scrcpy", "Не удалось запустить scrcpy"), e));
             }
         };
         let scrcpy_pid = scrcpy_child.id().unwrap_or(0);
@@ -494,8 +525,9 @@ impl StreamingManager {
         Self::clear_session();
         Self::stop_producers_only(&session).await;
 
-        // Force terminate any lingering scrcpy or gst-launch processes
-        Self::kill_by_pattern("scrcpy").await;
+        // Force terminate any lingering camera-specific scrcpy or gst-launch processes
+        Self::kill_by_pattern("scrcpy.*--video-source=camera").await;
+        Self::kill_by_pattern("scrcpy.*--no-video.*--audio-source=mic").await;
         Self::kill_by_pattern("gst-launch-1.0.*fdsink").await;
 
         // Disconnect all ADB devices to clear hung/stale TCP transports
@@ -561,8 +593,8 @@ impl StreamingManager {
         let bridge_pid = Self::ensure_bridge_running(&v4l2_dev).await?;
         Self::stop_producers_only(&current_session).await;
 
-        let _ = fs::write(GST_LOG_FILE, "");
-        let _ = fs::write(SCRCPY_LOG_FILE, "");
+        let _ = fs::write(gst_log_file(), "");
+        let _ = fs::write(scrcpy_log_file(), "");
 
         if let Some(dev_path) = builtin_dev_path {
             let mut args = vec!["v4l2src".to_string(), format!("device={}", dev_path)];
@@ -594,7 +626,7 @@ impl StreamingManager {
                 orientation,
                 torch: false,
                 audio: false,
-                conn_type: Some(format!("Встроенная камера ({} -> {})", dev_path, v4l2_dev)),
+                conn_type: Some(format!("{} ({} -> {})", tr("Built-in camera", "Встроенная камера"), dev_path, v4l2_dev)),
                 v4l2_device: Some(v4l2_dev),
                 bridge_pid: Some(bridge_pid),
                 pid: Some(gst_pid),

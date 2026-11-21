@@ -1,10 +1,10 @@
-use crate::scrcpy::PREVIEW_SHM_SOCKET;
+use crate::scrcpy::preview_shm_socket;
 use gdk4::prelude::*;
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
 use gtk4::Picture;
-use std::path::Path;
+use inerium_i18n::tr;
 
 pub struct LivePreviewPipeline {
     pipeline: Option<gst::Pipeline>,
@@ -32,8 +32,9 @@ impl LivePreviewPipeline {
     pub fn start(&mut self, picture: Picture) -> Result<(), String> {
         self.stop();
 
-        if !Path::new(PREVIEW_SHM_SOCKET).exists() {
-            return Err("Видеопоток превью еще не инициализирован".to_string());
+        let sock = preview_shm_socket();
+        if !sock.exists() {
+            return Err(tr("Preview video stream is not initialized yet", "Видеопоток превью еще не инициализирован").to_string());
         }
 
         let pipe_str = format!(
@@ -41,7 +42,7 @@ impl LivePreviewPipeline {
              video/x-raw,format=I420,width=1920,height=1080,framerate=30/1 ! \
              videoconvert ! video/x-raw,format=RGBA ! \
              appsink name=preview_sink drop=true max-buffers=1 sync=false",
-            PREVIEW_SHM_SOCKET
+            sock.display()
         );
 
         let element = gst::parse::launch(&pipe_str)

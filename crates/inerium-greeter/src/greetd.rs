@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+use inerium_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -164,30 +165,30 @@ pub fn authenticate(
                 Response::Error { description, .. } => {
                     let _ = client.request(&Request::CancelSession);
                     Err(if description.is_empty() {
-                        "Не удалось запустить сессию".to_string()
+                        tr("Failed to start session", "Не удалось запустить сессию").to_string()
                     } else {
                         description
                     })
                 }
                 _ => {
                     let _ = client.request(&Request::CancelSession);
-                    Err("Неожиданный ответ greetd при запуске сессии".to_string())
+                    Err(tr("Unexpected greetd response on session start", "Неожиданный ответ greetd при запуске сессии").to_string())
                 }
             }
         }
         Response::Error { error_type, description } => {
             let _ = client.request(&Request::CancelSession);
             if error_type == "auth_error" {
-                Err("Неверный пароль".to_string())
+                Err(tr("Incorrect password", "Неверный пароль").to_string())
             } else if !description.is_empty() {
                 Err(description)
             } else {
-                Err("Ошибка входа".to_string())
+                Err(tr("Login failed", "Ошибка входа").to_string())
             }
         }
         _ => {
             let _ = client.request(&Request::CancelSession);
-            Err("Неожиданный ответ greetd".to_string())
+            Err(tr("Unexpected greetd response", "Неожиданный ответ greetd").to_string())
         }
     }
 }
@@ -211,7 +212,7 @@ mod tests {
         let cmd = vec!["start-hyprland".to_string()];
         let env = vec!["XDG_SESSION_TYPE=wayland".to_string()];
         let res = authenticate(&mut client, "testuser", "wrong", &cmd, &env);
-        assert_eq!(res.unwrap_err(), "Неверный пароль");
+        assert_eq!(res.unwrap_err(), tr("Incorrect password", "Неверный пароль"));
     }
 
     #[test]

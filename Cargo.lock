@@ -1036,6 +1036,7 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "gtk4",
+ "inerium-i18n",
  "nix",
  "serde",
  "serde_json",
@@ -1049,6 +1050,7 @@ dependencies = [
  "gdk4",
  "glib",
  "gtk4",
+ "inerium-i18n",
  "serde",
  "serde_json",
 ]
@@ -1076,6 +1078,7 @@ dependencies = [
  "futures-lite",
  "gettext-rs",
  "gtk4",
+ "inerium-i18n",
  "relm4",
  "serde",
  "tokio",

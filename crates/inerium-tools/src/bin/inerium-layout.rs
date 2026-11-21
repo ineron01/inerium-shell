@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::process::Command;
 
+use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
 use inerium_tools::ipc::hyprland::get_socket2;
 
@@ -49,8 +50,17 @@ fn switch_keyboards() {
 
 fn format_output(layout: &str, waybar: bool) -> String {
     if waybar {
-        let long_name = if layout == "RU" { "Русская (RU)" } else { "English (EN)" };
-        let tooltip = format!("Раскладка: {}\nЛКМ: Переключить (RU/EN)", long_name);
+        let long_name = if layout == "RU" {
+            tr("Russian (RU)", "Русская (RU)")
+        } else {
+            tr("English (EN)", "English (EN)")
+        };
+        let tooltip = format!(
+            "{}: {}\n{}",
+            tr("Keyboard layout", "Раскладка"),
+            long_name,
+            tr("LMB: Switch (RU/EN)", "ЛКМ: Переключить (RU/EN)")
+        );
         format!(
             "{{\"text\":\"{}\",\"tooltip\":\"{}\",\"class\":\"{}\"}}",
             escape_json(layout),

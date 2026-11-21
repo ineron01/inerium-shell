@@ -1,6 +1,7 @@
 use crate::device::DeviceManager;
 use crate::scrcpy::StreamingManager;
 use crate::types::{CameraSource, Orientation};
+use inerium_i18n::tr;
 
 #[derive(Debug)]
 pub enum Commands {
@@ -122,7 +123,33 @@ pub fn parse_cli_args() -> Commands {
 }
 
 fn print_help() {
-    println!(r#"inerium-camera — Minimalist, zero-freeze camera streamer and manager
+    println!("{}", tr(
+r#"inerium-camera — Minimalist, zero-freeze camera streamer and manager
+
+USAGE:
+  inerium-camera [COMMAND | FLAGS]
+
+COMMANDS:
+  gui            Launch GTK4 graphical interface (default)
+  start          Start video streaming pipeline
+  stop           Stop stream and release devices
+  reset          Emergency reset of all processes, ADB, and bridge
+  toggle         Fast toggle (start / stop)
+  status         Show stream and device status
+  preview        Open floating PIP preview window
+  wifi-scan      Scan phone via Wi-Fi (LAN / hotspot 10.42.0.x) and connect ADB
+
+START FLAGS:
+  -s, --source <builtin|back|front>   Camera source selection
+  -b, --back                          Quick-select main rear camera
+  -f, --front                         Quick-select front selfie camera
+  -l, --builtin                       Quick-select built-in laptop camera
+  -o, --orientation <16:9|9:16>       Aspect ratio (landscape / portrait)
+  -t, --torch                         Turn on flash / torch (main camera)
+  -m, --audio                         Stream microphone audio
+  --ip <IP>                           Manual IP address for Wi-Fi connection
+"#,
+r#"inerium-camera — Minimalist, zero-freeze camera streamer and manager
 
 ИСПОЛЬЗОВАНИЕ:
   inerium-camera [КОМАНДА | ФЛАГИ]
@@ -146,7 +173,7 @@ fn print_help() {
   -t, --torch                         Включить подсветку / вспышку (основная камера)
   -m, --audio                         Передавать звук микрофона
   --ip <IP>                           Ручной IP-адрес для подключения по Wi-Fi
-"#);
+"#));
 }
 
 pub async fn handle_cli(cmd: Commands) {
@@ -172,47 +199,47 @@ pub async fn handle_cli(cmd: Commands) {
                 _ => Orientation::Landscape,
             };
 
-            println!("Запуск трансляции камеры ({})...", src.label());
+            println!("{} ({})...", tr("Starting camera stream", "Запуск трансляции камеры"), src.label());
             match StreamingManager::start_stream(src, orient, torch, audio, ip.as_deref()).await {
                 Ok(info) => {
-                    println!("Трансляция успешно запущена:");
-                    println!("  Источник: {}", info.source.label());
-                    println!("  Ориентация: {}", info.orientation.label());
-                    println!("  Устройство: {}", info.conn_type.as_deref().unwrap_or(""));
+                    println!("{}", tr("Stream started successfully:", "Трансляция успешно запущена:"));
+                    println!("  {}: {}", tr("Source", "Источник"), info.source.label());
+                    println!("  {}: {}", tr("Orientation", "Ориентация"), info.orientation.label());
+                    println!("  {}: {}", tr("Device", "Устройство"), info.conn_type.as_deref().unwrap_or(""));
                     if let Some(dev) = info.v4l2_device {
-                        println!("  V4L2 узел: {}", dev);
+                        println!("  {}: {}", tr("V4L2 node", "V4L2 узел"), dev);
                     }
                 }
                 Err(e) => {
-                    eprintln!("Ошибка запуска: {}", e);
+                    eprintln!("{}: {}", tr("Failed to start", "Ошибка запуска"), e);
                     std::process::exit(1);
                 }
             }
         }
         Commands::Stop => {
-            println!("Остановка трансляции...");
+            println!("{}", tr("Stopping stream...", "Остановка трансляции..."));
             if let Err(e) = StreamingManager::stop_stream().await {
-                eprintln!("Ошибка: {}", e);
+                eprintln!("{}: {}", tr("Error", "Ошибка"), e);
                 std::process::exit(1);
             }
-            println!("Трансляция остановлена, ресурсы освобождены.");
+            println!("{}", tr("Stream stopped, resources released.", "Трансляция остановлена, ресурсы освобождены."));
         }
         Commands::Reset => {
-            println!("Выполняется аварийный сброс камеры и процессов...");
+            println!("{}", tr("Emergency reset in progress...", "Выполняется аварийный сброс камеры и процессов..."));
             if let Err(e) = StreamingManager::force_reset().await {
-                eprintln!("Ошибка сброса: {}", e);
+                eprintln!("{}: {}", tr("Reset error", "Ошибка сброса"), e);
                 std::process::exit(1);
             }
-            println!("Все процессы завершены, ADB отключен, видеомост сброшен в исходное состояние.");
+            println!("{}", tr("All processes terminated, ADB disconnected, bridge reset to clean state.", "Все процессы завершены, ADB отключен, видеомост сброшен в исходное состояние."));
         }
         Commands::Toggle => {
             let session = StreamingManager::get_current_session();
             if session.is_streaming {
-                println!("Остановка активной трансляции...");
+                println!("{}", tr("Stopping active stream...", "Остановка активной трансляции..."));
                 let _ = StreamingManager::stop_stream().await;
-                println!("Камера выключена.");
+                println!("{}", tr("Camera turned off.", "Камера выключена."));
             } else {
-                println!("Запуск трансляции...");
+                println!("{}", tr("Starting stream...", "Запуск трансляции..."));
                 match StreamingManager::start_stream(
                     CameraSource::ExternalBack,
                     Orientation::Landscape,
@@ -222,9 +249,9 @@ pub async fn handle_cli(cmd: Commands) {
                 )
                 .await
                 {
-                    Ok(info) => println!("Трансляция активна ({})", info.source.label()),
+                    Ok(info) => println!("{} ({})", tr("Stream is active", "Трансляция активна"), info.source.label()),
                     Err(e) => {
-                        eprintln!("Ошибка: {}", e);
+                        eprintln!("{}: {}", tr("Error", "Ошибка"), e);
                         std::process::exit(1);
                     }
                 }
@@ -233,27 +260,27 @@ pub async fn handle_cli(cmd: Commands) {
         Commands::Status => {
             let session = StreamingManager::get_current_session();
             if session.is_streaming {
-                println!("Статус: АКТИВНА");
-                println!("Источник: {}", session.source.label());
-                println!("Ориентация: {}", session.orientation.label());
-                println!("Подключение: {}", session.conn_type.as_deref().unwrap_or("N/A"));
+                println!("{}: {}", tr("Status", "Статус"), tr("ACTIVE", "АКТИВНА"));
+                println!("{}: {}", tr("Source", "Источник"), session.source.label());
+                println!("{}: {}", tr("Orientation", "Ориентация"), session.orientation.label());
+                println!("{}: {}", tr("Connection", "Подключение"), session.conn_type.as_deref().unwrap_or("N/A"));
                 println!("V4L2: {}", session.v4l2_device.as_deref().unwrap_or("N/A"));
                 if let Some(pid) = session.pid {
                     println!("PID: {}", pid);
                 }
             } else {
-                println!("Статус: НЕ АКТИВНА");
+                println!("{}: {}", tr("Status", "Статус"), tr("INACTIVE", "НЕ АКТИВНА"));
                 let builtin = DeviceManager::detect_builtin_webcam();
-                println!("Встроенная камера: {:?}", builtin);
+                println!("{}: {:?}", tr("Built-in camera", "Встроенная камера"), builtin);
             }
         }
         Commands::Preview => {
-            println!("Запуск окна превью...");
+            println!("{}", tr("Opening preview window...", "Запуск окна превью..."));
             let _ = std::process::Command::new("gst-launch-1.0")
                 .args([
                     "-q",
                     "shmsrc",
-                    &format!("socket-path={}", crate::scrcpy::PREVIEW_SHM_SOCKET),
+                    &format!("socket-path={}", crate::scrcpy::preview_shm_socket().display()),
                     "is-live=true",
                     "do-timestamp=true",
                     "!",
@@ -272,11 +299,11 @@ pub async fn handle_cli(cmd: Commands) {
             }
         }
         Commands::WifiScan => {
-            println!("Поиск телефона по Wi-Fi (локальная сеть и точка доступа)...");
+            println!("{}", tr("Scanning phone via Wi-Fi (LAN and hotspot)...", "Поиск телефона по Wi-Fi (локальная сеть и точка доступа)..."));
             if let Some(target) = DeviceManager::discover_wifi_device().await {
-                println!("Подключено устройство: {}", target);
+                println!("{}: {}", tr("Connected device", "Подключено устройство"), target);
             } else {
-                println!("Телефон с ADB TCP/IP (порт 5555) в сетях Wi-Fi не найден.");
+                println!("{}", tr("No phone with ADB TCP/IP (port 5555) found on Wi-Fi networks.", "Телефон с ADB TCP/IP (порт 5555) в сетях Wi-Fi не найден."));
             }
         }
     }

@@ -5,7 +5,8 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStartPre=/usr/bin/rm -f /tmp/inerium-cam-ingest.sock /tmp/inerium-cam-preview.sock
+ExecStartPre=/usr/bin/mkdir -p %t/inerium
+ExecStartPre=/usr/bin/rm -f %t/inerium/cam-ingest.sock %t/inerium/cam-preview.sock
 ExecStart=%h/.local/bin/inerium-camera _bridge
 Restart=always
 RestartSec=1

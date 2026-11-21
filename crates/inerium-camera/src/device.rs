@@ -3,6 +3,7 @@ use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
+use inerium_i18n::tr;
 use tokio::net::TcpStream;
 use tokio::task::JoinSet;
 use tokio::time::{sleep, timeout};
@@ -130,9 +131,9 @@ impl DeviceManager {
             let target = if ip.contains(':') { ip.to_string() } else { format!("{}:{}", ip, ADB_TCP_PORT) };
             if Self::adb_connect_verified(&target).await {
                 Self::remember_wifi_target(&target);
-                return Ok((target, format!("Wi-Fi (Ручной адрес: {})", ip)));
+                return Ok((target, format!("Wi-Fi ({}: {})", tr("Manual IP", "Ручной адрес"), ip)));
             }
-            return Err(format!("Не удалось подключиться к {} по ADB.", target));
+            return Err(format!("{}: {}", tr("Failed to connect to device via ADB", "Не удалось подключиться к устройству по ADB"), target));
         }
 
         // 1. Check direct USB connection first (fastest and lowest latency)
@@ -140,7 +141,7 @@ impl DeviceManager {
             .args(["devices", "-l"])
             .output()
             .await
-            .map_err(|e| format!("Ошибка запуска adb: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to launch adb", "Ошибка запуска adb"), e))?;
 
         let adb_str = String::from_utf8_lossy(&adb_l.stdout);
         for line in adb_str.lines() {
@@ -154,9 +155,9 @@ impl DeviceManager {
                 if line.contains("usb:") || !serial.contains(':') {
                     let desc = if let Some(model_part) = parts.iter().find(|p| p.starts_with("model:")) {
                         let model = model_part.trim_start_matches("model:");
-                        format!("USB кабель (Модель: {})", model)
+                        format!("USB ({}: {})", tr("Model", "Модель"), model)
                     } else {
-                        "USB кабель (минимальная задержка)".to_string()
+                        tr("USB Cable (low latency)", "USB кабель (минимальная задержка)").to_string()
                     };
                     return Ok((serial.to_string(), desc));
                 }
@@ -181,14 +182,17 @@ impl DeviceManager {
             return Ok((target.clone(), Self::wifi_description(&target)));
         }
 
-        Err("Устройство не обнаружено.\nПодключите кабель USB, либо подключите телефон к той же Wi-Fi сети или к точке доступа ноутбука (на телефоне должна быть включена отладка по ADB TCP/IP 5555).".to_string())
+        Err(tr(
+            "Device not found.\nConnect via USB cable, or connect the phone to the same Wi-Fi / laptop hotspot (ADB TCP/IP port 5555 must be enabled on phone).",
+            "Устройство не обнаружено.\nПодключите кабель USB, либо подключите телефон к той же Wi-Fi сети или к точке доступа ноутбука (на телефоне должна быть включена отладка по ADB TCP/IP 5555)."
+        ).to_string())
     }
 
     fn wifi_description(target: &str) -> String {
         if target.starts_with("10.42.0.") {
-            format!("Wi-Fi (Точка доступа {})", target)
+            format!("Wi-Fi ({} {})", tr("Hotspot", "Точка доступа"), target)
         } else {
-            format!("Wi-Fi (Локальная сеть {})", target)
+            format!("Wi-Fi ({} {})", tr("Local network", "Локальная сеть"), target)
         }
     }
 

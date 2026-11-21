@@ -89,7 +89,7 @@ fn compute_time_str(
         let hrs = total_now as f64 / rate;
         let h = hrs as i64;
         let m = ((hrs - h as f64) * 60.0) as i64;
-        format!("{}ч {:02}м", h, m)
+        format!("{}{} {:02}{}", h, tr("h", "ч"), m, tr("m", "м"))
     } else if status == "Charging" {
         let target = if threshold < 100 {
             ((total_full as f64) * (threshold as f64 / 100.0)).round() as i64
@@ -101,7 +101,7 @@ fn compute_time_str(
             let hrs = rem as f64 / rate;
             let h = hrs as i64;
             let m = ((hrs - h as f64) * 60.0) as i64;
-            format!("{}ч {:02}м до {}%", h, m, threshold)
+            format!("{}{} {:02}{} {} {}%", h, tr("h", "ч"), m, tr("m", "м"), tr("until", "до"), threshold)
         } else {
             String::new()
         }
@@ -351,7 +351,7 @@ fn get_battery_info() -> BatteryInfo {
 
 fn format_battery(info: &BatteryInfo) -> String {
     if !info.present {
-        return format!("{} Сеть", info.icon);
+        return format!("{} {}", info.icon, tr("AC Power", "Сеть"));
     }
     if is_alt_mode() && !info.time_str.is_empty() {
         format!("{} {}% · {}", info.icon, info.capacity, info.time_str)

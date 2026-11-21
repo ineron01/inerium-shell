@@ -12,6 +12,7 @@ use std::rc::Rc;
 use gdk4::prelude::*;
 use gtk4::prelude::*;
 use gtk4::{glib, pango};
+use inerium_i18n::tr;
 
 use config::{load_config, load_state, save_state, Config, State, DEFAULT_CONFIG_PATH, DEFAULT_STATE_PATH, DEMO_STATE_PATH};
 use selector::SessionSelector;
@@ -430,7 +431,7 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         let user_lbl = gtk4::Label::new(Some(&user));
         user_lbl.add_css_class("user");
         user_lbl.set_xalign(0.0);
-        let sub_lbl = gtk4::Label::new(Some("Авторизация"));
+        let sub_lbl = gtk4::Label::new(Some(tr("Authorization", "Авторизация")));
         sub_lbl.add_css_class("user-sub");
         sub_lbl.set_xalign(0.0);
         names_box.append(&user_lbl);
@@ -444,12 +445,12 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         pw.add_css_class("password-input");
         pw.set_show_peek_icon(true);
         pw.set_hexpand(true);
-        pw.set_placeholder_text(Some("Пароль"));
+        pw.set_placeholder_text(Some(tr("Password", "Пароль")));
         row.append(&pw);
 
         let go = gtk4::Button::with_label("󰁔");
         go.add_css_class("go");
-        go.set_tooltip_text(Some("Войти (Enter)"));
+        go.set_tooltip_text(Some(tr("Sign in (Enter)", "Войти (Enter)")));
         row.append(&go);
         card.append(&row);
 
@@ -494,7 +495,7 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         state.borrow_mut().gos.push(go);
 
         // Сессия
-        let sess_lbl = gtk4::Label::new(Some("СЕССИЯ"));
+        let sess_lbl = gtk4::Label::new(Some(tr("SESSION", "СЕССИЯ")));
         sess_lbl.add_css_class("label");
         sess_lbl.set_xalign(0.0);
         card.append(&sess_lbl);
@@ -536,13 +537,13 @@ fn build_ui(app: &gtk4::Application, demo: bool) {
         bottom.set_valign(gtk4::Align::End);
         bottom.set_margin_bottom(28);
 
-        let btn_reboot = gtk4::Button::with_label("󰜉  Перезагрузка");
+        let btn_reboot = gtk4::Button::with_label(&format!("󰜉  {}", tr("Restart", "Перезагрузка")));
         btn_reboot.add_css_class("end");
         btn_reboot.connect_clicked(move |_| {
             system_action(&["systemctl", "reboot"], demo);
         });
 
-        let btn_poweroff = gtk4::Button::with_label("󰐥  Выключение");
+        let btn_poweroff = gtk4::Button::with_label(&format!("󰐥  {}", tr("Shut Down", "Выключение")));
         btn_poweroff.add_css_class("end");
         btn_poweroff.connect_clicked(move |_| {
             system_action(&["systemctl", "poweroff"], demo);
@@ -618,12 +619,12 @@ fn trigger_login(state: Rc<RefCell<GreeterState>>) {
 
     let password = state.borrow().get_password();
     if password.is_empty() {
-        state.borrow().set_status("Введите пароль", StatusKind::Warn);
+        state.borrow().set_status(tr("Enter password", "Введите пароль"), StatusKind::Warn);
         return;
     }
 
     if state.borrow().sessions.is_empty() {
-        state.borrow().set_status("Нет сессий в /usr/share/wayland-sessions", StatusKind::Error);
+        state.borrow().set_status(tr("No sessions in /usr/share/wayland-sessions", "Нет сессий в /usr/share/wayland-sessions"), StatusKind::Error);
         return;
     }
 
@@ -632,7 +633,7 @@ fn trigger_login(state: Rc<RefCell<GreeterState>>) {
         .unwrap_or_else(|| state.borrow().sessions[0].clone());
 
     state.borrow_mut().set_busy(true);
-    state.borrow().set_status("Вход…", StatusKind::Normal);
+    state.borrow().set_status(tr("Signing in…", "Вход…"), StatusKind::Normal);
 
     let demo = state.borrow().demo;
     let username = state.borrow().user.clone();
