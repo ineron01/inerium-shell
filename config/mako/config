@@ -36,13 +36,7 @@ format=<span color="#c4746e"><b>%s</b></span>\n%b
 default-timeout=0
 
 [app-name="Telegram Desktop"]
-on-notify=exec inerium-ctl notify-sound
-
-[app-name="discord"]
-on-notify=exec inerium-ctl notify-sound
-
-[app-name="vesktop"]
-on-notify=exec inerium-ctl notify-sound
+on-notify=exec inerium-ctl notify-sound --sound /home/ineron/Repos/inerium-shell/assets/sounds/telegram.ogg
 
 [urgency=critical]
 on-notify=exec inerium-ctl notify-sound --sound /usr/share/sounds/freedesktop/stereo/dialog-warning.oga --cooldown-ms 500

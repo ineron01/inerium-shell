@@ -3,29 +3,35 @@
 # scripts/install/40-binaries.sh — Prebuilt binary delivery & Cargo build
 # ============================================================================
 
-# Core universal binaries installed for all configurations
-USER_BINS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-shell inerium-setup inerium-polkit inerium-wallpaper inerium-theme"
+# Core universal standalone binaries installed for all configurations
+USER_BINS_STR="inerium-ctl inerium-shell inerium-setup inerium-polkit"
+
+# Multicall utilities symlinked directly to inerium-ctl
+MULTICALL_TOOLS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-notify-sound inerium-osd-watcher inerium-popup inerium-updates inerium-wallpaper inerium-theme"
 
 install_from_binaries() {
-    local bin missing_libs dl_tmp
-    local -a user_bins
+    local base_url="${1:-$RELEASE_BASE_URL}"
+    local bin tool missing_libs dl_tmp
+    local -a user_bins multicall_tools
     read -ra user_bins <<< "$USER_BINS_STR"
+    read -ra multicall_tools <<< "$MULTICALL_TOOLS_STR"
 
     if [[ -z "${RELEASE_DIST_DIR:-}" || ! -d "$RELEASE_DIST_DIR" ]]; then
         RELEASE_DIST_DIR="$(mktemp -d /tmp/inerium-dist-XXXXXX)"
+        export RELEASE_DIST_DIR
     fi
 
     dl_tmp="$(mktemp -d)"
     trap 'rm -rf "$dl_tmp"' RETURN
 
-    log "Fetching release archive ${RELEASE_BASE_URL}/${BIN_ARCHIVE}..."
-    if ! download_file "${RELEASE_BASE_URL}/${BIN_ARCHIVE}" "${dl_tmp}/${BIN_ARCHIVE}" 300; then
-        warn "Failed to download ${RELEASE_BASE_URL}/${BIN_ARCHIVE}"
+    log "Fetching release archive ${base_url}/${BIN_ARCHIVE}..."
+    if ! download_file "${base_url}/${BIN_ARCHIVE}" "${dl_tmp}/${BIN_ARCHIVE}" 300; then
+        warn "Failed to download ${base_url}/${BIN_ARCHIVE}"
         return 1
     fi
-    log "Fetching checksum ${RELEASE_BASE_URL}/${BIN_SHA}..."
-    if ! download_file "${RELEASE_BASE_URL}/${BIN_SHA}" "${dl_tmp}/${BIN_SHA}" 60; then
-        warn "Failed to download ${RELEASE_BASE_URL}/${BIN_SHA}"
+    log "Fetching checksum ${base_url}/${BIN_SHA}..."
+    if ! download_file "${base_url}/${BIN_SHA}" "${dl_tmp}/${BIN_SHA}" 60; then
+        warn "Failed to download ${base_url}/${BIN_SHA}"
         return 1
     fi
     if ! (cd "$dl_tmp" && sha256sum -c "$BIN_SHA" >/dev/null 2>&1); then
@@ -60,6 +66,12 @@ install_from_binaries() {
         install -m 755 "${RELEASE_DIST_DIR}/${bin}" "$HOME/.local/bin/${bin}"
         manifest_record_binary "$HOME/.local/bin/${bin}"
     done
+
+    for tool in "${multicall_tools[@]}"; do
+        ln -sfn inerium-ctl "$HOME/.local/bin/${tool}"
+        manifest_record_symlink "$HOME/.local/bin/${tool}" "inerium-ctl"
+    done
+
     ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
     manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
 
@@ -67,8 +79,10 @@ install_from_binaries() {
 }
 
 build_from_source() {
-    local -a user_bins
+    local -a user_bins multicall_tools
     read -ra user_bins <<< "$USER_BINS_STR"
+    read -ra multicall_tools <<< "$MULTICALL_TOOLS_STR"
+
     if command -v rustup >/dev/null 2>&1 && ! rustc --version >/dev/null 2>&1; then
         run_live_step "Initializing default Rust toolchain..." rustup default stable
     fi
@@ -77,12 +91,18 @@ build_from_source() {
         cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release \
             -p inerium-tools -p inerium-shell -p inerium-setup -p inerium-polkit -p inerium-theme
 
-    log "Installing core binaries atomically..."
+    log "Installing core binaries and symlinks atomically..."
     mkdir -p "$HOME/.local/bin"
     for bin in "${user_bins[@]}"; do
         install -m 755 "$REPO_DIR/target/release/$bin" "$HOME/.local/bin/$bin"
         manifest_record_binary "$HOME/.local/bin/$bin"
     done
+
+    for tool in "${multicall_tools[@]}"; do
+        ln -sfn inerium-ctl "$HOME/.local/bin/${tool}"
+        manifest_record_symlink "$HOME/.local/bin/${tool}" "inerium-ctl"
+    done
+
     ln -sfn inerium-wallpaper "$HOME/.local/bin/set-wallpaper"
     manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
 }
@@ -125,33 +145,65 @@ check_installed_binaries_abi() {
 }
 
 deliver_binaries() {
+    local -a user_bins multicall_tools
+    read -ra user_bins <<< "$USER_BINS_STR"
+    read -ra multicall_tools <<< "$MULTICALL_TOOLS_STR"
+
     if [[ "$SKIP_BUILD" -eq 1 ]]; then
         log "Skipping binary delivery (--skip-build)."
-        local -a user_bins
-        read -ra user_bins <<< "$USER_BINS_STR"
         for bin in "${user_bins[@]}"; do
             [[ -x "$HOME/.local/bin/$bin" ]] && manifest_record_binary "$HOME/.local/bin/$bin"
         done
-        [[ -e "$HOME/.local/bin/set-wallpaper" ]] && manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
+        for tool in "${multicall_tools[@]}"; do
+            if [[ -e "$HOME/.local/bin/$tool" || -L "$HOME/.local/bin/$tool" ]]; then
+                manifest_record_symlink "$HOME/.local/bin/$tool" "inerium-ctl"
+            fi
+        done
+        [[ -e "$HOME/.local/bin/set-wallpaper" || -L "$HOME/.local/bin/set-wallpaper" ]] && manifest_record_symlink "$HOME/.local/bin/set-wallpaper" "inerium-wallpaper"
         [[ -e "/usr/local/bin/inerium-greeter" ]] && manifest_record_system_file "/usr/local/bin/inerium-greeter"
         return 0
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
         if [[ "$INSTALL_MODE" == "bin" ]]; then
-            printf '[DRY-RUN] Download %s/%s + %s, verify sha256, run ldd smoke-test, install core binaries to ~/.local/bin\n' \
-                "$RELEASE_BASE_URL" "$BIN_ARCHIVE" "$BIN_SHA"
+            local download_url="$RELEASE_BASE_URL"
+            [[ "${USE_ROLLING:-0}" -eq 1 ]] && download_url="$ROLLING_BASE_URL"
+            printf '[DRY-RUN] Download %s/%s + %s, verify sha256, run ldd smoke-test, install core binaries (inerium-ctl, inerium-shell, inerium-setup, inerium-polkit) to ~/.local/bin\n' \
+                "$download_url" "$BIN_ARCHIVE" "$BIN_SHA"
         else
             printf '[DRY-RUN] cargo build --manifest-path %s/Cargo.toml --release -p inerium-tools -p inerium-shell -p inerium-setup -p inerium-polkit -p inerium-theme\n' "$REPO_DIR"
             printf '[DRY-RUN] install core binaries -> ~/.local/bin/\n'
         fi
+        printf '[DRY-RUN] create symlinks for 16 tools (inerium-clock, etc.) -> inerium-ctl\n'
         printf '[DRY-RUN] ln -sfn inerium-wallpaper -> ~/.local/bin/set-wallpaper\n'
         return 0
     fi
 
     if [[ "$INSTALL_MODE" == "bin" ]]; then
-        if ! run_step "Downloading & verifying prebuilt binaries..." install_from_binaries; then
+        RELEASE_DIST_DIR="$(mktemp -d /tmp/inerium-dist-XXXXXX)"
+        export RELEASE_DIST_DIR
+        local bin_success=0
+
+        if [[ "${USE_ROLLING:-0}" -eq 1 ]]; then
+            log "Using rolling binary channel: $ROLLING_BASE_URL"
+            if run_step "Downloading & verifying rolling prebuilt binaries..." install_from_binaries "$ROLLING_BASE_URL"; then
+                bin_success=1
+            fi
+        else
+            if run_step "Downloading & verifying prebuilt binaries..." install_from_binaries "$RELEASE_BASE_URL"; then
+                bin_success=1
+            else
+                warn "Prebuilt binary verification failed for latest release. Retrying with rolling channel ($ROLLING_BASE_URL)..."
+                rm -rf "${RELEASE_DIST_DIR:?}"/*
+                if run_step "Downloading & verifying rolling prebuilt binaries..." install_from_binaries "$ROLLING_BASE_URL"; then
+                    bin_success=1
+                fi
+            fi
+        fi
+
+        if [[ "$bin_success" -eq 0 ]]; then
             warn "Prebuilt binary installation failed or shared libraries did not match."
+            rm -rf "${RELEASE_DIST_DIR:?}"/*
             local do_fallback=1
             if use_tui; then
                 if ! gum confirm "Fall back to local Cargo compilation (--from-source)?" --default=true; then

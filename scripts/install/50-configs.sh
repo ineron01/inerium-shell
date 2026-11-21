@@ -54,8 +54,16 @@ deploy_user_scripts_and_menus() {
     fi
 }
 
+INPUT_EXISTED=0
+MONITORS_EXISTED=0
+
 deploy_desktop_configs() {
     log "Installing desktop configurations into ~/.config..."
+
+    INPUT_EXISTED=0
+    MONITORS_EXISTED=0
+    [[ -e "$HOME/.config/hypr/config/input.lua" ]] && INPUT_EXISTED=1
+    [[ -e "$HOME/.config/hypr/config/monitors.lua" ]] && MONITORS_EXISTED=1
 
     # Migrate legacy directory symlinks from earlier releases to real directories
     migrate_legacy_dir_symlinks
@@ -99,9 +107,35 @@ deploy_desktop_configs() {
 
     # 7. Waybar Panel
     run "mkdir -p '$HOME/.config/waybar'"
+    local waybar_existed=0
+    [[ -e "$HOME/.config/waybar/config.jsonc" ]] && waybar_existed=1
+
     for f in config.jsonc style.css colors.css; do
         [[ -f "$REPO_DIR/config/waybar/$f" ]] && deploy_config_file "$REPO_DIR/config/waybar/$f" "$HOME/.config/waybar/$f"
     done
+
+    # Fresh install (or explicit UPDATE_CONFIGS=1): detect distro logo once
+    if [[ "$waybar_existed" -eq 0 || "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
+        local distro_id="" distro_icon="󰣇"
+        if [[ -f /etc/os-release ]]; then
+            distro_id="$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')"
+        fi
+        case "$distro_id" in
+            cachyos)     distro_icon="" ;;
+            endeavouros) distro_icon="" ;;
+            manjaro)     distro_icon="" ;;
+            garuda)      distro_icon="" ;;
+            artix)       distro_icon="" ;;
+            archcraft)   distro_icon="" ;;
+            arcolinux)   distro_icon="" ;;
+            blackarch)   distro_icon="" ;;
+            *)           distro_icon="󰣇" ;;
+        esac
+        if [[ "$DRY_RUN" -eq 0 && -f "$HOME/.config/waybar/config.jsonc" && ! -L "$HOME/.config/waybar/config.jsonc" ]]; then
+            sed -i -E '/"custom\/launcher": \{/,/\}/ s/("format": ")[^"]*(")/\1'"$distro_icon"'\2/' "$HOME/.config/waybar/config.jsonc"
+            log "Configured initial Waybar distro icon: $distro_icon ($distro_id)"
+        fi
+    fi
 
     # 8. Btop System Monitor
     run "mkdir -p '$HOME/.config/btop'"
@@ -109,7 +143,7 @@ deploy_desktop_configs() {
 
     # 9. Fish shell (preserve runtime fish_variables)
     run "mkdir -p '$HOME/.config/fish/functions'"
-    deploy_config_file "$REPO_DIR/config/fish/config.fish" "$HOME/.config/fish/config.fish"
+    deploy_config_file "$REPO_DIR/config/fish/config.fish" "$HOME/.config/fish/config.fish" 644 "user"
     if [[ -d "$REPO_DIR/config/fish/functions" ]]; then
         for func in "$REPO_DIR"/config/fish/functions/*.fish; do
             [[ -f "$func" ]] || continue
@@ -130,9 +164,11 @@ deploy_desktop_configs() {
         [[ -f "$c" ]] && deploy_config_file "$c" "$HOME/.config/qt6ct/colors/$(basename "$c")"
     done
     deploy_config_file "$REPO_DIR/config/swayosd/style.css" "$HOME/.config/swayosd/style.css"
-    render_template "$REPO_DIR/config/qt5ct/qt5ct.conf.template" "$HOME/.config/qt5ct/qt5ct.conf"
-    render_template "$REPO_DIR/config/qt6ct/qt6ct.conf.template" "$HOME/.config/qt6ct/qt6ct.conf"
-    render_template "$REPO_DIR/config/swayosd/config.toml.template" "$HOME/.config/swayosd/config.toml"
+    local tpl_only_missing=0
+    [[ "$UPDATE_CONFIGS_MODE" == "none" ]] && tpl_only_missing=1
+    render_template "$REPO_DIR/config/qt5ct/qt5ct.conf.template" "$HOME/.config/qt5ct/qt5ct.conf" "$tpl_only_missing"
+    render_template "$REPO_DIR/config/qt6ct/qt6ct.conf.template" "$HOME/.config/qt6ct/qt6ct.conf" "$tpl_only_missing"
+    render_template "$REPO_DIR/config/swayosd/config.toml.template" "$HOME/.config/swayosd/config.toml" "$tpl_only_missing"
 
     # 12. Themes (Base in ~/.config/inerium/themes, Extra in ~/.local/share/inerium/themes/extra)
     run "mkdir -p '$HOME/.local/share/color-schemes'"
@@ -162,25 +198,58 @@ deploy_desktop_configs() {
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
 
-    if [[ "$DRY_RUN" -eq 0 && "${IS_UPDATE:-0}" -ne 1 && ! -f "$HOME/.config/inerium/theme.current" ]]; then
-        if command -v inerium-theme >/dev/null 2>&1; then
-            inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
-        elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
-            plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
-        fi
+    # Notification & system sound assets
+    if [[ -d "$REPO_DIR/assets/sounds" ]]; then
+        run "mkdir -p '$HOME/.local/share/inerium/sounds'"
+        for s in "$REPO_DIR"/assets/sounds/*; do
+            [[ -f "$s" ]] || continue
+            deploy_config_file "$s" "$HOME/.local/share/inerium/sounds/$(basename "$s")"
+        done
     fi
 
     # 13. Hyprland configuration
     run "mkdir -p '$HOME/.config/hypr/config'"
-    for f in hypridle.conf hyprland.lua hyprlock.conf xdph.conf; do
-        [[ -f "$REPO_DIR/config/hypr/$f" ]] && deploy_config_file "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f"
+    for f in hyprland.lua hyprlock.conf hypridle.conf xdph.conf; do
+        [[ -f "$REPO_DIR/config/hypr/$f" ]] || continue
+        local cat="ui"
+        [[ "$f" == "hypridle.conf" ]] && cat="user"
+        deploy_config_file "$REPO_DIR/config/hypr/$f" "$HOME/.config/hypr/$f" 644 "$cat"
     done
     for f in "$REPO_DIR"/config/hypr/config/*.lua; do
         [[ -f "$f" ]] || continue
         base="$(basename "$f")"
-        deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
+        local cat="user"
+        case "$base" in
+            animations.lua|decorations.lua|colors.lua)
+                cat="ui"
+                ;;
+        esac
+        deploy_config_file "$f" "$HOME/.config/hypr/config/$base" 644 "$cat"
     done
     render_template "$REPO_DIR/config/hypr/hyprpaper.conf.template" "$HOME/.config/hypr/hyprpaper.conf" 1
+
+    local hyprlock_i18n="$HOME/.config/hypr/hyprlock-i18n.conf"
+    manifest_record_config "$hyprlock_i18n"
+    if [[ ! -f "$hyprlock_i18n" ]]; then
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] create %s\n' "$hyprlock_i18n"
+        else
+            if is_russian_env; then
+                cat > "$hyprlock_i18n" <<'EOF'
+# Auto-generated by Inerium Setup
+$LOCK_PLACEHOLDER = <span foreground="$LOCK_PLACEHOLDER_COLOR">Пароль</span>
+$LOCK_FAIL = <span foreground="$LOCK_FAIL_TEXT_COLOR">Неверный пароль · попытка $ATTEMPTS</span>
+$LOCK_CHECK = <span foreground="$LOCK_CHECK_TEXT_COLOR">Проверка…</span>
+$LOCK_DATE_CMD = LC_TIME=ru_RU.UTF-8 date +"%A, %-d %B"
+EOF
+            else
+                cat > "$hyprlock_i18n" <<'EOF'
+# Generated by Inerium Installer
+# Empty override: defaults from hyprlock.conf will be used
+EOF
+            fi
+        fi
+    fi
 
     local ws_count_file="$HOME/.config/hypr/config/workspaces_count"
     if [[ -n "$WORKSPACES_PER_MON" && "$WORKSPACES_PER_MON" =~ ^[1-9]$ ]]; then
@@ -188,6 +257,22 @@ deploy_desktop_configs() {
             printf '[DRY-RUN] write %s -> %s\n' "$WORKSPACES_PER_MON" "$ws_count_file"
         else
             printf '%s\n' "$WORKSPACES_PER_MON" > "$ws_count_file"
+        fi
+    fi
+
+    local current_theme_file="${XDG_CONFIG_HOME:-$HOME/.config}/inerium/current.json"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        if [[ ! -f "$current_theme_file" ]]; then
+            if command -v inerium-theme >/dev/null 2>&1; then
+                inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
+            elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
+                plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
+            fi
+        elif [[ "$UPDATE_CONFIGS_MODE" == "ui" || "$UPDATE_CONFIGS_MODE" == "all" ]]; then
+            if command -v inerium-theme >/dev/null 2>&1; then
+                log "Reloading active theme configuration..."
+                inerium-theme reload >/dev/null 2>&1 || true
+            fi
         fi
     fi
 }
@@ -198,10 +283,6 @@ detect_and_generate_local_overlays() {
     local idle_dropin="$HOME/.config/systemd/user/hypridle.service.d/local.conf"
     local user_input="$HOME/.config/hypr/config/input.lua"
     local user_monitors="$HOME/.config/hypr/config/monitors.lua"
-    local user_keybinds="$HOME/.config/hypr/config/keybinds.lua"
-
-    # Clean up legacy local files if present
-    [[ "$DRY_RUN" -eq 0 ]] && rm -f "$HOME/.config/hypr/config/inputs_local.lua" "$HOME/.config/hypr/config/binds_local.lua" "$HOME/.config/hypr/config/monitors_local.lua"
 
     # 1. GPU detection
     if [[ ! -e "$env_local" ]]; then
@@ -312,6 +393,9 @@ EOF
     fi
 
     # 3. Keyboard layout detection
+    local input_existed="${INPUT_EXISTED:-0}"
+    local monitors_existed="${MONITORS_EXISTED:-0}"
+
     local kb_layout="us,ru"
     local kb_options="grp:alt_shift_toggle"
     if command -v localectl >/dev/null 2>&1; then
@@ -329,28 +413,25 @@ EOF
             kb_options="$x11_options"
         fi
     fi
-    if [[ "${IS_UPDATE:-0}" -eq 1 && "${UPDATE_CONFIGS:-0}" -eq 0 ]]; then
+    if [[ "$input_existed" -eq 1 && "${UPDATE_CONFIGS_MODE:-none}" != "all" ]]; then
         log "Preserving existing input config: $user_input"
     elif [[ "$DRY_RUN" -eq 1 ]]; then
         printf '[DRY-RUN] update input config %s (kb_layout=%s, kb_options=%s)\n' "$user_input" "$kb_layout" "$kb_options"
     else
-        if [[ -f "$user_input" ]]; then
+        if [[ -f "$user_input" && ! -L "$user_input" ]]; then
             sed -i -E "s/kb_layout[ \t]*=[ \t]*\"[^\"]*\"/kb_layout     = \"${kb_layout}\"/" "$user_input"
             sed -i -E "s/kb_options[ \t]*=[ \t]*\"[^\"]*\"/kb_options    = \"${kb_options}\"/" "$user_input"
-        fi
-        if [[ "$kb_options" == *"win_space_toggle"* && -f "$user_keybinds" ]]; then
-            sed -i -E 's/mainMod \.\. " \+ Space"/mainMod .. " + R"/' "$user_keybinds"
         fi
     fi
 
     # 4. HiDPI monitor scale detection
     local should_detect_monitors=0
-    if [[ -f "$user_monitors" ]]; then
-        if [[ "${IS_UPDATE:-0}" -eq 0 || $(grep -c "INERIUM_TEMPLATE_MONITORS" "$user_monitors" 2>/dev/null || true) -gt 0 ]]; then
-            should_detect_monitors=1
-        fi
+    if [[ "$monitors_existed" -eq 0 || "${UPDATE_CONFIGS_MODE:-none}" == "all" || $(grep -c "INERIUM_TEMPLATE_MONITORS" "$user_monitors" 2>/dev/null || true) -gt 0 ]]; then
+        should_detect_monitors=1
     fi
-    if [[ "$should_detect_monitors" -eq 1 ]] && command -v hyprctl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    if [[ "$should_detect_monitors" -eq 0 ]]; then
+        log "Preserving existing monitors config: $user_monitors"
+    elif [[ ! -L "$user_monitors" ]] && command -v hyprctl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         local mon_json
         mon_json="$(hyprctl monitors -j 2>/dev/null || true)"
         if [[ -n "$mon_json" && "$mon_json" == "["* ]]; then
@@ -506,11 +587,16 @@ configure_greeter() {
         run "sudo mkdir -p /var/lib/inerium-greeter"
         run "sudo chown -R greeter:greeter /var/lib/inerium-greeter 2>/dev/null || true"
         run "sudo chmod 0755 /var/lib/inerium-greeter"
-        if ! systemctl is-enabled --quiet greetd.service 2>/dev/null; then
-            log "Enabling greetd.service..."
-            run "sudo systemctl enable --force greetd.service"
+        manifest_record_addon "greeter"
+        if [[ -x /usr/local/bin/inerium-greeter || "$DRY_RUN" -eq 1 ]]; then
+            if ! systemctl is-enabled --quiet greetd.service 2>/dev/null; then
+                log "Enabling greetd.service..."
+                run "sudo systemctl enable --force greetd.service"
+            fi
+            manifest_record_system_unit "greetd.service"
+        else
+            warn "inerium-greeter executable not found in /usr/local/bin; skipping greetd autostart enable."
         fi
-        manifest_record_system_unit "greetd.service"
     fi
 }
 

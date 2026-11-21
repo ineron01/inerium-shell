@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
@@ -56,7 +56,7 @@ pub fn run(args: &[String]) {
     // Update stamp mtime
     let _ = fs::write(&stamp_path, b"");
 
-    let sound = Path::new(&sound_path);
+    let sound = resolve_sound_path(&sound_path);
     if !sound.exists() {
         return;
     }
@@ -64,6 +64,42 @@ pub fn run(args: &[String]) {
     // Spawn pw-play asynchronously without blocking the caller
     let _ = Command::new("pw-play")
         .arg("--media-role=Notification")
-        .arg(&sound_path)
+        .arg(&sound)
         .spawn();
+}
+
+fn resolve_sound_path(path: &str) -> PathBuf {
+    if let Some(sub) = path.strip_prefix("~/")
+        && let Ok(home) = env::var("HOME")
+    {
+        return PathBuf::from(home).join(sub);
+    } else if let Some(sub) = path.strip_prefix("$HOME/")
+        && let Ok(home) = env::var("HOME")
+    {
+        return PathBuf::from(home).join(sub);
+    }
+
+    let p = PathBuf::from(path);
+    if p.exists() {
+        return p;
+    }
+
+    // Fallbacks if only filename was specified
+    if let Ok(home) = env::var("HOME") {
+        let repo_asset = PathBuf::from(&home)
+            .join("Repos/inerium-shell/assets/sounds")
+            .join(path);
+        if repo_asset.exists() {
+            return repo_asset;
+        }
+
+        let local_asset = PathBuf::from(&home)
+            .join(".local/share/inerium/sounds")
+            .join(path);
+        if local_asset.exists() {
+            return local_asset;
+        }
+    }
+
+    p
 }
