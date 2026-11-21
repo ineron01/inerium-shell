@@ -132,15 +132,6 @@ fn handle_client(mut client: UnixStream, real_sock: &Path) {
                 if request_data.ends_with(b"\n") || request_data.ends_with(b"\0") {
                     break;
                 }
-                client.set_nonblocking(true).ok();
-                match client.read(&mut buf) {
-                    Ok(extra) if extra > 0 => {
-                        request_data.extend_from_slice(&buf[..extra]);
-                    }
-                    _ => break,
-                }
-                client.set_nonblocking(false).ok();
-                break;
             }
             Err(_) => break,
         }

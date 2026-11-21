@@ -1095,6 +1095,7 @@ dependencies = [
  "gtk4",
  "inerium-hw",
  "inerium-i18n",
+ "inerium-theme",
  "serde",
  "serde_json",
  "vte4",
@@ -1112,7 +1113,16 @@ dependencies = [
  "image",
  "inerium-hw",
  "inerium-i18n",
+ "inerium-theme",
  "relm4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "inerium-theme"
+version = "0.2.1"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -1123,6 +1133,7 @@ version = "0.2.1"
 dependencies = [
  "inerium-hw",
  "inerium-i18n",
+ "inerium-theme",
  "serde",
  "serde_json",
  "sha2",

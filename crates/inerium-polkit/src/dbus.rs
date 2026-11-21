@@ -14,6 +14,12 @@ use crate::{
     events::{AuthenticationAgentEvent, AuthenticationUserEvent},
 };
 
+type AgentIo = (
+    BufReader<Box<dyn tokio::io::AsyncRead + Unpin + Send>>,
+    Box<dyn tokio::io::AsyncWrite + Unpin + Send>,
+    Option<process::Child>,
+);
+
 #[derive(Debug)]
 pub struct AuthenticationAgent {
     config: SystemConfig,
@@ -100,14 +106,10 @@ impl AuthenticationAgent {
                     password: pw,
                 } => {
                     if c == cookie {
-                        let mut stream = UnixStream::connect(self.config.get_socket_path()).await;
+                        let stream = UnixStream::connect(self.config.get_socket_path()).await;
 
-                        let (reader, mut writer, child_proc): (
-                            BufReader<Box<dyn tokio::io::AsyncRead + Unpin + Send>>,
-                            Box<dyn tokio::io::AsyncWrite + Unpin + Send>,
-                            Option<process::Child>,
-                        ) = if let Ok(stream) = &mut stream {
-                            let (read_half, mut write_half) = stream.split();
+                        let (reader, mut writer, child_proc): AgentIo = if let Ok(stream) = stream {
+                            let (read_half, mut write_half) = stream.into_split();
 
                             write_half.write_all(user.as_bytes()).await?;
                             write_half.write_all(b"\n").await?;

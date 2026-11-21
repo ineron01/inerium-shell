@@ -53,6 +53,7 @@ python
 
 # Theming, Fonts & Runtime Libraries
 adw-gtk-theme
+papirus-icon-theme
 qt5ct
 qt6ct
 nwg-look

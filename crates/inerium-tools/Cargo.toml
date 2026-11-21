@@ -27,6 +27,7 @@ path = "src/bin/inerium-theme.rs"
 [dependencies]
 inerium-hw = { workspace = true }
 inerium-i18n = { workspace = true }
+inerium-theme = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"

@@ -10,6 +10,7 @@ members = [
     "crates/dolphin-converter",
     "crates/inerium-camera",
     "crates/inerium-polkit",
+    "crates/inerium-theme",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ glib = "0.22"
 relm4 = "0.11"
 inerium-hw = { path = "crates/inerium-hw", version = "0.2.1" }
 inerium-i18n = { path = "crates/inerium-i18n", version = "0.2.1" }
+inerium-theme = { path = "crates/inerium-theme", version = "0.2.1" }
 
 [profile.release]
 opt-level = 3
