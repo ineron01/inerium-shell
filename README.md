@@ -13,18 +13,18 @@
 Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO**, and a native **Rust / GTK4** utility suite themed in the **Inerium Dragon** palette.
 
 <p align="center">
-  <img src="assets/preview/desktop.png" alt="Inerium Desktop" width="100%" />
+  <img src="assets/preview/desktop.webp" alt="Inerium Desktop" width="100%" />
 </p>
 
 <p align="center">
-  <img src="assets/preview/control_center.png" alt="Control Center" width="32%" />
-  <img src="assets/preview/appearance.png" alt="Appearance & Themes" width="32%" />
-  <img src="assets/preview/audio_menu.png" alt="Audio Mixer" width="32%" />
+  <img src="assets/preview/control_center.webp" alt="Control Center" width="32%" />
+  <img src="assets/preview/appearance.webp" alt="Appearance & Themes" width="32%" />
+  <img src="assets/preview/audio_menu.webp" alt="Audio Mixer" width="32%" />
 </p>
 <p align="center">
-  <img src="assets/preview/network_menu.png" alt="Network & Wi-Fi" width="32%" />
-  <img src="assets/preview/power_menu.png" alt="Power Menu" width="48%" />
-  <img src="assets/preview/lockscreen.png" alt="Lockscreen" width="16%" />
+  <img src="assets/preview/network_menu.webp" alt="Network & Wi-Fi" width="32%" />
+  <img src="assets/preview/power_menu.webp" alt="Power Menu" width="48%" />
+  <img src="assets/preview/lockscreen.webp" alt="Lockscreen" width="16%" />
 </p>
 
 > [!NOTE]
@@ -131,6 +131,7 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--with-camera`: **Inerium Camera** — Turns an Android phone into a high-definition webcam (`/dev/video0`) with GTK4 GUI, dynamic switching (back/front/laptop), and portrait/landscape support.
 - `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
+- `--with-github`: **GitHub CLI Integration** — Install GitHub CLI (`gh`) and register first-login authentication step for git push and commit signing.
 - `--all-addons`: Installs all optional add-ons together.
 
 ### Configuration & Lifecycle Flags
@@ -267,3 +268,12 @@ A template for crafting your own theme is available at `~/.config/inerium/themes
 
 ### User Hooks (`~/.config/inerium/hooks.d/`)
 Any executable placed in `~/.config/inerium/hooks.d/` runs automatically after a theme switch, receiving the active theme variant (`dark` or `light`) and ID as arguments.
+
+---
+
+## License & Attribution
+
+Inerium Shell is distributed under the [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
+
+- `crates/inerium-polkit` includes code derived from `hyprpolkitagent` (licensed under Apache-2.0, see `crates/inerium-polkit/LICENSE` and `NOTICE`).
+

@@ -13,18 +13,18 @@
 Универсальное окружение рабочего стола для CachyOS / Arch Linux, построенное вокруг **Hyprland (Lua API)**, **Waybar**, **Rofi**, **Mako**, **SwayOSD**, **Dolphin KIO** и нативного набора утилит на **Rust / GTK4** в фирменной цветовой палитре **Inerium Dragon**.
 
 <p align="center">
-  <img src="assets/preview/desktop.png" alt="Рабочий стол Inerium" width="100%" />
+  <img src="assets/preview/desktop.webp" alt="Рабочий стол Inerium" width="100%" />
 </p>
 
 <p align="center">
-  <img src="assets/preview/control_center.png" alt="Центр управления" width="32%" />
-  <img src="assets/preview/appearance.png" alt="Темы и обои" width="32%" />
-  <img src="assets/preview/audio_menu.png" alt="Аудиоустройства" width="32%" />
+  <img src="assets/preview/control_center.webp" alt="Центр управления" width="32%" />
+  <img src="assets/preview/appearance.webp" alt="Темы и обои" width="32%" />
+  <img src="assets/preview/audio_menu.webp" alt="Аудиоустройства" width="32%" />
 </p>
 <p align="center">
-  <img src="assets/preview/network_menu.png" alt="Сети и Wi-Fi" width="32%" />
-  <img src="assets/preview/power_menu.png" alt="Управление питанием" width="48%" />
-  <img src="assets/preview/lockscreen.png" alt="Экран блокировки" width="16%" />
+  <img src="assets/preview/network_menu.webp" alt="Сети и Wi-Fi" width="32%" />
+  <img src="assets/preview/power_menu.webp" alt="Управление питанием" width="48%" />
+  <img src="assets/preview/lockscreen.webp" alt="Экран блокировки" width="16%" />
 </p>
 
 > [!NOTE]
@@ -131,6 +131,7 @@ Inerium Shell включает опциональные расширения, к
 - `--with-camera`: **Inerium Camera** — Использование Android-смартфона как 1080p веб-камеры (`/dev/video0`) с графическим интерфейсом GTK4, горячим переключением камер и поддержкой портретного/альбомного форматов.
 - `--with-msi-ec`: **Охлаждение MSI** — Драйвер ядра `msi-ec-dkms-git` + системный демон автоматической регулировки кулеров CPU/GPU (`msi-fan-regulator`).
 - `--with-novpn`: **noVPN Split-Tunneling** — Прямой запуск выбранных приложений через физический сетевой шлюз в обход активного VPN.
+- `--with-github`: **GitHub CLI Integration** — Установка GitHub CLI (`gh`) и регистрация шага первичной авторизации для `git push` и подписи коммитов.
 - `--all-addons`: Установка всех доступных дополнительных модулей одновременно.
 
 ### Флаги конфигурации и управления
@@ -266,3 +267,12 @@ temperature = 6500 # Цветовая температура экрана в К�
 
 ### Пользовательские хуки (`~/.config/inerium/hooks.d/`)
 Любой исполняемый файл или скрипт в `~/.config/inerium/hooks.d/` автоматически запускается при смене темы и получает вариант (`dark` или `light`) и идентификатор темы первым и вторым аргументами.
+
+---
+
+## Лицензия и атрибуция
+
+Inerium Shell распространяется под лицензией [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
+
+- Крейт `crates/inerium-polkit` содержит код, основанный на `hyprpolkitagent` (распространяется под лицензией Apache-2.0, см. `crates/inerium-polkit/LICENSE` и `NOTICE`).
+

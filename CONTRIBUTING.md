@@ -9,7 +9,7 @@ Inerium Shell runs on Arch Linux / CachyOS. Ensure you have the core build toolc
 ```bash
 sudo pacman -Syu --needed \
     base-devel git rust pkgconf clang mold \
-    gtk4 gtk4-layer-shell vte4 libadwaita \
+    gtk4 gtk4-layer-shell vte4 \
     gstreamer gstreamer-vaapi gst-plugins-base gst-plugins-good \
     pango cairo gdk-pixbuf2 glib2 lua python
 ```
