@@ -77,7 +77,6 @@
         },
         "status-icons": { "paused": "󰏤" },
         "title-len": 32,
-        "dynamic-len": 40,
         "tooltip-format": "{title}\n{artist}\n\nЛКМ: Карточка трека · ПКМ: Пауза\nКолесо: След./пред. трек",
         "on-click": "inerium-popup media",
         "on-click-right": "playerctl play-pause",

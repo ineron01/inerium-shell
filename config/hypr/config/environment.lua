@@ -3,7 +3,6 @@
 hl.env("QT_QPA_PLATFORM", "wayland;xcb")
 hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 hl.env("QT_STYLE_OVERRIDE", "Fusion")
-hl.env("GTK_THEME", "adw-gtk3-dark")
 hl.env("GTK_USE_PORTAL", "1")
 hl.env("HYPRCURSOR_THEME", "Bibata-Modern-Ice")
 hl.env("HYPRCURSOR_SIZE", "24")

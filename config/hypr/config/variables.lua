@@ -2,6 +2,6 @@
 
 TERMINAL     = "kitty"
 FILE_MANAGER = "dolphin"
-BROWSER      = "google-chrome-stable"
+BROWSER      = "inerium-browser"
 EDITOR       = "gnome-text-editor --new-window"
 CALCULATOR   = "gnome-calculator"

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# ============================================================================
+# inerium-browser — System default browser launcher wrapper for Inerium
+# ============================================================================
+set -euo pipefail
+
+# 1. Environment variable BROWSER (if not pointing back to inerium-browser)
+if [[ -n "${BROWSER:-}" && "$BROWSER" != "inerium-browser" ]] && command -v "$BROWSER" >/dev/null 2>&1; then
+    exec "$BROWSER" "$@"
+fi
+
+# 2. XDG default browser desktop entry
+default_app="$(xdg-settings get default-web-browser 2>/dev/null || true)"
+if [[ -n "$default_app" ]] && command -v gtk-launch >/dev/null 2>&1; then
+    exec gtk-launch "$default_app" "$@"
+fi
+
+# 3. Fallback to xdg-open
+if [[ $# -gt 0 ]]; then
+    exec xdg-open "$@"
+else
+    exec xdg-open "about:blank"
+fi

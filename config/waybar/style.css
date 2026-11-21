@@ -23,7 +23,6 @@ window#waybar {
 #workspaces,
 #custom-hw,
 #mpris,
-#clock,
 #custom-clock,
 #tray,
 #status,
@@ -175,7 +174,6 @@ window#waybar {
 
 /* ── Часы ─────────────────────────────────────────────── */
 
-#clock,
 #custom-clock {
     padding: 0 16px;
     font-size: 1em;
@@ -183,7 +181,6 @@ window#waybar {
     color: @fg-bright;
 }
 
-#clock:hover,
 #custom-clock:hover {
     background: alpha(@yellow, 0.12);
     border-color: alpha(@yellow, 0.35);
@@ -205,15 +202,11 @@ window#waybar {
 }
 
 #custom-keyboard,
-#language,
 #pulseaudio,
 #custom-network,
-#network,
 #custom-hotspot,
 #custom-bluetooth,
-#bluetooth,
-#custom-battery,
-#battery {
+#custom-battery {
     padding: 0 8px;
     margin: 2px 0;
     border-radius: 7px;
@@ -222,21 +215,16 @@ window#waybar {
 }
 
 #custom-keyboard:hover,
-#language:hover,
 #pulseaudio:hover,
 #custom-network:hover,
-#network:hover,
 #custom-hotspot:hover,
 #custom-bluetooth:hover,
-#bluetooth:hover,
-#custom-battery:hover,
-#battery:hover {
+#custom-battery:hover {
     background: @hover;
     color: @fg-bright;
 }
 
-#custom-keyboard,
-#language {
+#custom-keyboard {
     color: @fg;
     font-size: 0.95em;
     font-weight: 700;
@@ -244,9 +232,7 @@ window#waybar {
 
 #pulseaudio.muted { color: @muted; }
 
-#custom-network.disconnected,
-#network.disconnected,
-#network.disabled { color: @muted; }
+#custom-network.disconnected { color: @muted; }
 
 #custom-hotspot { color: @muted; font-size: 1.1em; }
 #custom-hotspot.active { color: @green; }
@@ -256,18 +242,12 @@ window#waybar {
     animation: pulse 0.8s ease-in-out infinite alternate;
 }
 
-#custom-bluetooth.off,
-#bluetooth.off,
-#bluetooth.disabled { color: @muted; }
-#custom-bluetooth.connected,
-#bluetooth.connected { color: @blue; }
+#custom-bluetooth.off { color: @muted; }
+#custom-bluetooth.connected { color: @blue; }
 
 #custom-battery.charging,
-#custom-battery.plugged,
-#battery.charging,
-#battery.plugged { color: @green; }
-#custom-battery.warning:not(.charging),
-#battery.warning:not(.charging) { color: @yellow; }
+#custom-battery.plugged { color: @green; }
+#custom-battery.warning:not(.charging) { color: @yellow; }
 #custom-battery.critical:not(.charging),
 #battery.critical:not(.charging) {
     color: @red;

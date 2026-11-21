@@ -80,8 +80,8 @@ hl.bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(launchPrefix .. TERMINAL .. 
 ---- 4. WORKSPACES & MONITORS --------
 ---------------------------------------
 
--- Direct switch to workspaces 1-6
-for i = 1, 6 do
+-- Direct switch to workspaces 1-9
+for i = 1, 9 do
     local digit = digitCode(i)
     hl.bind(mainMod .. " + " .. digit, hl.dsp.focus({ workspace = i }))
     hl.bind(mainMod .. " + SHIFT + " .. digit, hl.dsp.window.move({ workspace = i }))

@@ -43,3 +43,7 @@ result
 # Local secrets
 .env
 rclone.conf
+
+# Logs & dumps
+*.log
+*.coredump
