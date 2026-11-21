@@ -703,94 +703,18 @@ impl SimpleComponent for NetworkModel {
                     let ssid_task = ssid.clone();
 
                     thread::spawn(move || {
-                        let res = if is_ent {
-                            // Check if a connection with this SSID already exists
-                            let exists = Command::new("nmcli")
-                                .args(["-t", "-f", "NAME", "connection", "show"])
-                                .output()
-                                .map(|o| {
-                                    String::from_utf8_lossy(&o.stdout)
-                                        .lines()
-                                        .any(|l| l.trim() == ssid_task)
-                                })
-                                .unwrap_or(false);
-
-                            let cfg_ok = if exists {
-                                let mut mod_args = vec![
-                                    "connection".to_string(),
-                                    "modify".to_string(),
-                                    "id".to_string(),
-                                    ssid_task.clone(),
-                                    "wifi-sec.key-mgmt".to_string(),
-                                    "wpa-eap".to_string(),
-                                    "802-1x.eap".to_string(),
-                                    "peap".to_string(),
-                                    "802-1x.phase2-auth".to_string(),
-                                    "mschapv2".to_string(),
-                                    "802-1x.identity".to_string(),
-                                    identity,
-                                    "802-1x.password".to_string(),
-                                    pass,
-                                ];
-                                if no_ca {
-                                    mod_args.push("802-1x.ca-cert".to_string());
-                                    mod_args.push("".to_string());
-                                }
-                                let mod_res = Command::new("nmcli")
-                                    .args(&mod_args)
-                                    .stdin(std::process::Stdio::null())
-                                    .output();
-                                parse_cmd_output(mod_res).0
-                            } else {
-                                let mut add_args = vec![
-                                    "connection".to_string(),
-                                    "add".to_string(),
-                                    "type".to_string(),
-                                    "wifi".to_string(),
-                                    "con-name".to_string(),
-                                    ssid_task.clone(),
-                                    "ifname".to_string(),
-                                    "*".to_string(),
-                                    "ssid".to_string(),
-                                    ssid_task.clone(),
-                                    "wifi-sec.key-mgmt".to_string(),
-                                    "wpa-eap".to_string(),
-                                    "802-1x.eap".to_string(),
-                                    "peap".to_string(),
-                                    "802-1x.phase2-auth".to_string(),
-                                    "mschapv2".to_string(),
-                                    "802-1x.identity".to_string(),
-                                    identity,
-                                    "802-1x.password".to_string(),
-                                    pass,
-                                ];
-                                if no_ca {
-                                    add_args.push("802-1x.ca-cert".to_string());
-                                    add_args.push("".to_string());
-                                }
-                                let add_res = Command::new("nmcli")
-                                    .args(&add_args)
-                                    .stdin(std::process::Stdio::null())
-                                    .output();
-                                parse_cmd_output(add_res).0
-                            };
-
-                            if !cfg_ok {
-                                Err(std::io::Error::other("Failed to configure 802.1X profile"))
-                            } else {
-                                Command::new("nmcli")
-                                    .args(["--wait", "15", "connection", "up", "id", &ssid_task])
-                                    .stdin(std::process::Stdio::null())
-                                    .output()
+                        let (success, err_msg) = if is_ent {
+                            match hw::connect_enterprise_wifi(&ssid_task, &identity, &pass, no_ca) {
+                                Ok(()) => (true, String::new()),
+                                Err(e) => (false, e),
                             }
                         } else {
-                            Command::new("nmcli")
+                            let res = Command::new("nmcli")
                                 .args(["--wait", "15", "dev", "wifi", "connect", &ssid_task, "password", &pass])
                                 .stdin(std::process::Stdio::null())
-                                .output()
+                                .output();
+                            parse_cmd_output(res)
                         };
-
-                        let (success, err_msg) = parse_cmd_output(res);
                         let fresh = query_wifi_networks(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid: ssid_task,

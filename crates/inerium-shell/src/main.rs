@@ -253,6 +253,10 @@ fn main() {
 
         let sock_path = get_sock_path();
         if sock_path.exists() {
+            if UnixStream::connect(&sock_path).is_ok() {
+                eprintln!("inerium-shell daemon is already running on {}", sock_path.display());
+                std::process::exit(0);
+            }
             let _ = fs::remove_file(&sock_path);
         }
 

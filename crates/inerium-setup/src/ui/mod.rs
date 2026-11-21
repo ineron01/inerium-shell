@@ -61,6 +61,11 @@ pub fn build_main_window(
     win.add_css_class("setup-window");
     displays::clamp_window_to_screen(&win);
 
+    win.connect_close_request(|_| {
+        crate::update::clear_active_update_btn();
+        glib::Propagation::Proceed
+    });
+
     let initial_tab = Rc::new(RefCell::new(if start_on_integrations {
         "integrations".to_string()
     } else {
@@ -178,19 +183,6 @@ fn build_shell(
     lang_seg.append(&btn_ru);
     header.append(&lang_seg);
 
-    for (btn, target_lang) in [(btn_en, Lang::En), (btn_ru, Lang::Ru)] {
-        let rebuild_ref = rebuild_ref.clone();
-        let paths_l = paths.clone();
-        btn.connect_clicked(move |_| {
-            if target_lang != lang
-                && let Some(ref f) = *rebuild_ref.borrow()
-            {
-                let _ = apply_system_language(&paths_l, target_lang);
-                f(target_lang);
-            }
-        });
-    }
-
     // Navigation Tabs
     let tabs_bar = Box::new(Orientation::Horizontal, 4);
     tabs_bar.add_css_class("setup-tabs");
@@ -262,6 +254,23 @@ fn build_shell(
 
     let (displays_page, save_displays) = displays::build_displays_tab(win.clone(), paths.clone(), status_cb.clone(), lang);
     let (interface_page, save_interface) = interface::build_interface_tab(paths.clone(), status_cb.clone(), lang);
+
+    for (btn, target_lang) in [(btn_en, Lang::En), (btn_ru, Lang::Ru)] {
+        let rebuild_ref = rebuild_ref.clone();
+        let paths_l = paths.clone();
+        let save_displays = save_displays.clone();
+        let save_interface = save_interface.clone();
+        btn.connect_clicked(move |_| {
+            if target_lang != lang
+                && let Some(ref f) = *rebuild_ref.borrow()
+            {
+                let _ = save_displays();
+                let _ = save_interface();
+                let _ = apply_system_language(&paths_l, target_lang);
+                f(target_lang);
+            }
+        });
+    }
     let integrations_page = integrations::build_integrations_tab(
         paths.clone(),
         initial_steps,

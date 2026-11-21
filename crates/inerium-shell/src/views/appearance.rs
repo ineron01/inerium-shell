@@ -1,10 +1,15 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::rc::Rc;
 
 use gtk4::gio;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Button, FileDialog, FileFilter, Label, Orientation, Picture, PolicyType};
+use gtk4::{
+    Box as GtkBox, Button, DrawingArea, Entry, FileDialog, FileFilter, GestureClick, Label,
+    Orientation, Picture, PolicyType, Scale, Separator,
+};
 use inerium_i18n::tr;
 use relm4::prelude::*;
 
@@ -19,13 +24,9 @@ pub struct ThemeItem {
     pub variant: String,
     pub description: String,
     pub is_active: bool,
-    #[allow(dead_code)]
     pub bg: String,
-    #[allow(dead_code)]
     pub surface: String,
-    #[allow(dead_code)]
     pub accent: String,
-    #[allow(dead_code)]
     pub fg: String,
 }
 
@@ -62,6 +63,66 @@ pub fn query_themes() -> Vec<ThemeItem> {
     items
 }
 
+pub fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
+    let s = s.trim().trim_start_matches('#');
+    if s.len() == 6 {
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some((r, g, b))
+    } else {
+        None
+    }
+}
+
+pub fn format_hex_color(c: (u8, u8, u8)) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2)
+}
+
+fn make_color_swatch_static(r: u8, g: u8, b: u8, width: i32, height: i32, radius: f64) -> DrawingArea {
+    let area = DrawingArea::new();
+    area.set_content_width(width);
+    area.set_content_height(height);
+    area.set_draw_func(move |_area, cr, w, h| {
+        let w = w as f64;
+        let h = h as f64;
+        if radius > 0.0 {
+            let rad = radius.min(w / 2.0).min(h / 2.0);
+            cr.new_sub_path();
+            cr.arc(w - rad, rad, rad, -std::f64::consts::FRAC_PI_2, 0.0);
+            cr.arc(w - rad, h - rad, rad, 0.0, std::f64::consts::FRAC_PI_2);
+            cr.arc(rad, h - rad, rad, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+            cr.arc(rad, rad, rad, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+            cr.close_path();
+            cr.clip();
+        }
+        cr.set_source_rgb(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+        let _ = cr.paint();
+    });
+    area
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomBgState {
+    pub mode: BgMode,
+    pub color_start: (u8, u8, u8),
+    pub color_end: (u8, u8, u8),
+    pub direction: GradientDirection,
+}
+
+#[derive(Default)]
+pub struct CustomBgWidgets {
+    pub bg_controls_mode: Option<BgMode>,
+    pub preview_area: Option<DrawingArea>,
+    pub swatch_start: Option<DrawingArea>,
+    pub swatch_end: Option<DrawingArea>,
+    pub entry_start: Option<Entry>,
+    pub entry_end: Option<Entry>,
+    pub r_scale: Option<Scale>,
+    pub g_scale: Option<Scale>,
+    pub b_scale: Option<Scale>,
+}
+
 pub struct AppearanceModel {
     pub themes: Vec<ThemeItem>,
     pub selected_monitor: String,
@@ -74,6 +135,9 @@ pub struct AppearanceModel {
     pub custom_color_start: (u8, u8, u8),
     pub custom_color_end: (u8, u8, u8),
     pub custom_direction: GradientDirection,
+    pub delete_confirm_path: Option<String>,
+    pub bg_state: Rc<RefCell<CustomBgState>>,
+    pub bg_widgets: Rc<RefCell<CustomBgWidgets>>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
@@ -86,7 +150,9 @@ pub enum AppearanceMsg {
     OpenThemesFolder,
     SelectMonitor(String),
     ApplyWallpaper(String),
-    DeleteWallpaper(String),
+    RequestDeleteWallpaper(String),
+    CancelDeleteWallpaper,
+    ConfirmDeleteWallpaper(String),
     OpenWallpapersFolder,
     AddWallpapersDialog,
     WallpapersAdded,
@@ -94,6 +160,7 @@ pub enum AppearanceMsg {
     SetBgMode(BgMode),
     SetBgColorStart((u8, u8, u8)),
     SetBgColorEnd((u8, u8, u8)),
+    SwapBgColors,
     SetBgDirection(GradientDirection),
     ApplyCustomBg,
     SaveCustomBg,
@@ -118,7 +185,7 @@ impl SimpleComponent for AppearanceModel {
             add_css_class: "popup-container",
             set_orientation: Orientation::Vertical,
             set_spacing: 10,
-            set_size_request: (430, -1),
+            set_size_request: (450, -1),
 
             // Header (Back, Title & Overview)
             gtk4::Box {
@@ -155,8 +222,8 @@ impl SimpleComponent for AppearanceModel {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::Automatic),
                 set_propagate_natural_height: true,
-                set_min_content_height: 380,
-                set_max_content_height: 520,
+                set_min_content_height: 420,
+                set_max_content_height: 580,
                 set_vexpand: true,
 
                 gtk4::Box {
@@ -166,15 +233,16 @@ impl SimpleComponent for AppearanceModel {
                     // ── Section 1: Themes ─────────────────────────
                     gtk4::Box {
                         set_orientation: Orientation::Vertical,
-                        set_spacing: 6,
+                        set_spacing: 8,
 
                         gtk4::Box {
                             set_orientation: Orientation::Horizontal,
                             set_spacing: 8,
+                            add_css_class: "section-header-box",
 
                             gtk4::Label {
                                 add_css_class: "cc-label",
-                                set_label: &tr("THEMES", "ТЕМЫ ОФОРМЛЕНИЯ"),
+                                set_label: &tr("󰔎  THEMES", "󰔎  ТЕМЫ ОФОРМЛЕНИЯ"),
                                 set_xalign: 0.0,
                                 set_hexpand: true,
                             },
@@ -194,25 +262,32 @@ impl SimpleComponent for AppearanceModel {
                         },
                     },
 
+                    // ── Subtle Divider ────────────────────────────
+                    Separator {
+                        set_orientation: Orientation::Horizontal,
+                        add_css_class: "cc-sep",
+                    },
+
                     // ── Section 2: Wallpapers ──────────────────────
                     gtk4::Box {
                         set_orientation: Orientation::Vertical,
-                        set_spacing: 6,
+                        set_spacing: 8,
 
                         gtk4::Box {
                             set_orientation: Orientation::Horizontal,
-                            set_spacing: 8,
+                            set_spacing: 6,
+                            add_css_class: "section-header-box",
 
                             gtk4::Label {
                                 add_css_class: "cc-label",
-                                set_label: &tr("WALLPAPERS", "ОБОИ РАБОЧЕГО СТОЛА"),
+                                set_label: &tr("󰸌  WALLPAPERS", "󰸌  ОБОИ РАБОЧЕГО СТОЛА"),
                                 set_xalign: 0.0,
                                 set_hexpand: true,
                             },
 
                             gtk4::Button {
                                 add_css_class: "cc-chip",
-                                set_label: &tr("󰉋  Folder", "󰉋  Папка обоев"),
+                                set_label: &tr("󰉋  Folder", "󰉋  Папка"),
                                 set_tooltip_text: Some("~/.local/share/inerium/wallpapers/"),
                                 connect_clicked => AppearanceMsg::OpenWallpapersFolder,
                             },
@@ -239,7 +314,7 @@ impl SimpleComponent for AppearanceModel {
                         gtk4::Box {
                             set_orientation: Orientation::Vertical,
                             set_spacing: 8,
-                            add_css_class: "cc-card",
+                            add_css_class: "custom-bg-card",
                             #[watch]
                             set_visible: model.show_custom_bg,
                         },
@@ -256,7 +331,7 @@ impl SimpleComponent for AppearanceModel {
                         // Horizontal Wallpapers Strip
                         gtk4::ScrolledWindow {
                             set_policy: (PolicyType::Automatic, PolicyType::Never),
-                            set_min_content_height: 110,
+                            set_min_content_height: 116,
                             set_propagate_natural_width: true,
 
                             #[name = "wall_strip"]
@@ -279,6 +354,13 @@ impl SimpleComponent for AppearanceModel {
         let active_wallpapers = hw::get_active_wallpapers();
         let wallpapers = hw::list_available_wallpapers();
 
+        let bg_state = Rc::new(RefCell::new(CustomBgState {
+            mode: BgMode::Solid,
+            color_start: (0x18, 0x16, 0x16),
+            color_end: (0x28, 0x27, 0x28),
+            direction: GradientDirection::Vertical,
+        }));
+
         let model = Self {
             themes,
             selected_monitor,
@@ -291,6 +373,9 @@ impl SimpleComponent for AppearanceModel {
             custom_color_start: (0x18, 0x16, 0x16),
             custom_color_end: (0x28, 0x27, 0x28),
             custom_direction: GradientDirection::Vertical,
+            delete_confirm_path: None,
+            bg_state,
+            bg_widgets: Rc::new(RefCell::new(CustomBgWidgets::default())),
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
@@ -335,6 +420,7 @@ impl SimpleComponent for AppearanceModel {
                 self.selected_monitor = target;
             }
             AppearanceMsg::ApplyWallpaper(path) => {
+                self.delete_confirm_path = None;
                 let mon_opt = if self.selected_monitor == "all" {
                     None
                 } else {
@@ -347,10 +433,17 @@ impl SimpleComponent for AppearanceModel {
                     }
                 } else {
                     self.active_wallpapers
-                        .insert(self.selected_monitor.clone(), path.clone());
+                        .insert(self.selected_monitor.clone(), path);
                 }
             }
-            AppearanceMsg::DeleteWallpaper(path_str) => {
+            AppearanceMsg::RequestDeleteWallpaper(path_str) => {
+                self.delete_confirm_path = Some(path_str);
+            }
+            AppearanceMsg::CancelDeleteWallpaper => {
+                self.delete_confirm_path = None;
+            }
+            AppearanceMsg::ConfirmDeleteWallpaper(path_str) => {
+                self.delete_confirm_path = None;
                 let p = Path::new(&path_str);
                 if let Ok(canon_user) = p.canonicalize()
                     && let Ok(canon_dir) = hw::inerium_wallpapers_dir().canonicalize()
@@ -378,25 +471,18 @@ impl SimpleComponent for AppearanceModel {
 
                 let dialog = FileDialog::builder()
                     .title(tr("Add Wallpapers", "Добавить обои"))
-                    .accept_label(tr("Add", "Добавить"))
                     .filters(&filters)
-                    .modal(true)
                     .build();
 
-                crate::set_modal_dialog_active(true);
                 let s = sender.clone();
-
                 dialog.open_multiple(
-                    Option::<&gtk4::Window>::None,
+                    gtk4::Window::NONE,
                     gio::Cancellable::NONE,
                     move |res| {
-                        crate::set_modal_dialog_active(false);
                         if let Ok(files) = res {
                             let dest_dir = hw::inerium_wallpapers_dir();
-                            let _ = std::fs::create_dir_all(&dest_dir);
-                            let n = files.n_items();
-                            for i in 0..n {
-                                if let Some(file) = files.item(i).and_then(|item| item.downcast::<gio::File>().ok())
+                            for i in 0..files.n_items() {
+                                if let Some(file) = files.item(i).and_downcast::<gio::File>()
                                     && let Some(src_path) = file.path()
                                     && let Some(file_name) = src_path.file_name()
                                 {
@@ -417,15 +503,91 @@ impl SimpleComponent for AppearanceModel {
             }
             AppearanceMsg::SetBgMode(mode) => {
                 self.custom_bg_mode = mode;
+                self.bg_state.borrow_mut().mode = mode;
+                self.bg_widgets.borrow_mut().bg_controls_mode = None; // Rebuild control layout for new mode
+                if let Some(ref p) = self.bg_widgets.borrow().preview_area {
+                    p.queue_draw();
+                }
             }
             AppearanceMsg::SetBgColorStart(c) => {
                 self.custom_color_start = c;
+                self.bg_state.borrow_mut().color_start = c;
+                let w = self.bg_widgets.borrow();
+                if let Some(ref e) = w.entry_start
+                    && parse_hex_color(&e.text()) != Some(c)
+                {
+                    e.set_text(&format_hex_color(c));
+                }
+                if let Some(ref r) = w.r_scale
+                    && (r.value().round() as u8) != c.0
+                {
+                    r.set_value(c.0 as f64);
+                }
+                if let Some(ref g) = w.g_scale
+                    && (g.value().round() as u8) != c.1
+                {
+                    g.set_value(c.1 as f64);
+                }
+                if let Some(ref b) = w.b_scale
+                    && (b.value().round() as u8) != c.2
+                {
+                    b.set_value(c.2 as f64);
+                }
+                if let Some(ref sw) = w.swatch_start {
+                    sw.queue_draw();
+                }
+                if let Some(ref p) = w.preview_area {
+                    p.queue_draw();
+                }
             }
             AppearanceMsg::SetBgColorEnd(c) => {
                 self.custom_color_end = c;
+                self.bg_state.borrow_mut().color_end = c;
+                let w = self.bg_widgets.borrow();
+                if let Some(ref e) = w.entry_end
+                    && parse_hex_color(&e.text()) != Some(c)
+                {
+                    e.set_text(&format_hex_color(c));
+                }
+                if let Some(ref sw) = w.swatch_end {
+                    sw.queue_draw();
+                }
+                if let Some(ref p) = w.preview_area {
+                    p.queue_draw();
+                }
+            }
+            AppearanceMsg::SwapBgColors => {
+                std::mem::swap(&mut self.custom_color_start, &mut self.custom_color_end);
+                let c1 = self.custom_color_start;
+                let c2 = self.custom_color_end;
+                {
+                    let mut st = self.bg_state.borrow_mut();
+                    st.color_start = c1;
+                    st.color_end = c2;
+                }
+                let w = self.bg_widgets.borrow();
+                if let Some(ref e1) = w.entry_start {
+                    e1.set_text(&format_hex_color(c1));
+                }
+                if let Some(ref e2) = w.entry_end {
+                    e2.set_text(&format_hex_color(c2));
+                }
+                if let Some(ref sw1) = w.swatch_start {
+                    sw1.queue_draw();
+                }
+                if let Some(ref sw2) = w.swatch_end {
+                    sw2.queue_draw();
+                }
+                if let Some(ref p) = w.preview_area {
+                    p.queue_draw();
+                }
             }
             AppearanceMsg::SetBgDirection(dir) => {
                 self.custom_direction = dir;
+                self.bg_state.borrow_mut().direction = dir;
+                if let Some(ref p) = self.bg_widgets.borrow().preview_area {
+                    p.queue_draw();
+                }
             }
             AppearanceMsg::ApplyCustomBg => {
                 let spec = BackgroundSpec {
@@ -499,7 +661,10 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
 
     for item in themes {
         let row = Button::new();
-        row.add_css_class("list-item-btn");
+        row.add_css_class("theme-card");
+        if item.is_active {
+            row.add_css_class("active");
+        }
 
         let inner = GtkBox::new(Orientation::Horizontal, 8);
         inner.set_hexpand(true);
@@ -507,6 +672,9 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
         let ico_str = if item.variant == "light" { "󰔏" } else { "󰔎" };
         let ico = Label::new(Some(ico_str));
         ico.add_css_class("card-icon");
+        if item.is_active {
+            ico.add_css_class("active");
+        }
         inner.append(&ico);
 
         let txt = GtkBox::new(Orientation::Vertical, 1);
@@ -518,8 +686,9 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
         name_lbl.set_xalign(0.0);
         title_box.append(&name_lbl);
 
-        let variant_badge = Label::new(Some(&format!("[{}]", item.variant)));
-        variant_badge.add_css_class("cc-meta");
+        let variant_str = if item.variant.to_lowercase() == "light" { "LIGHT" } else { "DARK" };
+        let variant_badge = Label::new(Some(variant_str));
+        variant_badge.add_css_class("theme-variant-pill");
         variant_badge.set_xalign(0.0);
         title_box.append(&variant_badge);
         txt.append(&title_box);
@@ -536,9 +705,22 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
         txt.append(&desc_lbl);
         inner.append(&txt);
 
+        // Theme palette dots preview
+        let palette_box = GtkBox::new(Orientation::Horizontal, 3);
+        palette_box.set_valign(gtk4::Align::Center);
+        for col_str in [&item.bg, &item.surface, &item.accent, &item.fg] {
+            if let Some((r, g, b)) = parse_hex_color(col_str) {
+                let dot = make_color_swatch_static(r, g, b, 12, 12, 6.0);
+                palette_box.append(&dot);
+            }
+        }
+        inner.append(&palette_box);
+
         if item.is_active {
             let badge = Label::new(Some(tr("󰄬  Active", "󰄬  Активна")));
             badge.add_css_class("card-badge");
+            badge.add_css_class("active");
+            badge.set_valign(gtk4::Align::Center);
             inner.append(&badge);
         }
 
@@ -595,47 +777,29 @@ fn populate_custom_bg_controls(
     model: &AppearanceModel,
     sender: &ComponentSender<AppearanceModel>,
 ) {
+    // Only rebuild if the mode changed or if first run
+    {
+        let w = model.bg_widgets.borrow();
+        if w.bg_controls_mode == Some(model.custom_bg_mode) && container.first_child().is_some() {
+            return;
+        }
+    }
+    model.bg_widgets.borrow_mut().bg_controls_mode = Some(model.custom_bg_mode);
+
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
 
-    if !model.show_custom_bg {
-        container.set_visible(false);
-        return;
-    }
-    container.set_visible(true);
-
-    // --- Header row: Mode Switcher + Close button ---
+    // --- Header Row ---
     let header_row = GtkBox::new(Orientation::Horizontal, 6);
-
-    let btn_solid = Button::with_label(tr("󰸌  Solid Color", "󰸌  Сплошной цвет"));
-    btn_solid.add_css_class("cc-chip");
-    if model.custom_bg_mode == BgMode::Solid {
-        btn_solid.add_css_class("active");
-    }
-    let s = sender.clone();
-    btn_solid.connect_clicked(move |_| {
-        s.input(AppearanceMsg::SetBgMode(BgMode::Solid));
-    });
-    header_row.append(&btn_solid);
-
-    let btn_gradient = Button::with_label(tr("󰔎  Gradient", "󰔎  Градиент"));
-    btn_gradient.add_css_class("cc-chip");
-    if model.custom_bg_mode == BgMode::Gradient {
-        btn_gradient.add_css_class("active");
-    }
-    let s = sender.clone();
-    btn_gradient.connect_clicked(move |_| {
-        s.input(AppearanceMsg::SetBgMode(BgMode::Gradient));
-    });
-    header_row.append(&btn_gradient);
-
-    let spacer = GtkBox::new(Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    header_row.append(&spacer);
+    let title_lbl = Label::new(Some(tr("󰸌  Background Studio", "󰸌  Свой фон (генератор)")));
+    title_lbl.add_css_class("cc-label");
+    title_lbl.set_hexpand(true);
+    title_lbl.set_xalign(0.0);
+    header_row.append(&title_lbl);
 
     let btn_close = Button::with_label("󰅖");
-    btn_close.add_css_class("del-btn");
+    btn_close.add_css_class("wall-del-btn");
     btn_close.set_tooltip_text(Some(tr("Close", "Закрыть")));
     let s = sender.clone();
     btn_close.connect_clicked(move |_| {
@@ -644,107 +808,383 @@ fn populate_custom_bg_controls(
     header_row.append(&btn_close);
     container.append(&header_row);
 
-    // --- Controls Section ---
+    // --- Live Cairo Background Preview Area ---
+    let preview = DrawingArea::new();
+    preview.set_content_height(75);
+    preview.set_hexpand(true);
+    preview.add_css_class("bg-preview-area");
+
+    let st_preview = model.bg_state.clone();
+    preview.set_draw_func(move |_area, cr, w, h| {
+        let w = w as f64;
+        let h = h as f64;
+        let r = 8.0;
+
+        cr.new_sub_path();
+        cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+        cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+        cr.arc(r, h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+        cr.arc(r, r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+        cr.close_path();
+        cr.clip();
+
+        let st = st_preview.borrow();
+        match st.mode {
+            BgMode::Solid => {
+                let c = st.color_start;
+                cr.set_source_rgb(
+                    c.0 as f64 / 255.0,
+                    c.1 as f64 / 255.0,
+                    c.2 as f64 / 255.0,
+                );
+                let _ = cr.paint();
+            }
+            BgMode::Gradient => {
+                let c_start = st.color_start;
+                let c_end = st.color_end;
+                match st.direction {
+                    GradientDirection::Vertical | GradientDirection::Horizontal | GradientDirection::Diagonal => {
+                        let (x0, y0, x1, y1) = match st.direction {
+                            GradientDirection::Vertical => (0.0, 0.0, 0.0, h),
+                            GradientDirection::Horizontal => (0.0, 0.0, w, 0.0),
+                            _ => (0.0, 0.0, w, h),
+                        };
+                        let pat = gtk4::cairo::LinearGradient::new(x0, y0, x1, y1);
+                        pat.add_color_stop_rgb(
+                            0.0,
+                            c_start.0 as f64 / 255.0,
+                            c_start.1 as f64 / 255.0,
+                            c_start.2 as f64 / 255.0,
+                        );
+                        pat.add_color_stop_rgb(
+                            1.0,
+                            c_end.0 as f64 / 255.0,
+                            c_end.1 as f64 / 255.0,
+                            c_end.2 as f64 / 255.0,
+                        );
+                        let _ = cr.set_source(&pat);
+                        let _ = cr.paint();
+                    }
+                    GradientDirection::Radial => {
+                        let rad = (w * w + h * h).sqrt() / 2.0;
+                        let pat = gtk4::cairo::RadialGradient::new(w / 2.0, h / 2.0, 0.0, w / 2.0, h / 2.0, rad);
+                        pat.add_color_stop_rgb(
+                            0.0,
+                            c_start.0 as f64 / 255.0,
+                            c_start.1 as f64 / 255.0,
+                            c_start.2 as f64 / 255.0,
+                        );
+                        pat.add_color_stop_rgb(
+                            1.0,
+                            c_end.0 as f64 / 255.0,
+                            c_end.1 as f64 / 255.0,
+                            c_end.2 as f64 / 255.0,
+                        );
+                        let _ = cr.set_source(&pat);
+                        let _ = cr.paint();
+                    }
+                }
+            }
+        }
+    });
+    container.append(&preview);
+    model.bg_widgets.borrow_mut().preview_area = Some(preview);
+
+    // --- Mode Selector Row ---
+    let mode_seg = GtkBox::new(Orientation::Horizontal, 4);
+    mode_seg.add_css_class("cc-seg");
+
+    let btn_solid = Button::with_label(tr("󰔏  Solid Color", "󰔏  Сплошной"));
+    btn_solid.set_hexpand(true);
+    if model.custom_bg_mode == BgMode::Solid {
+        btn_solid.add_css_class("active");
+    }
+    let s = sender.clone();
+    btn_solid.connect_clicked(move |_| {
+        s.input(AppearanceMsg::SetBgMode(BgMode::Solid));
+    });
+    mode_seg.append(&btn_solid);
+
+    let btn_gradient = Button::with_label(tr("󰔎  Gradient", "󰔎  Градиент"));
+    btn_gradient.set_hexpand(true);
+    if model.custom_bg_mode == BgMode::Gradient {
+        btn_gradient.add_css_class("active");
+    }
+    let s = sender.clone();
+    btn_gradient.connect_clicked(move |_| {
+        s.input(AppearanceMsg::SetBgMode(BgMode::Gradient));
+    });
+    mode_seg.append(&btn_gradient);
+    container.append(&mode_seg);
+
+    // --- Inline Color Controls ---
     match model.custom_bg_mode {
         BgMode::Solid => {
-            let color_row = GtkBox::new(Orientation::Horizontal, 8);
-            let lbl = Label::new(Some(tr("Color:", "Цвет:")));
-            lbl.add_css_class("cc-label");
-            color_row.append(&lbl);
+            // Presets palette
+            let presets_box = GtkBox::new(Orientation::Vertical, 4);
+            let lbl_p = Label::new(Some(tr("Presets:", "Пресеты:")));
+            lbl_p.add_css_class("cc-label");
+            lbl_p.set_xalign(0.0);
+            presets_box.append(&lbl_p);
 
-            let dialog = gtk4::ColorDialog::builder()
-                .title(tr("Select Color", "Выберите цвет"))
-                .with_alpha(false)
-                .build();
-            let c = model.custom_color_start;
-            let rgba = gdk4::RGBA::new(c.0 as f32 / 255.0, c.1 as f32 / 255.0, c.2 as f32 / 255.0, 1.0);
-            let color_btn = gtk4::ColorDialogButton::builder()
-                .dialog(&dialog)
-                .rgba(&rgba)
-                .build();
-            let s = sender.clone();
-            color_btn.connect_rgba_notify(move |btn| {
-                let rgba = btn.rgba();
-                let r = (rgba.red() * 255.0).round() as u8;
-                let g = (rgba.green() * 255.0).round() as u8;
-                let b = (rgba.blue() * 255.0).round() as u8;
-                s.input(AppearanceMsg::SetBgColorStart((r, g, b)));
-            });
-            color_row.append(&color_btn);
-
-            // Quick color chips
+            let dots_row = GtkBox::new(Orientation::Horizontal, 6);
             let presets = [
-                ("Obsidian", (0x10, 0x10, 0x12)),
                 ("Sumi", (0x18, 0x16, 0x16)),
+                ("Obsidian", (0x0d, 0x0e, 0x11)),
                 ("Slate", (0x1e, 0x20, 0x24)),
                 ("Navy", (0x0f, 0x17, 0x2a)),
-                ("Snow", (0xf5, 0xf5, 0xf7)),
+                ("Forest", (0x0d, 0x22, 0x18)),
+                ("Wine", (0x23, 0x12, 0x26)),
+                ("Earth", (0x26, 0x1d, 0x1a)),
+                ("Lotus", (0xf2, 0xec, 0xbc)),
+                ("White", (0xff, 0xff, 0xff)),
+                ("Black", (0x00, 0x00, 0x00)),
             ];
-            for (name, col) in presets {
-                let chip = Button::with_label(name);
-                chip.add_css_class("cc-chip");
+
+            for (tip, col) in presets {
+                let dot_btn = Button::new();
+                dot_btn.add_css_class("color-preset-btn");
                 if model.custom_color_start == col {
-                    chip.add_css_class("active");
+                    dot_btn.add_css_class("active");
                 }
+                dot_btn.set_tooltip_text(Some(tip));
+                let swatch = make_color_swatch_static(col.0, col.1, col.2, 22, 22, 11.0);
+                dot_btn.set_child(Some(&swatch));
                 let s = sender.clone();
-                chip.connect_clicked(move |_| {
+                dot_btn.connect_clicked(move |_| {
                     s.input(AppearanceMsg::SetBgColorStart(col));
                 });
-                color_row.append(&chip);
+                dots_row.append(&dot_btn);
             }
-            container.append(&color_row);
+            presets_box.append(&dots_row);
+            container.append(&presets_box);
+
+            // Hex Input and Direct Swatch Row
+            let hex_row = GtkBox::new(Orientation::Horizontal, 8);
+            let lbl_hex = Label::new(Some(tr("Custom Color:", "Свой цвет:")));
+            lbl_hex.add_css_class("cc-label");
+            hex_row.append(&lbl_hex);
+
+            let cur_col = model.custom_color_start;
+            let swatch_start = DrawingArea::new();
+            swatch_start.set_content_width(28);
+            swatch_start.set_content_height(28);
+            swatch_start.add_css_class("color-swatch-box");
+            let st_swatch = model.bg_state.clone();
+            swatch_start.set_draw_func(move |_area, cr, w, h| {
+                let c = st_swatch.borrow().color_start;
+                let w = w as f64;
+                let h = h as f64;
+                let r = 6.0;
+                cr.new_sub_path();
+                cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+                cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+                cr.arc(r, h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+                cr.arc(r, r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+                cr.close_path();
+                cr.clip();
+                cr.set_source_rgb(c.0 as f64 / 255.0, c.1 as f64 / 255.0, c.2 as f64 / 255.0);
+                let _ = cr.paint();
+            });
+            hex_row.append(&swatch_start);
+            model.bg_widgets.borrow_mut().swatch_start = Some(swatch_start);
+
+            let entry = Entry::new();
+            entry.add_css_class("hex-input");
+            entry.set_text(&format_hex_color(cur_col));
+            entry.set_max_length(7);
+            entry.set_width_chars(8);
+            let s = sender.clone();
+            entry.connect_changed(move |e| {
+                let text = e.text();
+                if let Some(c) = parse_hex_color(&text) {
+                    s.input(AppearanceMsg::SetBgColorStart(c));
+                }
+            });
+            hex_row.append(&entry);
+            model.bg_widgets.borrow_mut().entry_start = Some(entry);
+
+            // RGB adjustment sliders
+            let rgb_box = GtkBox::new(Orientation::Vertical, 2);
+            rgb_box.set_hexpand(true);
+
+            let r_scale = Scale::with_range(Orientation::Horizontal, 0.0, 255.0, 1.0);
+            r_scale.add_css_class("cc-scale");
+            r_scale.set_value(cur_col.0 as f64);
+            r_scale.set_hexpand(true);
+            r_scale.set_draw_value(false);
+            let s_r = sender.clone();
+            let st_r = model.bg_state.clone();
+            r_scale.connect_value_changed(move |sc| {
+                let v = sc.value().round() as u8;
+                let cur = st_r.borrow().color_start;
+                if cur.0 != v {
+                    s_r.input(AppearanceMsg::SetBgColorStart((v, cur.1, cur.2)));
+                }
+            });
+            let r_row = GtkBox::new(Orientation::Horizontal, 4);
+            let r_lbl = Label::new(Some("R"));
+            r_lbl.add_css_class("cc-label");
+            r_lbl.set_width_chars(2);
+            r_row.append(&r_lbl);
+            r_row.append(&r_scale);
+            rgb_box.append(&r_row);
+            model.bg_widgets.borrow_mut().r_scale = Some(r_scale);
+
+            let g_scale = Scale::with_range(Orientation::Horizontal, 0.0, 255.0, 1.0);
+            g_scale.add_css_class("cc-scale");
+            g_scale.set_value(cur_col.1 as f64);
+            g_scale.set_hexpand(true);
+            g_scale.set_draw_value(false);
+            let s_g = sender.clone();
+            let st_g = model.bg_state.clone();
+            g_scale.connect_value_changed(move |sc| {
+                let v = sc.value().round() as u8;
+                let cur = st_g.borrow().color_start;
+                if cur.1 != v {
+                    s_g.input(AppearanceMsg::SetBgColorStart((cur.0, v, cur.2)));
+                }
+            });
+            let g_row = GtkBox::new(Orientation::Horizontal, 4);
+            let g_lbl = Label::new(Some("G"));
+            g_lbl.add_css_class("cc-label");
+            g_lbl.set_width_chars(2);
+            g_row.append(&g_lbl);
+            g_row.append(&g_scale);
+            rgb_box.append(&g_row);
+            model.bg_widgets.borrow_mut().g_scale = Some(g_scale);
+
+            let b_scale = Scale::with_range(Orientation::Horizontal, 0.0, 255.0, 1.0);
+            b_scale.add_css_class("cc-scale");
+            b_scale.set_value(cur_col.2 as f64);
+            b_scale.set_hexpand(true);
+            b_scale.set_draw_value(false);
+            let s_b = sender.clone();
+            let st_b = model.bg_state.clone();
+            b_scale.connect_value_changed(move |sc| {
+                let v = sc.value().round() as u8;
+                let cur = st_b.borrow().color_start;
+                if cur.2 != v {
+                    s_b.input(AppearanceMsg::SetBgColorStart((cur.0, cur.1, v)));
+                }
+            });
+            let b_row = GtkBox::new(Orientation::Horizontal, 4);
+            let b_lbl = Label::new(Some("B"));
+            b_lbl.add_css_class("cc-label");
+            b_lbl.set_width_chars(2);
+            b_row.append(&b_lbl);
+            b_row.append(&b_scale);
+            rgb_box.append(&b_row);
+            model.bg_widgets.borrow_mut().b_scale = Some(b_scale);
+
+            hex_row.append(&rgb_box);
+            container.append(&hex_row);
         }
         BgMode::Gradient => {
-            // Colors row: From & To
             let colors_row = GtkBox::new(Orientation::Horizontal, 8);
 
+            // Start Color Box
+            let start_box = GtkBox::new(Orientation::Horizontal, 4);
             let lbl_from = Label::new(Some(tr("From:", "От:")));
             lbl_from.add_css_class("cc-label");
-            colors_row.append(&lbl_from);
+            start_box.append(&lbl_from);
 
-            let dialog1 = gtk4::ColorDialog::builder()
-                .title(tr("Start Color", "Начальный цвет"))
-                .with_alpha(false)
-                .build();
             let c1 = model.custom_color_start;
-            let rgba1 = gdk4::RGBA::new(c1.0 as f32 / 255.0, c1.1 as f32 / 255.0, c1.2 as f32 / 255.0, 1.0);
-            let btn1 = gtk4::ColorDialogButton::builder()
-                .dialog(&dialog1)
-                .rgba(&rgba1)
-                .build();
-            let s = sender.clone();
-            btn1.connect_rgba_notify(move |btn| {
-                let rgba = btn.rgba();
-                let r = (rgba.red() * 255.0).round() as u8;
-                let g = (rgba.green() * 255.0).round() as u8;
-                let b = (rgba.blue() * 255.0).round() as u8;
-                s.input(AppearanceMsg::SetBgColorStart((r, g, b)));
+            let swatch1 = DrawingArea::new();
+            swatch1.set_content_width(24);
+            swatch1.set_content_height(24);
+            swatch1.add_css_class("color-swatch-box");
+            let st_sw1 = model.bg_state.clone();
+            swatch1.set_draw_func(move |_area, cr, w, h| {
+                let c = st_sw1.borrow().color_start;
+                let w = w as f64;
+                let h = h as f64;
+                let r = 6.0;
+                cr.new_sub_path();
+                cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+                cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+                cr.arc(r, h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+                cr.arc(r, r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+                cr.close_path();
+                cr.clip();
+                cr.set_source_rgb(c.0 as f64 / 255.0, c.1 as f64 / 255.0, c.2 as f64 / 255.0);
+                let _ = cr.paint();
             });
-            colors_row.append(&btn1);
+            start_box.append(&swatch1);
+            model.bg_widgets.borrow_mut().swatch_start = Some(swatch1);
 
+            let entry1 = Entry::new();
+            entry1.add_css_class("hex-input");
+            entry1.set_text(&format_hex_color(c1));
+            entry1.set_max_length(7);
+            entry1.set_width_chars(8);
+            let s1 = sender.clone();
+            entry1.connect_changed(move |e| {
+                let text = e.text();
+                if let Some(c) = parse_hex_color(&text) {
+                    s1.input(AppearanceMsg::SetBgColorStart(c));
+                }
+            });
+            start_box.append(&entry1);
+            model.bg_widgets.borrow_mut().entry_start = Some(entry1);
+            colors_row.append(&start_box);
+
+            // Swap Colors Button
+            let btn_swap = Button::with_label("⇄");
+            btn_swap.add_css_class("filter-pill");
+            btn_swap.set_tooltip_text(Some(tr("Swap Colors", "Поменять цвета местами")));
+            let s_swap = sender.clone();
+            btn_swap.connect_clicked(move |_| {
+                s_swap.input(AppearanceMsg::SwapBgColors);
+            });
+            colors_row.append(&btn_swap);
+
+            // End Color Box
+            let end_box = GtkBox::new(Orientation::Horizontal, 4);
             let lbl_to = Label::new(Some(tr("To:", "До:")));
             lbl_to.add_css_class("cc-label");
-            colors_row.append(&lbl_to);
+            end_box.append(&lbl_to);
 
-            let dialog2 = gtk4::ColorDialog::builder()
-                .title(tr("End Color", "Конечный цвет"))
-                .with_alpha(false)
-                .build();
             let c2 = model.custom_color_end;
-            let rgba2 = gdk4::RGBA::new(c2.0 as f32 / 255.0, c2.1 as f32 / 255.0, c2.2 as f32 / 255.0, 1.0);
-            let btn2 = gtk4::ColorDialogButton::builder()
-                .dialog(&dialog2)
-                .rgba(&rgba2)
-                .build();
-            let s = sender.clone();
-            btn2.connect_rgba_notify(move |btn| {
-                let rgba = btn.rgba();
-                let r = (rgba.red() * 255.0).round() as u8;
-                let g = (rgba.green() * 255.0).round() as u8;
-                let b = (rgba.blue() * 255.0).round() as u8;
-                s.input(AppearanceMsg::SetBgColorEnd((r, g, b)));
+            let swatch2 = DrawingArea::new();
+            swatch2.set_content_width(24);
+            swatch2.set_content_height(24);
+            swatch2.add_css_class("color-swatch-box");
+            let st_sw2 = model.bg_state.clone();
+            swatch2.set_draw_func(move |_area, cr, w, h| {
+                let c = st_sw2.borrow().color_end;
+                let w = w as f64;
+                let h = h as f64;
+                let r = 6.0;
+                cr.new_sub_path();
+                cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+                cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+                cr.arc(r, h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+                cr.arc(r, r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+                cr.close_path();
+                cr.clip();
+                cr.set_source_rgb(c.0 as f64 / 255.0, c.1 as f64 / 255.0, c.2 as f64 / 255.0);
+                let _ = cr.paint();
             });
-            colors_row.append(&btn2);
+            end_box.append(&swatch2);
+            model.bg_widgets.borrow_mut().swatch_end = Some(swatch2);
+
+            let entry2 = Entry::new();
+            entry2.add_css_class("hex-input");
+            entry2.set_text(&format_hex_color(c2));
+            entry2.set_max_length(7);
+            entry2.set_width_chars(8);
+            let s2 = sender.clone();
+            entry2.connect_changed(move |e| {
+                let text = e.text();
+                if let Some(c) = parse_hex_color(&text) {
+                    s2.input(AppearanceMsg::SetBgColorEnd(c));
+                }
+            });
+            end_box.append(&entry2);
+            model.bg_widgets.borrow_mut().entry_end = Some(entry2);
+            colors_row.append(&end_box);
+
             container.append(&colors_row);
 
             // Direction row
@@ -759,23 +1199,23 @@ fn populate_custom_bg_controls(
                 (GradientDirection::Diagonal, "↘", tr("Diagonal", "По диагонали")),
                 (GradientDirection::Radial, "◉", tr("Radial", "Радиальный")),
             ];
-            for (dir, symbol, tip) in dirs {
+            for (dir_spec, symbol, tip) in dirs {
                 let btn_d = Button::with_label(symbol);
                 btn_d.add_css_class("cc-chip");
                 btn_d.set_tooltip_text(Some(tip));
-                if model.custom_direction == dir {
+                if model.custom_direction == dir_spec {
                     btn_d.add_css_class("active");
                 }
                 let s = sender.clone();
                 btn_d.connect_clicked(move |_| {
-                    s.input(AppearanceMsg::SetBgDirection(dir));
+                    s.input(AppearanceMsg::SetBgDirection(dir_spec));
                 });
                 dir_row.append(&btn_d);
             }
             container.append(&dir_row);
 
-            // Gradient Presets row
-            let presets_row = GtkBox::new(Orientation::Horizontal, 6);
+            // Gradient Presets
+            let presets_row = GtkBox::new(Orientation::Horizontal, 5);
             let lbl_presets = Label::new(Some(tr("Presets:", "Пресеты:")));
             lbl_presets.add_css_class("cc-label");
             presets_row.append(&lbl_presets);
@@ -786,6 +1226,8 @@ fn populate_custom_bg_controls(
                 ("Nordic", (0x1e, 0x23, 0x2a), (0x38, 0x43, 0x4f)),
                 ("Sunset", (0x1c, 0x10, 0x24), (0x3d, 0x1a, 0x33)),
                 ("Cyber", (0x0a, 0x19, 0x2f), (0x17, 0x2a, 0x45)),
+                ("Emerald", (0x0a, 0x1c, 0x14), (0x16, 0x38, 0x28)),
+                ("Lotus", (0xf2, 0xec, 0xbc), (0xde, 0xd7, 0xbc)),
             ];
             for (name, c_start, c_end) in grad_presets {
                 let chip = Button::with_label(name);
@@ -807,8 +1249,8 @@ fn populate_custom_bg_controls(
     // --- Action row: Apply & Save ---
     let action_row = GtkBox::new(Orientation::Horizontal, 8);
 
-    let btn_apply = Button::with_label(tr("󰄬  Apply", "󰄬  Применить"));
-    btn_apply.add_css_class("cc-chip");
+    let btn_apply = Button::with_label(tr("󰄬  Apply Background", "󰄬  Применить фон"));
+    btn_apply.add_css_class("btn-primary-action");
     btn_apply.set_hexpand(true);
     let s = sender.clone();
     btn_apply.connect_clicked(move |_| {
@@ -846,6 +1288,9 @@ fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &C
         model.active_wallpapers.get(&model.selected_monitor)
     };
 
+    let inerium_dir = hw::inerium_wallpapers_dir();
+    let inerium_dir_str = inerium_dir.to_str().unwrap_or("").to_string();
+
     for item in &model.wallpapers {
         let card = GtkBox::new(Orientation::Vertical, 4);
         card.add_css_class("wall-card");
@@ -855,6 +1300,7 @@ fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &C
             card.add_css_class("active");
         }
 
+        // Thumbnail Picture wrapped in clickable button
         let pic = if let Some(thumb) = &item.thumb_path {
             Picture::for_filename(thumb)
         } else {
@@ -866,41 +1312,78 @@ fn populate_wallpapers_strip(strip: &GtkBox, model: &AppearanceModel, sender: &C
             }
         };
         pic.set_content_fit(gtk4::ContentFit::Cover);
-        pic.set_size_request(120, 68);
+        pic.set_size_request(130, 72);
         pic.set_can_shrink(true);
         pic.add_css_class("wall-thumb");
-        card.append(&pic);
 
-        let bottom_row = GtkBox::new(Orientation::Horizontal, 4);
-        let name_lbl = Label::new(Some(&item.name));
-        name_lbl.add_css_class("wall-name");
-        name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        name_lbl.set_hexpand(true);
-        name_lbl.set_xalign(0.0);
-        bottom_row.append(&name_lbl);
-
-        let del_btn = Button::with_label("󰅖");
-        del_btn.add_css_class("del-btn");
-        del_btn.set_tooltip_text(Some(tr("Delete from folder", "Удалить из папки")));
-        let s_del = sender.clone();
-        let path_del = item.path.clone();
-        del_btn.connect_clicked(move |_| {
-            s_del.input(AppearanceMsg::DeleteWallpaper(path_del.clone()));
-        });
-        bottom_row.append(&del_btn);
-        card.append(&bottom_row);
-
-        let btn = Button::new();
-        btn.set_child(Some(&card));
-        btn.add_css_class("wall-btn");
+        let top_btn = Button::new();
+        top_btn.add_css_class("wall-btn");
+        top_btn.set_child(Some(&pic));
 
         let s_apply = sender.clone();
         let path_apply = item.path.clone();
-        btn.connect_clicked(move |_| {
+        top_btn.connect_clicked(move |_| {
             s_apply.input(AppearanceMsg::ApplyWallpaper(path_apply.clone()));
         });
+        card.append(&top_btn);
 
-        strip.append(&btn);
+        // Bottom label and clean delete action with confirmation
+        let bottom_row = GtkBox::new(Orientation::Horizontal, 4);
+
+        if model.delete_confirm_path.as_deref() == Some(&item.path) {
+            let lbl_confirm = Label::new(Some(tr("Delete?", "Удалить?")));
+            lbl_confirm.add_css_class("wall-name");
+            lbl_confirm.set_hexpand(true);
+            lbl_confirm.set_xalign(0.0);
+            bottom_row.append(&lbl_confirm);
+
+            let btn_yes = Button::with_label(tr("󰄬 Yes", "󰄬 Да"));
+            btn_yes.add_css_class("wall-del-confirm");
+            let s_del = sender.clone();
+            let path_del = item.path.clone();
+            btn_yes.connect_clicked(move |_| {
+                s_del.input(AppearanceMsg::ConfirmDeleteWallpaper(path_del.clone()));
+            });
+            bottom_row.append(&btn_yes);
+
+            let btn_no = Button::with_label(tr("󰅖 No", "󰅖 Нет"));
+            btn_no.add_css_class("wall-del-cancel");
+            let s_cancel = sender.clone();
+            btn_no.connect_clicked(move |_| {
+                s_cancel.input(AppearanceMsg::CancelDeleteWallpaper);
+            });
+            bottom_row.append(&btn_no);
+        } else {
+            let name_lbl = Label::new(Some(&item.name));
+            name_lbl.add_css_class("wall-name");
+            name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+            name_lbl.set_hexpand(true);
+            name_lbl.set_xalign(0.0);
+
+            let click_label = GestureClick::new();
+            let s_lbl = sender.clone();
+            let path_lbl = item.path.clone();
+            click_label.connect_released(move |_, _, _, _| {
+                s_lbl.input(AppearanceMsg::ApplyWallpaper(path_lbl.clone()));
+            });
+            name_lbl.add_controller(click_label);
+            bottom_row.append(&name_lbl);
+
+            let is_user_deletable = !inerium_dir_str.is_empty() && item.path.starts_with(&inerium_dir_str);
+            if is_user_deletable {
+                let del_btn = Button::with_label("󰆴");
+                del_btn.add_css_class("wall-del-btn");
+                del_btn.set_tooltip_text(Some(tr("Delete from folder", "Удалить из папки")));
+                let s_req = sender.clone();
+                let path_req = item.path.clone();
+                del_btn.connect_clicked(move |_| {
+                    s_req.input(AppearanceMsg::RequestDeleteWallpaper(path_req.clone()));
+                });
+                bottom_row.append(&del_btn);
+            }
+        }
+        card.append(&bottom_row);
+        strip.append(&card);
     }
 }
 
@@ -922,5 +1405,5 @@ where
     let mut controller = AppearanceModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 430, 480)
+    (root, 450, 560)
 }

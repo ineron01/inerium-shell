@@ -239,6 +239,15 @@ pub fn is_hotspot_active() -> bool {
     network::is_hotspot_active()
 }
 
+pub fn connect_enterprise_wifi(
+    ssid: &str,
+    identity: &str,
+    password: &str,
+    no_ca_cert: bool,
+) -> Result<(), String> {
+    network::connect_enterprise_wifi(ssid, identity, password, no_ca_cert)
+}
+
 pub fn has_bluetooth() -> bool {
     network::has_bluetooth()
 }

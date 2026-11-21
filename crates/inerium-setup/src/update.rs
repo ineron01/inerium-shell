@@ -17,6 +17,12 @@ thread_local! {
     static ACTIVE_UPDATE_BTN: RefCell<Option<Button>> = const { RefCell::new(None) };
 }
 
+pub fn clear_active_update_btn() {
+    ACTIVE_UPDATE_BTN.with(|c| {
+        *c.borrow_mut() = None;
+    });
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub latest_version: String,

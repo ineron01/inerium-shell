@@ -155,6 +155,7 @@ pub enum BtMsg {
     ScanProgress(Vec<BtDevice>),
     ScanFinished(Vec<BtDevice>),
     PollStatus,
+    DevicesUpdated(Vec<BtDevice>),
     ToggleExpandDevice(String),
     ToggleTrusted(String, bool),
     ForgetDevice(String),
@@ -278,7 +279,7 @@ impl SimpleComponent for BluetoothModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let enabled = hw::is_bluetooth_enabled();
-        let devices = if enabled { query_devices() } else { Vec::new() };
+        let devices = Vec::new();
 
         let model = BluetoothModel {
             enabled,
@@ -292,6 +293,14 @@ impl SimpleComponent for BluetoothModel {
         let widgets = view_output!();
 
         let _ = populate_list(&widgets.list_box, &devices, None, enabled, false, &sender);
+
+        if enabled {
+            let s_init = sender.clone();
+            std::thread::spawn(move || {
+                let fresh = query_devices();
+                s_init.input(BtMsg::DevicesUpdated(fresh));
+            });
+        }
 
         let root_ref = root.clone();
         let s_poll = sender.clone();
@@ -342,10 +351,16 @@ impl SimpleComponent for BluetoothModel {
         match msg {
             BtMsg::PollStatus => {
                 if !self.scanning && self.enabled {
-                    let fresh = query_devices();
-                    if fresh != self.devices {
-                        self.devices = fresh;
-                    }
+                    let s_poll = sender.clone();
+                    std::thread::spawn(move || {
+                        let fresh = query_devices();
+                        s_poll.input(BtMsg::DevicesUpdated(fresh));
+                    });
+                }
+            }
+            BtMsg::DevicesUpdated(fresh) => {
+                if !self.scanning && self.enabled && fresh != self.devices {
+                    self.devices = fresh;
                 }
             }
             BtMsg::TogglePower(state) => {

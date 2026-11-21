@@ -219,6 +219,7 @@ pub fn build_interface_tab(
             } else {
                 if let Some(mut child) = watch_child_c.borrow_mut().take() {
                     let _ = child.kill();
+                    let _ = child.wait();
                 }
                 status_cb_c.ok(&match lang {
                     Lang::En => "Live watch stopped".to_string(),
@@ -1128,7 +1129,7 @@ fn populate_setup_themes(
             glib::MainContext::default().spawn_local(async move {
                 let res = gio::spawn_blocking(move || {
                     std::process::Command::new("inerium-theme")
-                        .arg("install")
+                        .arg("set")
                         .arg(&id_local)
                         .status()
                 }).await;

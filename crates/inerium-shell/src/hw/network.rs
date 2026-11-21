@@ -360,6 +360,108 @@ pub fn remove_bluetooth_device(mac: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub fn connect_enterprise_wifi(
+    ssid: &str,
+    identity: &str,
+    password: &str,
+    no_ca_cert: bool,
+) -> Result<(), String> {
+    let exists = Command::new("nmcli")
+        .args(["-t", "-f", "NAME", "connection", "show"])
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.trim() == ssid)
+        })
+        .unwrap_or(false);
+
+    let cfg_ok = if exists {
+        let mut mod_args = vec![
+            "connection".to_string(),
+            "modify".to_string(),
+            "id".to_string(),
+            ssid.to_string(),
+            "wifi-sec.key-mgmt".to_string(),
+            "wpa-eap".to_string(),
+            "802-1x.eap".to_string(),
+            "peap".to_string(),
+            "802-1x.phase2-auth".to_string(),
+            "mschapv2".to_string(),
+            "802-1x.identity".to_string(),
+            identity.to_string(),
+            "802-1x.password".to_string(),
+            password.to_string(),
+        ];
+        if no_ca_cert {
+            mod_args.push("802-1x.ca-cert".to_string());
+            mod_args.push("".to_string());
+        }
+        Command::new("nmcli")
+            .args(&mod_args)
+            .stdin(Stdio::null())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        let mut add_args = vec![
+            "connection".to_string(),
+            "add".to_string(),
+            "type".to_string(),
+            "wifi".to_string(),
+            "con-name".to_string(),
+            ssid.to_string(),
+            "ifname".to_string(),
+            "*".to_string(),
+            "ssid".to_string(),
+            ssid.to_string(),
+            "wifi-sec.key-mgmt".to_string(),
+            "wpa-eap".to_string(),
+            "802-1x.eap".to_string(),
+            "peap".to_string(),
+            "802-1x.phase2-auth".to_string(),
+            "mschapv2".to_string(),
+            "802-1x.identity".to_string(),
+            identity.to_string(),
+            "802-1x.password".to_string(),
+            password.to_string(),
+        ];
+        if no_ca_cert {
+            add_args.push("802-1x.ca-cert".to_string());
+            add_args.push("".to_string());
+        }
+        Command::new("nmcli")
+            .args(&add_args)
+            .stdin(Stdio::null())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    };
+
+    if !cfg_ok {
+        return Err("Failed to configure 802.1X enterprise profile".to_string());
+    }
+
+    let up_res = Command::new("nmcli")
+        .args(["--wait", "15", "connection", "up", "id", ssid])
+        .stdin(Stdio::null())
+        .output();
+
+    match up_res {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => {
+            let err_msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let msg = if err_msg.is_empty() {
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            } else {
+                err_msg
+            };
+            Err(msg)
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
