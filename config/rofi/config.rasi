@@ -10,9 +10,10 @@ configuration {
     sort: false;
     normalize-match: true;
     disable-history: false;
-    hover-select: true;
+    hover-select: false;
     me-select-entry: "";
     me-accept-entry: "MousePrimary";
+    scroll-method: 1;
     display-drun: "󰍉";
     run-command: "uwsm app -- {cmd}";
     run-shell-command: "uwsm app -- {terminal} -e {cmd}";
@@ -22,6 +23,19 @@ configuration {
 
 /* Лаунчер */
 entry { placeholder: "Поиск приложений…"; }
-listview { lines: 7; }
+listview {
+    lines: 7;
+    scrollbar: true;
+    scrollbar-width: 6px;
+    cycle: false;
+}
+
+scrollbar {
+    handle-width: 6px;
+    handle-color: @primary;
+    border-radius: 4px;
+    background-color: @line-soft;
+    margin: 0px 0px 0px 8px;
+}
 element-icon { size: 30px; }
 element-text { font: "JetBrainsMono Nerd Font Bold 10.5"; }

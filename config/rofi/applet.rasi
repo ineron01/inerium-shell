@@ -1,7 +1,8 @@
 configuration {
-    hover-select: true;
+    hover-select: false;
     me-select-entry: "";
     me-accept-entry: "MousePrimary";
+    scroll-method: 1;
 }
 
 @theme "~/.config/rofi/inerium.rasi"
