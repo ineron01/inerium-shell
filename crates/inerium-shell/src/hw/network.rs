@@ -384,14 +384,12 @@ mod tests {
             let trimmed = line.trim();
             if trimmed.starts_with("Trusted:") {
                 trusted = trimmed.contains("yes");
-            } else if trimmed.starts_with("Battery Percentage:") {
-                if let Some((_, rest)) = trimmed.split_once('(') {
-                    if let Some((num_str, _)) = rest.split_once(')') {
-                        if let Ok(pct) = num_str.trim().parse::<u8>() {
-                            battery = Some(pct);
-                        }
-                    }
-                }
+            } else if trimmed.starts_with("Battery Percentage:")
+                && let Some((_, rest)) = trimmed.split_once('(')
+                && let Some((num_str, _)) = rest.split_once(')')
+                && let Ok(pct) = num_str.trim().parse::<u8>()
+            {
+                battery = Some(pct);
             }
         }
         assert!(trusted);

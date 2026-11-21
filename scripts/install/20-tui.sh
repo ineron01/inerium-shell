@@ -114,7 +114,7 @@ run_tui_prompts() {
                 local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
                 local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
                 local opt_msi="Драйвер MSI EC — msi-ec DKMS (лимит батареи 80%, чтение датчиков EC)"
-                local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (Внимание: штатный BIOS надежнее)"
+                local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (ТОЛЬКО для EC 158NIMS1.10F, в остальных — штатный BIOS)"
 
                 local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
                 if [[ "$is_msi" -eq 1 ]]; then
@@ -347,7 +347,7 @@ run_tui_prompts() {
         local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
         local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
         local opt_msi="Драйвер MSI EC — msi-ec DKMS (лимит батареи 80%, чтение датчиков EC)"
-        local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (Внимание: штатный BIOS надежнее)"
+        local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (ТОЛЬКО для EC 158NIMS1.10F, в остальных — штатный BIOS)"
 
         local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
         if [[ "$is_msi" -eq 1 ]]; then

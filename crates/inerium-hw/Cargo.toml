@@ -9,7 +9,6 @@ authors.workspace = true
 
 [features]
 default = []
-msi-ec = []
 
 [dependencies]
 inerium-i18n = { workspace = true }

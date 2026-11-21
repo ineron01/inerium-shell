@@ -815,33 +815,24 @@ pub fn replace_launcher_bind(content: &str, new_key: &str) -> String {
 
 
 pub fn detect_battery_charge_threshold() -> Option<(PathBuf, u8)> {
-    let power_dir = Path::new("/sys/class/power_supply");
-    if let Ok(entries) = fs::read_dir(power_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if name.starts_with("BAT") {
-                for node in ["charge_control_end_threshold", "charge_stop_threshold"] {
-                    let th_path = path.join(node);
-                    if th_path.exists()
-                        && let Ok(val_str) = fs::read_to_string(&th_path)
-                        && let Ok(val) = val_str.trim().parse::<u8>()
-                    {
-                        return Some((th_path, val));
-                    }
-                }
-            }
-        }
+    let backend = inerium_hw::battery::BatteryBackend::probe();
+    if backend.has_threshold() {
+        let val = backend.get_threshold() as u8;
+        let path = match &backend {
+            inerium_hw::battery::BatteryBackend::PercentageThreshold { end_path, .. } => end_path.clone(),
+            inerium_hw::battery::BatteryBackend::BinaryConservationMode { control_path, .. } => control_path.clone(),
+            inerium_hw::battery::BatteryBackend::ReadOnly { .. } => return None,
+        };
+        Some((path, val))
+    } else {
+        None
     }
-    None
 }
 
 pub fn set_battery_charge_threshold(val: u8) -> Result<(), String> {
-    if let Some((path, _)) = detect_battery_charge_threshold() {
-        fs::write(&path, format!("{val}\n")).map_err(|e| {
-            format!("Failed writing {} to {}: {e}", val, path.display())
-        })?;
-        Ok(())
+    let backend = inerium_hw::battery::BatteryBackend::probe();
+    if backend.has_threshold() {
+        backend.set_threshold(val as u32)
     } else {
         Err("No battery threshold control found in sysfs".to_string())
     }

@@ -6,39 +6,27 @@ use std::time::{Duration, Instant};
 use super::sysfs::{read_sysfs_string, read_sysfs_u32};
 
 pub enum PlatformControl {
-    #[cfg(feature = "msi-ec")]
     MsiEc { base_path: PathBuf },
     None,
 }
 
 impl PlatformControl {
     pub fn probe() -> Self {
-        #[cfg(feature = "msi-ec")]
-        {
-            let p = Path::new("/sys/devices/platform/msi-ec");
-            if p.exists() {
-                return Self::MsiEc {
-                    base_path: p.to_path_buf(),
-                };
-            }
+        let p = Path::new("/sys/devices/platform/msi-ec");
+        if p.exists() {
+            return Self::MsiEc {
+                base_path: p.to_path_buf(),
+            };
         }
         Self::None
     }
 
     pub fn has_msi_ec(&self) -> bool {
-        #[cfg(feature = "msi-ec")]
-        {
-            matches!(self, Self::MsiEc { .. })
-        }
-        #[cfg(not(feature = "msi-ec"))]
-        {
-            false
-        }
+        matches!(self, Self::MsiEc { .. })
     }
 
     pub fn get_cooler_boost(&self) -> bool {
         match self {
-            #[cfg(feature = "msi-ec")]
             Self::MsiEc { base_path } => {
                 read_sysfs_string(&base_path.join("cooler_boost"))
                     .map(|s| s == "on")
@@ -50,7 +38,6 @@ impl PlatformControl {
 
     pub fn set_cooler_boost(&self, _on: bool) {
         match self {
-            #[cfg(feature = "msi-ec")]
             Self::MsiEc { base_path } => {
                 let cb = base_path.join("cooler_boost");
                 let val = if _on { "on\n" } else { "off\n" };
@@ -65,7 +52,6 @@ impl PlatformControl {
 
     pub fn get_fan_mode(&self) -> String {
         match self {
-            #[cfg(feature = "msi-ec")]
             Self::MsiEc { base_path } => {
                 read_sysfs_string(&base_path.join("fan_mode"))
                     .unwrap_or_else(|| "advanced".to_string())
@@ -76,7 +62,6 @@ impl PlatformControl {
 
     pub fn apply_balanced_fan_curve(&self) {
         match self {
-            #[cfg(feature = "msi-ec")]
             Self::MsiEc { base_path } => {
                 let _ = fs::write(base_path.join("fan_mode"), "advanced\n");
             }
@@ -183,14 +168,11 @@ impl CoolingSubsystem {
 
     pub fn has_fan_telemetry(&self) -> bool {
         if let Ok(telem) = self.telemetry.lock()
-            && telem.has_hwmon_fans {
-                return true;
-            }
-        #[cfg(feature = "msi-ec")]
-        if matches!(self.control, PlatformControl::MsiEc { .. }) {
+            && telem.has_hwmon_fans
+        {
             return true;
         }
-        false
+        matches!(self.control, PlatformControl::MsiEc { .. })
     }
 
     pub fn get_telemetry(&self) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
@@ -201,7 +183,6 @@ impl CoolingSubsystem {
         };
 
         let (cpu_pct, gpu_pct) = match &self.control {
-            #[cfg(feature = "msi-ec")]
             PlatformControl::MsiEc { base_path } => {
                 let cp = read_sysfs_u32(&base_path.join("cpu/realtime_fan_speed"));
                 let gp = read_sysfs_u32(&base_path.join("gpu/realtime_fan_speed"));

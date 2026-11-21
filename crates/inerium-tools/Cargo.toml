@@ -9,7 +9,7 @@ authors.workspace = true
 
 [features]
 default = []
-msi-ec = ["inerium-hw/msi-ec"]
+msi-ec = []
 
 [[bin]]
 name = "msi-fan-regulator"

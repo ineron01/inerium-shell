@@ -13,6 +13,7 @@ install_msi_ec_addon() {
             [[ -f "$f" ]] && headers+=("$(<"$f")-headers")
         done
         install_pkgs dkms msi-ec-dkms-git envycontrol "${headers[@]}"
+        MSI_EC_REBUILT=1
     fi
 
     local sys_dir="$REPO_DIR/system/msi-cooling"
@@ -29,27 +30,30 @@ install_msi_ec_addon() {
             install_root_if_changed 644 "$sys_dir/modprobe.d/msi-fan-regulator.conf" /etc/modprobe.d/msi-fan-regulator.conf
             install_root_if_changed 644 "$sys_dir/modules-load.d/msi-fan-regulator.conf" /etc/modules-load.d/msi-fan-regulator.conf
             if [[ -f "$sys_dir/sudoers.d/inerium-msi.template" ]]; then
-                local sudo_tmp
-                sudo_tmp="$(mktemp)"
-                sed "s/__USER__/$USER/g" "$sys_dir/sudoers.d/inerium-msi.template" > "$sudo_tmp"
-                if visudo -cf "$sudo_tmp" >/dev/null 2>&1; then
-                    install_root_if_changed 440 "$sudo_tmp" /etc/sudoers.d/inerium-msi
-                fi
-                rm -f "$sudo_tmp"
+                install_sudoers_template "$sys_dir/sudoers.d/inerium-msi.template" /etc/sudoers.d/inerium-msi
             fi
             install_root_if_changed 644 "$sys_dir/systemd/system/msi-fan-regulator.service" /etc/systemd/system/msi-fan-regulator.service
         fi
 
-        if [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+        local fan_bin_src=""
+        if [[ -f "$REPO_DIR/target/release/msi-fan-regulator" ]]; then
+            fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
+        elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
             run_step "Compiling msi-fan-regulator (--features msi-ec)..." \
                 cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator
-            install_root_if_changed 755 "$REPO_DIR/target/release/msi-fan-regulator" /usr/local/bin/msi-fan-regulator
-            sudo udevadm control --reload-rules || true
-            sudo udevadm trigger || true
-            sudo systemctl daemon-reload || true
-            sudo systemctl enable msi-fan-regulator.service || true
-            if systemctl is-active --quiet msi-fan-regulator.service 2>/dev/null; then
-                sudo systemctl restart msi-fan-regulator.service || true
+            fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
+        fi
+
+        if [[ -n "$fan_bin_src" && -f "$fan_bin_src" ]]; then
+            install_root_if_changed 755 "$fan_bin_src" /usr/local/bin/msi-fan-regulator
+            if [[ "$DRY_RUN" -eq 0 ]]; then
+                sudo udevadm control --reload-rules || true
+                sudo udevadm trigger || true
+                sudo systemctl daemon-reload || true
+                sudo systemctl enable msi-fan-regulator.service || true
+                if systemctl is-active --quiet msi-fan-regulator.service 2>/dev/null; then
+                    sudo systemctl restart msi-fan-regulator.service || true
+                fi
             fi
         fi
     fi
