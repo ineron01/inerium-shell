@@ -86,18 +86,34 @@ fn make_color_swatch_static(r: u8, g: u8, b: u8, width: i32, height: i32, radius
     area.set_draw_func(move |_area, cr, w, h| {
         let w = w as f64;
         let h = h as f64;
-        if radius > 0.0 {
-            let rad = radius.min(w / 2.0).min(h / 2.0);
+        let inset = 0.5;
+        let w_in = (w - inset * 2.0).max(1.0);
+        let h_in = (h - inset * 2.0).max(1.0);
+        let rad = (radius - inset).max(0.0).min(w_in / 2.0).min(h_in / 2.0);
+
+        if rad > 0.0 {
             cr.new_sub_path();
-            cr.arc(w - rad, rad, rad, -std::f64::consts::FRAC_PI_2, 0.0);
-            cr.arc(w - rad, h - rad, rad, 0.0, std::f64::consts::FRAC_PI_2);
-            cr.arc(rad, h - rad, rad, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-            cr.arc(rad, rad, rad, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+            cr.arc(inset + w_in - rad, inset + rad, rad, -std::f64::consts::FRAC_PI_2, 0.0);
+            cr.arc(inset + w_in - rad, inset + h_in - rad, rad, 0.0, std::f64::consts::FRAC_PI_2);
+            cr.arc(inset + rad, inset + h_in - rad, rad, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+            cr.arc(inset + rad, inset + rad, rad, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
             cr.close_path();
-            cr.clip();
+        } else {
+            cr.rectangle(inset, inset, w_in, h_in);
         }
+
         cr.set_source_rgb(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
-        let _ = cr.paint();
+        let _ = cr.fill_preserve();
+
+        // Adaptive high-contrast rim: prevents swatch from blending into any light/dark background
+        let lum = 0.299 * (r as f64 / 255.0) + 0.587 * (g as f64 / 255.0) + 0.114 * (b as f64 / 255.0);
+        cr.set_line_width(1.0);
+        if lum < 0.45 {
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.28);
+        } else {
+            cr.set_source_rgba(0.0, 0.0, 0.0, 0.24);
+        }
+        let _ = cr.stroke();
     });
     area
 }
@@ -222,8 +238,8 @@ impl SimpleComponent for AppearanceModel {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::Automatic),
                 set_propagate_natural_height: true,
-                set_min_content_height: 420,
-                set_max_content_height: 580,
+                set_min_content_height: 480,
+                set_max_content_height: 680,
                 set_vexpand: true,
 
                 gtk4::Box {
@@ -331,13 +347,17 @@ impl SimpleComponent for AppearanceModel {
                         // Horizontal Wallpapers Strip
                         gtk4::ScrolledWindow {
                             set_policy: (PolicyType::Automatic, PolicyType::Never),
-                            set_min_content_height: 116,
+                            set_overlay_scrolling: false,
+                            set_propagate_natural_height: true,
+                            set_min_content_height: 154,
                             set_propagate_natural_width: true,
 
                             #[name = "wall_strip"]
                             gtk4::Box {
                                 set_orientation: Orientation::Horizontal,
                                 set_spacing: 8,
+                                set_margin_bottom: 6,
+                                set_margin_top: 2,
                             },
                         },
                     },
@@ -450,6 +470,12 @@ impl SimpleComponent for AppearanceModel {
                     && canon_user.starts_with(canon_dir)
                 {
                     let _ = std::fs::remove_file(&canon_user);
+                    if let Some(file_name) = canon_user.file_name().and_then(|f| f.to_str()) {
+                        let thumb = hw::cache_dir()
+                            .join("inerium-wall-thumbs")
+                            .join(format!("{}.84x48.png", file_name));
+                        let _ = std::fs::remove_file(thumb);
+                    }
                     self.wallpapers = hw::list_available_wallpapers();
                 }
             }
@@ -705,12 +731,20 @@ fn populate_theme_list(list_box: &GtkBox, themes: &[ThemeItem], sender: &Compone
         txt.append(&desc_lbl);
         inner.append(&txt);
 
-        // Theme palette dots preview
-        let palette_box = GtkBox::new(Orientation::Horizontal, 3);
+        // Theme palette dots preview in high-contrast tray
+        let palette_box = GtkBox::new(Orientation::Horizontal, 4);
+        palette_box.add_css_class("theme-palette-tray");
         palette_box.set_valign(gtk4::Align::Center);
-        for col_str in [&item.bg, &item.surface, &item.accent, &item.fg] {
+        let labels = [
+            tr("Background", "Фон"),
+            tr("Surface", "Панели"),
+            tr("Accent", "Акцент"),
+            tr("Foreground", "Текст"),
+        ];
+        for (i, col_str) in [&item.bg, &item.surface, &item.accent, &item.fg].iter().enumerate() {
             if let Some((r, g, b)) = parse_hex_color(col_str) {
                 let dot = make_color_swatch_static(r, g, b, 12, 12, 6.0);
+                dot.set_tooltip_text(Some(&format!("{}: {}", labels[i], col_str)));
                 palette_box.append(&dot);
             }
         }
@@ -1405,5 +1439,5 @@ where
     let mut controller = AppearanceModel::builder().launch(init).detach();
     controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 450, 560)
+    (root, 455, 640)
 }

@@ -878,6 +878,20 @@ window.power-window {
     color: @cc_fg_bright;
     border-color: @cc_primary_border;
 }
+.theme-palette-tray {
+    background-color: alpha(@cc_bg, 0.7);
+    border: 1px solid @cc_line;
+    border-radius: 99px;
+    padding: 3px 6px;
+    margin-left: 4px;
+}
+.theme-card:hover .theme-palette-tray {
+    border-color: @cc_line_light;
+}
+.theme-card.active .theme-palette-tray {
+    background-color: alpha(@cc_bg, 0.95);
+    border-color: @cc_primary_border;
+}
 
 /* Custom Background Studio */
 .custom-bg-card {
@@ -1040,11 +1054,18 @@ scrollbar {
     background: transparent;
     border: none;
 }
+scrollbar.horizontal {
+    margin-top: 6px;
+    margin-bottom: 2px;
+}
 scrollbar slider {
     min-width: 4px;
     min-height: 4px;
     border-radius: 4px;
     background-color: @cc_surface_active;
+}
+scrollbar.horizontal slider {
+    min-height: 5px;
 }
 scrollbar slider:hover {
     background-color: @cc_primary_border;
