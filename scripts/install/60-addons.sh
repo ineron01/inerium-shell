@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# scripts/install/60-addons.sh — Optional Modules: MSI Cooling, Camera, noVPN
+# scripts/install/60-addons.sh — Optional Modules: MSI Cooling, Camera, noVPN, GitHub, Converter
 # ============================================================================
 
 install_msi_ec_addon() {
@@ -36,16 +36,19 @@ install_msi_ec_addon() {
         fi
 
         local fan_bin_src=""
-        if [[ -f "$REPO_DIR/target/release/msi-fan-regulator" ]]; then
+        if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/msi-fan-regulator" ]]; then
+            fan_bin_src="${RELEASE_DIST_DIR}/msi-fan-regulator"
+        elif [[ -f "$REPO_DIR/target/release/msi-fan-regulator" ]]; then
             fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
         elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
-            run_step "Compiling msi-fan-regulator (--features msi-ec)..." \
+            run_live_step "Compiling msi-fan-regulator (--features msi-ec)..." \
                 cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator
             fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
         fi
 
         if [[ -n "$fan_bin_src" && -f "$fan_bin_src" ]]; then
             install_root_if_changed 755 "$fan_bin_src" /usr/local/bin/msi-fan-regulator
+            manifest_record_system_file "/usr/local/bin/msi-fan-regulator"
             if [[ "$DRY_RUN" -eq 0 ]]; then
                 sudo udevadm control --reload-rules || true
                 sudo udevadm trigger || true
@@ -66,8 +69,14 @@ install_camera_addon() {
     manifest_record_binary "$HOME/.local/bin/inerium-camera"
     manifest_record_symlink "$HOME/.local/bin/phone-webcam" "inerium-camera"
     manifest_record_symlink "$HOME/.local/bin/phone-webcam-gui" "inerium-camera"
+
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
-        install_pkgs v4l2loopback-dkms v4l2loopback-utils android-tools scrcpy gstreamer gst-plugins-base-libs gst-plugins-good
+        local -a headers=()
+        local f
+        for f in /usr/lib/modules/*/pkgbase; do
+            [[ -f "$f" ]] && headers+=("$(<"$f")-headers")
+        done
+        install_pkgs dkms v4l2loopback-dkms v4l2loopback-utils android-tools scrcpy gstreamer gst-plugins-base-libs gst-plugins-good "${headers[@]}"
     fi
 
     local cam_sys="$REPO_DIR/system/camera"
@@ -77,15 +86,17 @@ install_camera_addon() {
         install_root_if_changed 644 "$cam_sys/modules-load.d/v4l2loopback.conf" /etc/modules-load.d/v4l2loopback.conf
     fi
 
-    if [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+    if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/inerium-camera" ]]; then
+        install -m 755 "${RELEASE_DIST_DIR}/inerium-camera" "$HOME/.local/bin/inerium-camera"
+    elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
         if [[ ! -x "$HOME/.local/bin/inerium-camera" || "$INSTALL_MODE" == "source" ]]; then
-            run_step "Compiling inerium-camera..." \
+            run_live_step "Compiling inerium-camera..." \
                 cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-camera
             install -m 755 "$REPO_DIR/target/release/inerium-camera" "$HOME/.local/bin/inerium-camera"
         fi
-        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam"
-        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
-    elif [[ -x "$HOME/.local/bin/inerium-camera" ]]; then
+    fi
+
+    if [[ -x "$HOME/.local/bin/inerium-camera" || "$DRY_RUN" -eq 1 ]]; then
         ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam"
         ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
     fi
@@ -169,41 +180,76 @@ install_gdrive_addon() {
 install_converter_addon() {
     log "Setting up Dolphin Converter addon (media/doc conversion & ONNX background removal)..."
     manifest_record_addon "converter"
+    manifest_record_binary "$HOME/.local/bin/dolphin-convert"
+
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
         install_pkgs ffmpeg imagemagick poppler pandoc-cli typst libreoffice-fresh onnxruntime-cpu
+    fi
+
+    if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/dolphin-convert" ]]; then
+        install -m 755 "${RELEASE_DIST_DIR}/dolphin-convert" "$HOME/.local/bin/dolphin-convert"
+    elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+        run_live_step "Compiling dolphin-convert..." \
+            cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p dolphin-converter
+        install -m 755 "$REPO_DIR/target/release/dolphin-convert" "$HOME/.local/bin/dolphin-convert"
     fi
 
     log "Linking Dolphin KIO servicemenus into ~/.local/share/kio/servicemenus..."
     mkdir -p "$HOME/.local/share/kio/servicemenus"
     for desktop in "$REPO_DIR"/local/share/kio/servicemenus/*.desktop; do
         [[ -f "$desktop" ]] || continue
-        local name="$(basename "$desktop")"
+        local name
+        name="$(basename "$desktop")"
         link_item "$desktop" "$HOME/.local/share/kio/servicemenus/$name"
     done
 
     fetch_silueta_model
 }
 
+install_github_addon() {
+    log "Setting up GitHub CLI addon..."
+    manifest_record_addon "github"
+    if [[ "$SKIP_PKGS" -eq 0 ]]; then
+        install_pkgs github-cli
+    fi
+
+    local gh_first_login="$REPO_DIR/first-login.d/10-github"
+    if [[ -f "$gh_first_login" ]]; then
+        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        link_item "$gh_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github"
+    fi
+}
+
 deploy_selected_addons() {
     if [[ "$WITH_GDRIVE" -eq 1 ]]; then
-        run_step "Configuring Google Drive addon..." install_gdrive_addon
+        run_live_step "Configuring Google Drive addon..." install_gdrive_addon
     else
         rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive"
     fi
+
     if [[ "$WITH_CONVERTER" -eq 1 ]]; then
-        run_step "Configuring Dolphin Converter addon..." install_converter_addon
+        run_live_step "Configuring Dolphin Converter addon..." install_converter_addon
     elif [[ "$FETCH_MODEL" -eq 1 ]]; then
         fetch_silueta_model
     fi
+
     if [[ "$WITH_MSI_EC" -eq 1 ]]; then
-        run_step "Configuring MSI EC / Cooling addon..." install_msi_ec_addon
+        run_live_step "Configuring MSI EC / Cooling addon..." install_msi_ec_addon
     fi
+
     if [[ "$WITH_CAMERA" -eq 1 ]]; then
-        run_step "Configuring Inerium Camera addon..." install_camera_addon
+        run_live_step "Configuring Inerium Camera addon..." install_camera_addon
     fi
+
     if [[ "$WITH_NOVPN" -eq 1 ]]; then
-        run_step "Configuring noVPN addon..." install_novpn_addon
+        run_live_step "Configuring noVPN addon..." install_novpn_addon
     else
         rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn"
+    fi
+
+    if [[ "${WITH_GITHUB:-0}" -eq 1 ]]; then
+        run_live_step "Configuring GitHub CLI addon..." install_github_addon
+    else
+        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github"
     fi
 }

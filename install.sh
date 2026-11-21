@@ -30,9 +30,12 @@ WITH_NOVPN=0
 WITH_CONVERTER=0
 WITH_GDRIVE=0
 WITH_SYSUPGRADE=0
+WITH_GITHUB=0
 RESTORE_ASSETS=0
 INSTALL_LANG=""
 MSI_EC_REBUILT=0
+ALL_ADDONS_REQUESTED=0
+RELEASE_DIST_DIR=""
 
 RELEASE_BASE_URL="${INERIUM_RELEASE_URL:-https://github.com/ineron01/inerium-shell/releases/latest/download}"
 BIN_ARCHIVE="inerium-binaries-linux-x86_64.tar.gz"
@@ -58,7 +61,8 @@ Options:
   --with-camera      Install Inerium Camera (Android phone webcam via USB/Wi-Fi)
   --with-msi-ec      Install patched msi-ec DKMS & msi-fan-regulator (for MSI laptops)
   --with-novpn       Install noVPN split-tunneling service and helper scripts
-  --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-msi-ec, --with-novpn)
+  --with-github      Install GitHub CLI and enable first-login authentication step
+  --all-addons       Install all optional add-ons (--with-gdrive, --with-converter, --with-camera, --with-novpn, --with-github, and --with-msi-ec if MSI hardware)
   --lang [en|ru]     Set installer language (en or ru)
   --workspaces N     Workspaces per monitor (1-9, default: 3)
   --update           Update existing installation (keeps installed modules, pulls latest binaries)
@@ -103,9 +107,18 @@ while [[ $# -gt 0 ]]; do
         --with-msi-ec)     WITH_MSI_EC=1; shift ;;
         --with-fan-regulator) WITH_FAN_REGULATOR=1; WITH_MSI_EC=1; shift ;;
         --with-novpn)      WITH_NOVPN=1; shift ;;
-        --all-addons)      WITH_CONVERTER=1; FETCH_MODEL=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_MSI_EC=1; WITH_NOVPN=1; shift ;;
-        --lang)            INSTALL_LANG="${2:-}"; shift 2 ;;
-        --workspaces)      WORKSPACES_PER_MON="${2:-}"; shift 2 ;;
+        --with-github)     WITH_GITHUB=1; shift ;;
+        --all-addons)      WITH_CONVERTER=1; FETCH_MODEL=1; WITH_GDRIVE=1; WITH_CAMERA=1; WITH_NOVPN=1; WITH_GITHUB=1; ALL_ADDONS_REQUESTED=1; shift ;;
+        --lang)
+            if [[ $# -lt 2 || -z "$2" || ( "$2" != "en" && "$2" != "ru" ) ]]; then
+                echo "Invalid --lang value (expected 'en' or 'ru')." >&2; exit 1
+            fi
+            INSTALL_LANG="$2"; shift 2 ;;
+        --workspaces)
+            if [[ $# -lt 2 || ! "$2" =~ ^[1-9]$ ]]; then
+                echo "Invalid --workspaces value (expected 1-9)." >&2; exit 1
+            fi
+            WORKSPACES_PER_MON="$2"; shift 2 ;;
         --non-interactive|-y) NON_INTERACTIVE=1; shift ;;
         -h|--help)         usage; exit 0 ;;
         *)                 echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -123,6 +136,15 @@ fi
 source "$SCRIPTS_DIR/00-helpers.sh"
 source "$SCRIPTS_DIR/05-manifest.sh"
 source "$SCRIPTS_DIR/10-detect.sh"
+
+if [[ "$ALL_ADDONS_REQUESTED" -eq 1 ]]; then
+    if detect_is_msi_hardware; then
+        WITH_MSI_EC=1
+    else
+        WITH_MSI_EC=0
+    fi
+fi
+
 source "$SCRIPTS_DIR/20-tui.sh"
 source "$SCRIPTS_DIR/30-packages.sh"
 source "$SCRIPTS_DIR/40-binaries.sh"
@@ -130,8 +152,8 @@ source "$SCRIPTS_DIR/50-configs.sh"
 source "$SCRIPTS_DIR/60-addons.sh"
 source "$SCRIPTS_DIR/70-summary.sh"
 
-export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed download_file warn log
-export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS RESTORE_ASSETS IS_UPDATE
+export -f ensure_paru install_pkgs install_pkglist install_from_binaries install_root_if_changed download_file warn log run_live_step
+export RELEASE_BASE_URL BIN_ARCHIVE BIN_SHA USER_BINS_STR DRY_RUN INSTALL_MODE SKIP_BUILD UPDATE_CONFIGS RESTORE_ASSETS IS_UPDATE WITH_GITHUB RELEASE_DIST_DIR
 
 # ============================================================================
 # Main Execution Pipeline
@@ -142,6 +164,9 @@ init_log_file
 cleanup_all_on_exit() {
     restore_terminal
     cleanup_manifest_tmp
+    if [[ -n "${RELEASE_DIST_DIR:-}" && -d "$RELEASE_DIST_DIR" ]]; then
+        rm -rf "$RELEASE_DIST_DIR"
+    fi
     if [[ -n "${INERIUM_SUDO_KEEPALIVE:-}" ]]; then
         kill "$INERIUM_SUDO_KEEPALIVE" 2>/dev/null || true
     fi
@@ -213,6 +238,12 @@ deploy_selected_addons
 # 8. Record installation manifest and prune obsolete files
 log "[8/8] Finalizing install manifest..."
 prune_obsolete_and_save_manifest
+refresh_desktop_caches
+
+if [[ "$INSTALL_MODE" == "source" && "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+    log "Cleaning temporary build cache to free disk space..."
+    cargo clean --manifest-path "$REPO_DIR/Cargo.toml" 2>/dev/null || true
+fi
 
 # 9. Summary & completion
 if [[ "$DRY_RUN" -eq 0 ]]; then

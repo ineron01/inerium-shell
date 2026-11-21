@@ -58,9 +58,9 @@ run_tui_prompts() {
         is_msi=1
     fi
 
-    # Update Mode prompt workflow
-    if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
-        if [[ -z "$INSTALL_LANG" ]]; then
+    # Select language if not explicitly provided
+    if [[ -z "$INSTALL_LANG" ]]; then
+        if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
             if [[ -f "$HOME/.config/locale.conf" ]] && grep -q "ru_RU" "$HOME/.config/locale.conf"; then
                 INSTALL_LANG="ru"
             elif [[ "${LANG:-}" =~ ^ru || "${LC_ALL:-}" =~ ^ru ]]; then
@@ -68,8 +68,102 @@ run_tui_prompts() {
             else
                 INSTALL_LANG="en"
             fi
+        else
+            local def_lang="Русский"
+            if [[ ! "${LANG:-}" =~ ^ru ]] && [[ ! "${LC_ALL:-}" =~ ^ru ]]; then
+                def_lang="English"
+            fi
+            local lang_choice
+            lang_choice="$(gum choose --header "Select installer language / Выберите язык установки:" \
+                --selected "$def_lang" "Русский" "English")"
+            if [[ "$lang_choice" == "Русский" ]]; then
+                INSTALL_LANG="ru"
+                ensure_console_cyrillic_font
+            else
+                INSTALL_LANG="en"
+            fi
+        fi
+    fi
+
+    # Define localized addon label strings (CRITICAL: zero commas in any string to prevent gum --selected splitting bugs)
+    local opt_gdrive opt_converter opt_cam opt_novpn opt_github opt_greeter opt_msi opt_fan
+    if [[ "$INSTALL_LANG" == "ru" ]]; then
+        opt_gdrive="Google Drive — интеграция облака в Dolphin (rclone)"
+        opt_converter="Dolphin Converter — конвертация файлов (LibreOffice / Pandoc / ONNX)"
+        opt_cam="Inerium Camera — веб-камера из Android (USB или Wi-Fi)"
+        opt_novpn="noVPN — запуск отдельных программ в обход VPN"
+        opt_github="GitHub CLI — вход git push по HTTPS и подпись коммитов"
+        opt_greeter="Экран входа — inerium-greeter дисплейный менеджер greetd"
+        opt_msi="Драйвер MSI EC — msi-ec DKMS (лимит батареи 80% и датчики EC)"
+        opt_fan="Регулятор кулеров MSI — msi-fan-regulator (только для EC 158NIMS1.10F)"
+    else
+        opt_gdrive="Google Drive — cloud integration in Dolphin (rclone)"
+        opt_converter="Dolphin Converter — media/doc conversion & ONNX background removal"
+        opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
+        opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
+        opt_github="GitHub CLI — login git push over HTTPS and commit signing"
+        opt_greeter="Login Screen — inerium-greeter greetd display manager"
+        opt_msi="MSI EC Driver — msi-ec DKMS (80% battery limit & EC telemetry)"
+        opt_fan="MSI Fan Regulator — custom curve daemon (fan curve control)"
+    fi
+
+    # Helper: Build addons item array and selected comma-separated string
+    local -a addon_items=()
+    local sel=""
+    build_addons_list_and_sel() {
+        addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam" "$opt_github")
+        if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
+            addon_items+=("$opt_greeter")
+        fi
+        if [[ "$is_msi" -eq 1 ]]; then
+            addon_items+=("$opt_msi" "$opt_fan")
         fi
 
+        local -a sel_array=()
+        [[ "${WITH_GDRIVE:-0}" -eq 1 ]] && sel_array+=("$opt_gdrive")
+        [[ "${WITH_CONVERTER:-0}" -eq 1 ]] && sel_array+=("$opt_converter")
+        [[ "${WITH_NOVPN:-0}" -eq 1 ]] && sel_array+=("$opt_novpn")
+        [[ "${WITH_CAMERA:-0}" -eq 1 ]] && sel_array+=("$opt_cam")
+        [[ "${WITH_GITHUB:-0}" -eq 1 ]] && sel_array+=("$opt_github")
+        if [[ "${IS_UPDATE:-0}" -eq 1 && "${WITH_GREETER:-0}" -eq 1 ]]; then
+            sel_array+=("$opt_greeter")
+        fi
+        if [[ "$is_msi" -eq 1 ]]; then
+            [[ "${WITH_MSI_EC:-0}" -eq 1 ]] && sel_array+=("$opt_msi")
+            [[ "${WITH_FAN_REGULATOR:-0}" -eq 1 ]] && sel_array+=("$opt_fan")
+        fi
+
+        local IFS=','
+        sel="${sel_array[*]}"
+    }
+
+    # Helper: Apply selected items from gum multiselect output
+    apply_chosen_addons() {
+        local chosen="$1"
+        WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_NOVPN=0; WITH_GITHUB=0
+        WITH_MSI_EC=0; WITH_FAN_REGULATOR=0
+        if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
+            WITH_GREETER=0
+        fi
+
+        if grep -Fqx "$opt_gdrive" <<< "$chosen"; then WITH_GDRIVE=1; fi
+        if grep -Fqx "$opt_converter" <<< "$chosen"; then WITH_CONVERTER=1; FETCH_MODEL=1; fi
+        if grep -Fqx "$opt_cam" <<< "$chosen"; then WITH_CAMERA=1; fi
+        if grep -Fqx "$opt_novpn" <<< "$chosen"; then WITH_NOVPN=1; fi
+        if grep -Fqx "$opt_github" <<< "$chosen"; then WITH_GITHUB=1; fi
+        if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
+            if grep -Fqx "$opt_greeter" <<< "$chosen"; then WITH_GREETER=1; fi
+        fi
+        if [[ "$is_msi" -eq 1 ]]; then
+            if grep -Fqx "$opt_msi" <<< "$chosen"; then WITH_MSI_EC=1; fi
+            if grep -Fqx "$opt_fan" <<< "$chosen"; then WITH_FAN_REGULATOR=1; WITH_MSI_EC=1; fi
+        fi
+    }
+
+    # ========================================================================
+    # Update Mode Workflow
+    # ========================================================================
+    if [[ "${IS_UPDATE:-0}" -eq 1 ]]; then
         if [[ "$INSTALL_LANG" == "ru" ]]; then
             gum style \
                 --border rounded \
@@ -84,6 +178,8 @@ run_tui_prompts() {
                 "Текущая конфигурация:"
                 "  GPU:                 $gpu_info"
                 "  Дисплейный менеджер: $dm_info"
+                "  inerium-greeter:     $([[ "$WITH_GREETER" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
+                "  GitHub CLI:          $([[ "${WITH_GITHUB:-0}" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
                 "  noVPN:               $([[ "$WITH_NOVPN" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
                 "  Google Drive:        $([[ "$WITH_GDRIVE" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
                 "  Dolphin Converter:   $([[ "$WITH_CONVERTER" -eq 1 ]] && echo 'Включен' || echo 'Выключен')"
@@ -109,37 +205,11 @@ run_tui_prompts() {
             fi
 
             if [[ "$modify_choice" -eq 1 ]]; then
-                local opt_gdrive="Google Drive — интеграция облака в Dolphin (rclone)"
-                local opt_converter="Dolphin Converter — конвертация файлов (LibreOffice, Pandoc, ONNX)"
-                local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
-                local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
-                local opt_msi="Драйвер MSI EC — msi-ec DKMS (лимит батареи 80%, чтение датчиков EC)"
-                local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (ТОЛЬКО для EC 158NIMS1.10F, в остальных — штатный BIOS)"
-
-                local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
-                if [[ "$is_msi" -eq 1 ]]; then
-                    addon_items+=("$opt_msi" "$opt_fan")
-                fi
-
-                local sel=""
-                [[ "$WITH_GDRIVE" -eq 1 ]] && sel="${sel:+$sel,}$opt_gdrive"
-                [[ "$WITH_CONVERTER" -eq 1 ]] && sel="${sel:+$sel,}$opt_converter"
-                [[ "$WITH_NOVPN" -eq 1 ]] && sel="${sel:+$sel,}$opt_novpn"
-                [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
-                [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
-                [[ "$WITH_FAN_REGULATOR" -eq 1 ]] && sel="${sel:+$sel,}$opt_fan"
-
+                build_addons_list_and_sel
                 local header_addons="Выберите состав модулей (клавиша 'x' — отметить/снять, Enter — подтвердить):"
                 local chosen_addons
                 chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "${addon_items[@]}")"
-
-                WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_FAN_REGULATOR=0; WITH_NOVPN=0
-                [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
-                [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
-                [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
-                [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
-                [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
-                [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+                apply_chosen_addons "$chosen_addons"
             else
                 log "Сохранение текущего набора модулей. Запуск быстрого обновления..."
             fi
@@ -200,6 +270,8 @@ run_tui_prompts() {
                 "Current Configuration:"
                 "  GPU:             $gpu_info"
                 "  Display Manager: $dm_info"
+                "  inerium-greeter: $([[ "$WITH_GREETER" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
+                "  GitHub CLI:      $([[ "${WITH_GITHUB:-0}" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
                 "  noVPN:           $([[ "$WITH_NOVPN" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
                 "  Google Drive:    $([[ "$WITH_GDRIVE" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
                 "  Converter:       $([[ "$WITH_CONVERTER" -eq 1 ]] && echo 'Enabled' || echo 'Disabled')"
@@ -225,37 +297,11 @@ run_tui_prompts() {
             fi
 
             if [[ "$modify_choice" -eq 1 ]]; then
-                local opt_gdrive="Google Drive — cloud integration in Dolphin (rclone)"
-                local opt_converter="Dolphin Converter — media/doc conversion & ONNX background removal"
-                local opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
-                local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
-                local opt_msi="MSI EC Driver — msi-ec DKMS (80% battery limit & EC telemetry)"
-                local opt_fan="MSI Fan Regulator — custom curve daemon (Warning: default BIOS cooling is safer)"
-
-                local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
-                if [[ "$is_msi" -eq 1 ]]; then
-                    addon_items+=("$opt_msi" "$opt_fan")
-                fi
-
-                local sel=""
-                [[ "$WITH_GDRIVE" -eq 1 ]] && sel="${sel:+$sel,}$opt_gdrive"
-                [[ "$WITH_CONVERTER" -eq 1 ]] && sel="${sel:+$sel,}$opt_converter"
-                [[ "$WITH_NOVPN" -eq 1 ]] && sel="${sel:+$sel,}$opt_novpn"
-                [[ "$WITH_CAMERA" -eq 1 ]] && sel="${sel:+$sel,}$opt_cam"
-                [[ "$WITH_MSI_EC" -eq 1 ]] && sel="${sel:+$sel,}$opt_msi"
-                [[ "$WITH_FAN_REGULATOR" -eq 1 ]] && sel="${sel:+$sel,}$opt_fan"
-
+                build_addons_list_and_sel
                 local header_addons="Select modules ('x' key to toggle, Enter to confirm):"
                 local chosen_addons
                 chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "${addon_items[@]}")"
-
-                WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_FAN_REGULATOR=0; WITH_NOVPN=0
-                [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
-                [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
-                [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
-                [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
-                [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
-                [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+                apply_chosen_addons "$chosen_addons"
             else
                 log "Keeping installed modules untouched. Proceeding with fast update..."
             fi
@@ -306,23 +352,9 @@ run_tui_prompts() {
         return 0
     fi
 
-    # Select language if not explicitly provided
-    if [[ -z "$INSTALL_LANG" ]]; then
-        local def_lang="Русский"
-        if [[ ! "${LANG:-}" =~ ^ru ]] && [[ ! "${LC_ALL:-}" =~ ^ru ]]; then
-            def_lang="English"
-        fi
-        local lang_choice
-        lang_choice="$(gum choose --header "Select installer language / Выберите язык установки:" \
-            --selected "$def_lang" "Русский" "English")"
-        if [[ "$lang_choice" == "Русский" ]]; then
-            INSTALL_LANG="ru"
-            ensure_console_cyrillic_font
-        else
-            INSTALL_LANG="en"
-        fi
-    fi
-
+    # ========================================================================
+    # Fresh Install Workflow
+    # ========================================================================
     if [[ "$INSTALL_LANG" == "ru" ]]; then
         gum style \
             --border rounded \
@@ -370,28 +402,11 @@ run_tui_prompts() {
             WITH_GREETER=0
         fi
 
-        local opt_gdrive="Google Drive — интеграция облака в Dolphin (rclone)"
-        local opt_converter="Dolphin Converter — конвертация файлов (LibreOffice, Pandoc, ONNX)"
-        local opt_cam="Inerium Camera — веб-камера из Android (USB/Wi-Fi)"
-        local opt_novpn="noVPN — запуск отдельных программ в обход VPN"
-        local opt_msi="Драйвер MSI EC — msi-ec DKMS (лимит батареи 80%, чтение датчиков EC)"
-        local opt_fan="Регулятор кулеров MSI — msi-fan-regulator (ТОЛЬКО для EC 158NIMS1.10F, в остальных — штатный BIOS)"
-
-        local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
-        if [[ "$is_msi" -eq 1 ]]; then
-            addon_items+=("$opt_msi" "$opt_fan")
-        fi
-
+        build_addons_list_and_sel
         local header_addons="Дополнительные модули (клавиша 'x' — отметить/снять, Enter — подтвердить):"
         local chosen_addons
-        chosen_addons="$(gum_choose_multiselect "$header_addons" "$opt_gdrive,$opt_novpn" "${addon_items[@]}")"
-        WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_FAN_REGULATOR=0; WITH_NOVPN=0
-        [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
-        [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
-        [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
-        [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
-        [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
-        [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+        chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "${addon_items[@]}")"
+        apply_chosen_addons "$chosen_addons"
 
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
             local cfg_inst_fresh="Перезаписать на стандартные Inerium (существующие сохранятся в .bak)"
@@ -406,7 +421,6 @@ run_tui_prompts() {
                 UPDATE_CONFIGS=0
             fi
         fi
-
     else
         gum style \
             --border rounded \
@@ -454,28 +468,11 @@ run_tui_prompts() {
             WITH_GREETER=0
         fi
 
-        local opt_gdrive="Google Drive — cloud integration in Dolphin (rclone)"
-        local opt_converter="Dolphin Converter — media/doc conversion & ONNX background removal"
-        local opt_cam="Inerium Camera — Android phone webcam over USB/Wi-Fi"
-        local opt_novpn="noVPN — run specific apps bypassing VPN tunnel"
-        local opt_msi="MSI EC Driver — msi-ec DKMS (80% battery limit & EC telemetry)"
-        local opt_fan="MSI Fan Regulator — custom curve daemon (Warning: default BIOS cooling is safer)"
-
-        local -a addon_items=("$opt_gdrive" "$opt_converter" "$opt_novpn" "$opt_cam")
-        if [[ "$is_msi" -eq 1 ]]; then
-            addon_items+=("$opt_msi" "$opt_fan")
-        fi
-
+        build_addons_list_and_sel
         local header_addons="Optional Add-on Modules ('x' key to toggle, Enter to confirm):"
         local chosen_addons
-        chosen_addons="$(gum_choose_multiselect "$header_addons" "$opt_gdrive,$opt_novpn" "${addon_items[@]}")"
-        WITH_GDRIVE=0; WITH_CONVERTER=0; WITH_CAMERA=0; WITH_MSI_EC=0; WITH_FAN_REGULATOR=0; WITH_NOVPN=0
-        [[ "$chosen_addons" =~ "$opt_gdrive" ]] && WITH_GDRIVE=1
-        [[ "$chosen_addons" =~ "$opt_converter" ]] && WITH_CONVERTER=1
-        [[ "$chosen_addons" =~ "$opt_cam" ]] && WITH_CAMERA=1
-        [[ "$chosen_addons" =~ "$opt_msi" ]] && WITH_MSI_EC=1
-        [[ "$chosen_addons" =~ "$opt_fan" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
-        [[ "$chosen_addons" =~ "$opt_novpn" ]] && WITH_NOVPN=1
+        chosen_addons="$(gum_choose_multiselect "$header_addons" "$sel" "${addon_items[@]}")"
+        apply_chosen_addons "$chosen_addons"
 
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
             local cfg_inst_fresh="Overwrite with standard Inerium configs (existing backed up to .bak)"

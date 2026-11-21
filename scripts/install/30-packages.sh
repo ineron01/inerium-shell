@@ -66,9 +66,9 @@ install_pkgs() {
 
     if [[ ${#aur_pkgs[@]} -gt 0 ]]; then
         if [[ "$DRY_RUN" -eq 1 ]]; then
-            printf '[DRY-RUN] paru -S --needed --noconfirm --skipreview --useask --sudoloop %s\n' "${aur_pkgs[*]}"
+            printf '[DRY-RUN] paru -S --needed --noconfirm --skipreview --sudoloop %s\n' "${aur_pkgs[*]}"
         else
-            paru -S --needed --noconfirm --skipreview --useask --sudoloop "${aur_pkgs[@]}"
+            paru -S --needed --noconfirm --skipreview --sudoloop "${aur_pkgs[@]}"
         fi
     fi
 }
@@ -100,7 +100,7 @@ install_base_packages() {
     if [[ "${WITH_SYSUPGRADE:-0}" -eq 1 ]]; then
         local title="Upgrading system (pacman -Syu)..."
         [[ "${INSTALL_LANG:-}" == "ru" ]] && title="Полное обновление системы (pacman -Syu)..."
-        run_step "$title" sudo pacman -Syu --noconfirm
+        run_live_step "$title" sudo pacman -Syu --noconfirm
     else
         local msg="Fast dependency check (resolving missing packages only)..."
         [[ "${INSTALL_LANG:-}" == "ru" ]] && msg="Быстрая проверка зависимостей (установка только недостающих пакетов)..."
@@ -111,34 +111,61 @@ install_base_packages() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] ensure_paru\n'
         else
-            run_step "Installing AUR helper (paru)..." ensure_paru
+            run_live_step "Installing AUR helper (paru)..." ensure_paru
         fi
     fi
 
-    run_step "Installing base packages from pkglist-base.txt..." install_pkglist "$REPO_DIR/pkglist-base.txt"
+    install_base_pkglist() {
+        if ! install_pkglist "$REPO_DIR/pkglist-base.txt"; then
+            warn "Package installation failed. Your package databases may be outdated."
+            warn "Hint: run the installer with --sysupgrade (or execute 'sudo pacman -Syu')."
+            return 1
+        fi
+    }
+    run_live_step "Installing base packages from pkglist-base.txt..." install_base_pkglist
 
     if [[ "$INSTALL_MODE" == "source" && "$SKIP_BUILD" -eq 0 ]]; then
-        run_step "Installing Rust build toolchain (--from-source)..." install_pkgs rust base-devel pkgconf clang mold
+        run_live_step "Installing Rust build toolchain (--from-source)..." install_pkgs rust base-devel pkgconf clang mold
     fi
+
+    install_bibata_cursor() {
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] paru -S --needed --noconfirm --skipreview --sudoloop bibata-cursor-theme-bin\n'
+            return 0
+        fi
+        if ! paru -S --needed --noconfirm --skipreview --sudoloop bibata-cursor-theme-bin; then
+            warn "Failed to install bibata-cursor-theme-bin via paru; continuing without custom cursor..."
+        fi
+    }
 
     if [[ ! -d /usr/share/icons/Bibata-Modern-Ice && ! -d "$HOME/.local/share/icons/Bibata-Modern-Ice" ]]; then
-        run_step "Installing Bibata cursor theme..." bash -c 'paru -S --needed --noconfirm --skipreview --useask --sudoloop bibata-cursor-theme-bin || true'
+        run_live_step "Installing Bibata cursor theme..." install_bibata_cursor
     fi
 
+    install_colloid_icons() {
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] install Colloid icon theme (fast)\n'
+            return 0
+        fi
+        local tmp_colloid
+        tmp_colloid="$(mktemp -d)"
+        if git clone --depth 1 https://github.com/vinceliuice/Colloid-icon-theme.git "$tmp_colloid" 2>/dev/null; then
+            # Strip heavy scalable application icons before installation so only needed system/folder icons are built
+            rm -rf "$tmp_colloid/src/apps/scalable"
+            mkdir -p "$tmp_colloid/src/apps/scalable" "$HOME/.local/share/icons"
+            "$tmp_colloid/install.sh" -d "$HOME/.local/share/icons" -notint
+            for t in Colloid Colloid-Dark Colloid-Light; do
+                rm -rf "$HOME/.local/share/icons/$t"/apps*
+            done
+            rm -rf "$tmp_colloid"
+        else
+            warn "Git clone of Colloid-icon-theme failed; attempting AUR fallback..."
+            paru -S --needed --noconfirm --skipreview --sudoloop colloid-icon-theme-git || warn "Failed to install colloid-icon-theme-git."
+        fi
+    }
+
     if [[ ! -d /usr/share/icons/Colloid-Dark && ! -d "$HOME/.local/share/icons/Colloid-Dark" ]]; then
-        run_step "Installing Colloid icon theme..." bash -c '
-            tmp_colloid=$(mktemp -d)
-            if git clone --depth 1 https://github.com/vinceliuice/Colloid-icon-theme.git "$tmp_colloid" 2>/dev/null; then
-                "$tmp_colloid/install.sh" -d "$HOME/.local/share/icons" -notint
-                for t in Colloid Colloid-Dark Colloid-Light; do
-                    rm -rf "$HOME/.local/share/icons/$t"/apps*
-                    gtk-update-icon-cache -f "$HOME/.local/share/icons/$t" 2>/dev/null || true
-                done
-                rm -rf "$tmp_colloid"
-            else
-                paru -S --needed --noconfirm --skipreview --useask --sudoloop colloid-icon-theme-git || true
-            fi
-        '
+        run_live_step "Installing Colloid icon theme..." install_colloid_icons
     fi
 
     for svc in NetworkManager.service bluetooth.service power-profiles-daemon.service; do

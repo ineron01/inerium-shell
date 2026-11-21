@@ -46,6 +46,28 @@ is_safe_removal_target() {
     return 0
 }
 
+migrate_legacy_dir_symlinks() {
+    local config_dir
+    for config_dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar hypr; do
+        local target="$HOME/.config/$config_dir"
+        if [[ -L "$target" ]]; then
+            local raw_dest
+            raw_dest="$(readlink -f "$target" 2>/dev/null || true)"
+            if [[ "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* ]]; then
+                # Guard developer workspace on live host
+                if [[ -n "${REPO_DIR:-}" && "$raw_dest" == "$REPO_DIR"* && -d "$REPO_DIR/.git" && ( -n "${INERIUM_DEV:-}" || -n "$(git -C "$REPO_DIR" status --porcelain 2>/dev/null)" ) ]]; then
+                    continue
+                fi
+                log "Migrating legacy directory symlink to real directory: $target"
+                run "rm -f '$target'"
+                run "mkdir -p '$target'"
+            fi
+        else
+            run "mkdir -p '$HOME/.config/$config_dir'"
+        fi
+    done
+}
+
 manifest_clean_orphans() {
     log "Checking for broken symlinks and legacy artifacts..."
     local dir
@@ -62,19 +84,7 @@ manifest_clean_orphans() {
     done
 
     # Migrate legacy directory symlinks from earlier releases to real directories
-    local config_dir
-    for config_dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar; do
-        local target="$HOME/.config/$config_dir"
-        if [[ -L "$target" ]]; then
-            local raw_dest
-            raw_dest="$(readlink "$target" 2>/dev/null || true)"
-            if [[ "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* || "$raw_dest" == *Repos/inerium* ]]; then
-                log "Migrating legacy directory symlink to real directory: $target"
-                rm -f "$target"
-                mkdir -p "$target"
-            fi
-        fi
-    done
+    migrate_legacy_dir_symlinks
 
     # Known legacy obsolete paths from v0.1.0 and Kanagawa
     local legacy
@@ -100,7 +110,13 @@ manifest_clean_orphans() {
         "$HOME/.local/bin/rofi-power-menu-backup" \
         "$HOME/.local/bin/rofi-wifi-menu" \
         "$HOME/.local/bin/inerium-toggle-bluetooth.sh" \
-        "$HOME/.local/bin/inerium-toggle-network.sh"
+        "$HOME/.local/bin/inerium-toggle-network.sh" \
+        "$HOME/.local/bin/inerium-first-login" \
+        "$HOME/.local/share/applications/inerium-first-login.desktop" \
+        "$HOME/.local/share/applications/google-chrome-direct.desktop" \
+        "$HOME/.config/fish/functions/code.fish" \
+        "$HOME/.config/fish/functions/hybrid.fish" \
+        "$HOME/.config/fish/functions/integrated.fish"
     do
         if [[ -e "$legacy" || -L "$legacy" ]]; then
             log "Removing legacy file/link: $legacy"
@@ -154,8 +170,9 @@ prune_obsolete_and_save_manifest() {
                         ;;
                     CONFIG)
                         if [[ -f "$target" ]]; then
-                            log "Pruning obsolete installed config: $target"
-                            rm -f "$target"
+                            local bak="${target}.bak.${BACKUP_STAMP}"
+                            log "Backing up obsolete installed config: $target -> $bak"
+                            mv -f "$target" "$bak" 2>/dev/null || rm -f "$target"
                         fi
                         ;;
                     USER_UNIT)
@@ -213,6 +230,12 @@ run_uninstall() {
         warn "Performing fallback orphan cleanup..."
         manifest_clean_orphans
         return 0
+    fi
+
+    # Resolve installed repo directory BEFORE deleting manifest
+    local installed_repo="${REPO_DIR:-}"
+    if [[ -z "$installed_repo" && -f "$MANIFEST_FILE" ]]; then
+        installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" | head -n 1 | cut -d' ' -f3- || true)"
     fi
 
     # 1. Stop and disable system services
@@ -316,10 +339,6 @@ run_uninstall() {
     # 6. Clean cloned repository if installed in user data directory (~/.local/share/inerium/shell or legacy ~/.local/share/inerium-shell)
     local user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell"
     local legacy_user_shell_dir="${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
-    local installed_repo="${REPO_DIR:-}"
-    if [[ -z "$installed_repo" && -f "$MANIFEST_FILE" ]]; then
-        installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" | head -n 1 | cut -d' ' -f3- || true)"
-    fi
 
     for repo_candidate in "$user_shell_dir" "$legacy_user_shell_dir"; do
         if [[ -n "$installed_repo" && -d "$repo_candidate" ]]; then
@@ -345,16 +364,18 @@ detect_installed_addons_and_features() {
             case "$type" in
                 ADDON)
                     case "$target" in
-                        gdrive)    WITH_GDRIVE=1 ;;
-                        converter) WITH_CONVERTER=1 ;;
+                        gdrive)        WITH_GDRIVE=1 ;;
+                        converter)     WITH_CONVERTER=1 ;;
                         camera)        WITH_CAMERA=1 ;;
                         msi-ec)        WITH_MSI_EC=1 ;;
                         fan-regulator) WITH_FAN_REGULATOR=1; WITH_MSI_EC=1 ;;
                         novpn)         WITH_NOVPN=1 ;;
+                        github)        WITH_GITHUB=1 ;;
+                        greeter)       WITH_GREETER=1 ;;
                     esac
                     ;;
                 SYS_FILE)
-                    if [[ "$target" == *greetd* ]]; then
+                    if [[ "$target" == *inerium-greeter* ]]; then
                         WITH_GREETER=1
                     fi
                     ;;
@@ -362,16 +383,27 @@ detect_installed_addons_and_features() {
         done < "$MANIFEST_FILE"
     fi
 
-    # Live system fallback checks
-    [[ -f "$HOME/.config/systemd/user/gdrive.service" ]] && WITH_GDRIVE=1
-    [[ -d "$HOME/.local/share/kio/servicemenus" && -f "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && WITH_CONVERTER=1
-    [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && WITH_CAMERA=1
-    [[ -f "/etc/modules-load.d/msi-ec.conf" || -d "/sys/devices/platform/msi-ec" ]] && WITH_MSI_EC=1
-    [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] && WITH_FAN_REGULATOR=1 && WITH_MSI_EC=1
+    # Live system fallback checks (considering broken symlinks via -e or -L)
+    [[ -e "$HOME/.config/systemd/user/gdrive.service" || -L "$HOME/.config/systemd/user/gdrive.service" ]] && WITH_GDRIVE=1
+    [[ -e "$HOME/.local/share/kio/servicemenus/converter-document.desktop" || -L "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && WITH_CONVERTER=1
+    [[ -e "$HOME/.config/systemd/user/inerium-camera-bridge.service" || -L "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && WITH_CAMERA=1
+    [[ -e "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github" || -L "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github" ]] && WITH_GITHUB=1
+
+    # False-positive fixes:
+    # MSI EC: verify loaded module conf or udev rule, NOT sysfs platform node
+    if [[ -f "/etc/modules-load.d/msi-ec.conf" || -f "/etc/udev/rules.d/99-msi-ec.rules" ]]; then
+        WITH_MSI_EC=1
+    fi
+    if [[ -f "/etc/systemd/system/msi-fan-regulator.service" ]]; then
+        WITH_FAN_REGULATOR=1
+        WITH_MSI_EC=1
+    fi
     if [[ -f "/etc/systemd/system/novpn.service" ]] || command -v novpn >/dev/null 2>&1; then
         WITH_NOVPN=1
     fi
-    if [[ -f "/etc/greetd/config.toml" ]] || systemctl is-enabled greetd.service >/dev/null 2>&1; then
+
+    # Greeter: verify inerium-greeter configuration specifically, NOT any other DM
+    if [[ -f "/etc/greetd/inerium-greeter.json" ]] || ( [[ -f "/etc/greetd/config.toml" ]] && grep -q "inerium-greeter" /etc/greetd/config.toml 2>/dev/null ); then
         WITH_GREETER=1
     fi
 }

@@ -138,6 +138,41 @@ run_step() {
     fi
 }
 
+run_live_step() {
+    local title="$1"
+    shift
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[DRY-RUN] %s: %s\n' "$title" "$*"
+        return 0
+    fi
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        if ! sudo -n true 2>/dev/null; then
+            sudo -v
+        else
+            sudo -n -v 2>/dev/null || sudo -v
+        fi
+    fi
+    printf '\n=== %s (%s) ===\n' "$title" "$(date '+%H:%M:%S')" >> "$LOG_FILE"
+    log "$title"
+
+    local status=0
+    if [[ -w "$LOG_FILE" || -d "$(dirname "$LOG_FILE")" ]]; then
+        exec 3>&1 4>&2
+        exec > >(tee -a "$LOG_FILE") 2> >(tee -a "$LOG_FILE" >&2)
+        "$@" || status=$?
+        exec 1>&3 2>&4 3>&- 4>&-
+        sleep 0.05
+    else
+        "$@" || status=$?
+    fi
+
+    if [[ $status -ne 0 ]]; then
+        printf '\n[inerium-shell] ERROR during: %s (exit code %d)\n' "$title" "$status" >&2
+        return $status
+    fi
+    printf '[inerium-shell] [✓] %s\n' "$title"
+}
+
 link_item() {
     local src="$1"
     local dst="$2"

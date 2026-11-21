@@ -113,6 +113,7 @@ if [[ "$SKIP_PKGS" -eq 0 ]] && ! command -v paru >/dev/null 2>&1; then
         if pacman -Si paru >/dev/null 2>&1; then
             sudo pacman -S --needed --noconfirm paru
         else
+            sudo pacman -S --needed --noconfirm base-devel git
             local tmp_dir
             tmp_dir="$(mktemp -d)"
             git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp_dir/paru-bin"
@@ -128,7 +129,11 @@ mkdir -p "$(dirname "$TARGET_DIR")"
 if [[ -d "$TARGET_DIR/.git" ]]; then
     run_quiet_step "Updating repository at $TARGET_DIR..." git -C "$TARGET_DIR" pull --ff-only
 else
-    run_quiet_step "Cloning inerium-shell repository..." git clone "$REPO_URL" "$TARGET_DIR"
+    declare -a clone_opts=()
+    if [[ "$FROM_SOURCE" -eq 0 ]]; then
+        clone_opts+=(--depth 1)
+    fi
+    run_quiet_step "Cloning inerium-shell repository..." git clone "${clone_opts[@]}" "$REPO_URL" "$TARGET_DIR"
 fi
 
 if [[ ! -t 0 && -t 1 && -r /dev/tty ]]; then

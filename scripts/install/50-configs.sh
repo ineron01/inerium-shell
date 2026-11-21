@@ -3,6 +3,23 @@
 # scripts/install/50-configs.sh — Configs, templates, overlays, and services
 # ============================================================================
 
+is_russian_env() {
+    if [[ "$INSTALL_LANG" == "ru" ]]; then
+        return 0
+    fi
+    if [[ "${LANG:-}" == *ru_* || "${LC_ALL:-}" == *ru_* ]]; then
+        return 0
+    fi
+    if command -v localectl >/dev/null 2>&1; then
+        local x11_layout
+        x11_layout="$(localectl status 2>/dev/null | awk -F: '/X11 Layout/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' || true)"
+        if [[ "$x11_layout" == *"ru"* ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 deploy_user_scripts_and_menus() {
     log "Deploying user scripts & desktop entries..."
     run "mkdir -p '$HOME/.local/bin' '$HOME/.local/share/applications'"
@@ -22,13 +39,14 @@ deploy_user_scripts_and_menus() {
             [[ -e "$step" ]] || continue
             local step_name
             step_name="$(basename "$step")"
+            [[ "$step_name" == "10-github" ]] && continue  # Managed by --with-github
             [[ "$step_name" == "20-gdrive" ]] && continue  # Managed by --with-gdrive
             [[ "$step_name" == "30-novpn" ]] && continue   # Managed by --with-novpn
             link_item "$step" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/$step_name"
         done
     fi
 
-    if [[ "$INSTALL_LANG" == "ru" ]]; then
+    if is_russian_env; then
         install_root_if_changed 755 "$REPO_DIR/system/usr/local/bin/inerium-desktop-indexer" /usr/local/bin/inerium-desktop-indexer
     fi
     if [[ -f "$REPO_DIR/system/etc/udev/rules.d/99-inerium-hw.rules" ]]; then
@@ -40,24 +58,7 @@ deploy_desktop_configs() {
     log "Installing desktop configurations into ~/.config..."
 
     # Migrate legacy directory symlinks from earlier releases to real directories
-    for dir in environment.d gtk-3.0 gtk-4.0 kitty mako rofi uwsm waybar hypr; do
-        local target="$HOME/.config/$dir"
-        if [[ -L "$target" ]]; then
-            local raw_dest
-            raw_dest="$(readlink -f "$target" 2>/dev/null || true)"
-            if [[ "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* ]]; then
-                # Guard developer workspace on live host
-                if [[ "$raw_dest" == "$REPO_DIR"* && -d "$REPO_DIR/.git" && "$REPO_DIR" == *"Repos/inerium"* ]]; then
-                    continue
-                fi
-                log "Migrating legacy directory symlink to real directory: $target"
-                run "rm -f '$target'"
-                run "mkdir -p '$target'"
-            fi
-        else
-            run "mkdir -p '$HOME/.config/$dir'"
-        fi
-    done
+    migrate_legacy_dir_symlinks
 
     # 1. Environment.d
     run "mkdir -p '$HOME/.config/environment.d'"
@@ -109,10 +110,12 @@ deploy_desktop_configs() {
     # 9. Fish shell (preserve runtime fish_variables)
     run "mkdir -p '$HOME/.config/fish/functions'"
     deploy_config_file "$REPO_DIR/config/fish/config.fish" "$HOME/.config/fish/config.fish"
-    for func in "$REPO_DIR"/config/fish/functions/*.fish; do
-        [[ -f "$func" ]] || continue
-        deploy_config_file "$func" "$HOME/.config/fish/functions/$(basename "$func")"
-    done
+    if [[ -d "$REPO_DIR/config/fish/functions" ]]; then
+        for func in "$REPO_DIR"/config/fish/functions/*.fish; do
+            [[ -f "$func" ]] || continue
+            deploy_config_file "$func" "$HOME/.config/fish/functions/$(basename "$func")"
+        done
+    fi
 
     # 10. KDE / Dolphin integration
     deploy_config_file "$REPO_DIR/config/kdeglobals" "$HOME/.config/kdeglobals"
@@ -159,7 +162,7 @@ deploy_desktop_configs() {
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Dragon.colors" "$HOME/.local/share/color-schemes/Inerium-Dragon.colors"
     deploy_config_file "$REPO_DIR/local/share/color-schemes/Inerium-Lotus.colors" "$HOME/.local/share/color-schemes/Inerium-Lotus.colors"
 
-    if [[ "$DRY_RUN" -eq 0 ]]; then
+    if [[ "$DRY_RUN" -eq 0 && "${IS_UPDATE:-0}" -ne 1 && ! -f "$HOME/.config/inerium/theme.current" ]]; then
         if command -v inerium-theme >/dev/null 2>&1; then
             inerium-theme set kanagawa-dragon >/dev/null 2>&1 || true
         elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
@@ -175,15 +178,7 @@ deploy_desktop_configs() {
     for f in "$REPO_DIR"/config/hypr/config/*.lua; do
         [[ -f "$f" ]] || continue
         base="$(basename "$f")"
-        case "$base" in
-            monitors.lua|input.lua|keybinds.lua|workspaces.lua|variables.lua)
-                # Mutable user configs: copy template on initial install, preserve on update unless forced
-                deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
-                ;;
-            *)
-                deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
-                ;;
-        esac
+        deploy_config_file "$f" "$HOME/.config/hypr/config/$base"
     done
     render_template "$REPO_DIR/config/hypr/hyprpaper.conf.template" "$HOME/.config/hypr/hyprpaper.conf" 1
 
@@ -334,7 +329,9 @@ EOF
             kb_options="$x11_options"
         fi
     fi
-    if [[ "$DRY_RUN" -eq 1 ]]; then
+    if [[ "${IS_UPDATE:-0}" -eq 1 && "${UPDATE_CONFIGS:-0}" -eq 0 ]]; then
+        log "Preserving existing input config: $user_input"
+    elif [[ "$DRY_RUN" -eq 1 ]]; then
         printf '[DRY-RUN] update input config %s (kb_layout=%s, kb_options=%s)\n' "$user_input" "$kb_layout" "$kb_options"
     else
         if [[ -f "$user_input" ]]; then
@@ -347,7 +344,13 @@ EOF
     fi
 
     # 4. HiDPI monitor scale detection
-    if [[ -f "$user_monitors" ]] && grep -q 'output   = ""' "$user_monitors" && ! grep -q 'output   = "eDP' "$user_monitors" && command -v hyprctl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    local should_detect_monitors=0
+    if [[ -f "$user_monitors" ]]; then
+        if [[ "${IS_UPDATE:-0}" -eq 0 || $(grep -c "INERIUM_TEMPLATE_MONITORS" "$user_monitors" 2>/dev/null || true) -gt 0 ]]; then
+            should_detect_monitors=1
+        fi
+    fi
+    if [[ "$should_detect_monitors" -eq 1 ]] && command -v hyprctl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
         local mon_json
         mon_json="$(hyprctl monitors -j 2>/dev/null || true)"
         if [[ -n "$mon_json" && "$mon_json" == "["* ]]; then
@@ -440,6 +443,26 @@ configure_greeter() {
 
     if [[ "$WITH_GREETER" -eq 1 ]]; then
         log "Configuring greetd + inerium-greeter..."
+        if [[ "$INSTALL_MODE" == "bin" ]]; then
+            if [[ -f "$RELEASE_DIST_DIR/inerium-greeter" ]]; then
+                install_root_if_changed 755 "$RELEASE_DIST_DIR/inerium-greeter" /usr/local/bin/inerium-greeter
+                manifest_record_system_file "/usr/local/bin/inerium-greeter"
+            fi
+        else
+            if [[ "$SKIP_BUILD" -eq 0 ]]; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    printf '[DRY-RUN] cargo build --release -p inerium-greeter\n'
+                    printf '[DRY-RUN] install -m 755 target/release/inerium-greeter -> /usr/local/bin/inerium-greeter\n'
+                else
+                    run_live_step "Building inerium-greeter..." cargo build --release -p inerium-greeter --manifest-path "$REPO_DIR/Cargo.toml"
+                    install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
+                    manifest_record_system_file "/usr/local/bin/inerium-greeter"
+                fi
+            elif [[ -f "$REPO_DIR/target/release/inerium-greeter" ]]; then
+                install_root_if_changed 755 "$REPO_DIR/target/release/inerium-greeter" /usr/local/bin/inerium-greeter
+                manifest_record_system_file "/usr/local/bin/inerium-greeter"
+            fi
+        fi
         if [[ "$SKIP_PKGS" -eq 0 ]]; then
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 printf '[DRY-RUN] install_pkgs greetd cage\n'
@@ -500,6 +523,9 @@ enable_user_services_and_defaults() {
         uname="$(basename "$unit")"
         [[ "$uname" == "gdrive.service" ]] && continue
         [[ "$uname" == "inerium-camera-bridge.service" ]] && continue
+        if ! is_russian_env && [[ "$uname" == "inerium-desktop-indexer"* ]]; then
+            continue
+        fi
         link_item "$unit" "$HOME/.config/systemd/user/$uname"
     done
     link_item "$REPO_DIR/config/systemd/user/hypridle.service.d/slice.conf" "$HOME/.config/systemd/user/hypridle.service.d/slice.conf"
@@ -507,7 +533,10 @@ enable_user_services_and_defaults() {
     link_item "$REPO_DIR/config/systemd/user/waybar.service.d/bridge.conf" "$HOME/.config/systemd/user/waybar.service.d/bridge.conf"
     link_item "$REPO_DIR/config/systemd/user/waybar.service.d/slice.conf" "$HOME/.config/systemd/user/waybar.service.d/slice.conf"
 
-    local USER_UNITS="cliphist.service cliphist-images.service hypr-ipc-bridge.service hyprpaper.service hypridle.service inerium-desktop-indexer.path inerium-osd-watcher.service inerium-polkit.service inerium-popups.service inerium-updates.timer mako.service swayosd-server.service waybar.service"
+    local USER_UNITS="cliphist.service cliphist-images.service hypr-ipc-bridge.service hyprpaper.service hypridle.service inerium-osd-watcher.service inerium-polkit.service inerium-popups.service inerium-updates.timer mako.service swayosd-server.service waybar.service"
+    if is_russian_env; then
+        USER_UNITS="$USER_UNITS inerium-desktop-indexer.path"
+    fi
     for u in $USER_UNITS; do
         manifest_record_user_unit "$u"
     done
@@ -540,10 +569,6 @@ enable_user_services_and_defaults() {
         done
     fi
 
-    if command -v kbuildsycoca6 >/dev/null 2>&1; then
-        run "kbuildsycoca6 --noincremental >/dev/null 2>&1 || true"
-    fi
-
     # Set default web browser only if not already configured in the system
     if command -v xdg-settings >/dev/null 2>&1; then
         local cur_browser
@@ -572,5 +597,19 @@ enable_user_services_and_defaults() {
                 fi
             done
         fi
+    fi
+}
+
+refresh_desktop_caches() {
+    log "Refreshing desktop caches & environment..."
+    if command -v kbuildsycoca6 >/dev/null 2>&1; then
+        run "kbuildsycoca6 --noincremental >/dev/null 2>&1 || true"
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        run "update-desktop-database '$HOME/.local/share/applications' >/dev/null 2>&1 || true"
+    fi
+    if command -v udevadm >/dev/null 2>&1; then
+        run "sudo udevadm control --reload-rules >/dev/null 2>&1 || true"
+        run "sudo udevadm trigger >/dev/null 2>&1 || true"
     fi
 }
