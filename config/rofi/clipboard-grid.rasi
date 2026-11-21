@@ -1,0 +1,45 @@
+configuration {
+    show-icons: true;
+    disable-history: true;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+}
+
+@theme "~/.config/rofi/inerium.rasi"
+
+/* Галерея скриншотов: тот же размер окна, что и буфер (680px), сетка 3x2 */
+window {
+    width: 680px;
+}
+
+entry {
+    placeholder: "Поиск в галерее скриншотов…";
+}
+
+listview {
+    columns: 3;
+    lines: 2;
+    spacing: 10px;
+    cycle: true;
+    fixed-height: true;
+}
+
+element {
+    orientation: vertical;
+    padding: 10px 8px;
+    spacing: 6px;
+    border-radius: 12px;
+}
+
+element-icon {
+    size: 120px;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "JetBrainsMono Nerd Font 9.5";
+}

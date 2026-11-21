@@ -23,6 +23,7 @@ hl.bind(mainMod .. " + A", hl.dsp.exec_cmd(home .. "/.local/bin/inerium-popup co
 
 -- Clipboard manager
 hl.bind(mainMod .. " + V", hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/inerium-clipboard"))
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/inerium-clipboard --images"))
 
 -- Session lock & power menu
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock || loginctl lock-session"))

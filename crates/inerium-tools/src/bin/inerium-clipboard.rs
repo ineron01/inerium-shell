@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use inerium_i18n::tr;
 use inerium_tools::sys::posix::posix_localtime_r;
 
-const THUMB_SIZE: u32 = 56;
+const THUMB_SIZE: u32 = 256;
 const MAX_HISTORY_ITEMS: usize = 100;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -222,10 +222,12 @@ fn process_image_item(
     let hash = format!("{:x}", Sha256::digest(&img_data));
 
     let label = if let Some(info) = meta_registry.get(&hash) {
-        if !info.filename.is_empty() {
+        if !info.filename.is_empty() && !info.filename.starts_with("screenshot_") {
             format!("󰋩  {}  {}", info.filename, dim_str).trim().to_string()
-        } else {
+        } else if !info.datetime.is_empty() {
             format!("󰋩  {} {}  {}", tr("Screenshot", "Скриншот"), info.datetime, dim_str).trim().to_string()
+        } else {
+            format!("󰋩  {}  {}", info.filename, dim_str).trim().to_string()
         }
     } else {
         let (now_str, fname) = format_current_timestamp();
@@ -291,12 +293,29 @@ fn process_text_item(content: &str) -> (String, &'static str) {
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("inerium-clipboard — Native Rust Clipboard Manager for Rofi & cliphist\n\nUsage: inerium-clipboard");
+        println!("inerium-clipboard — Native Rust Clipboard Manager for Rofi & cliphist\n\nUsage: inerium-clipboard [--images|-i]");
         return;
     }
 
-    let items = get_cliphist_items();
+    let images_only = args.iter().any(|a| a == "--images" || a == "-i");
+
+    let mut items = get_cliphist_items();
+    if images_only {
+        items.retain(|(_, content)| content.starts_with("[[ binary data"));
+    }
+
     if items.is_empty() {
+        if images_only {
+            let _ = Command::new("notify-send")
+                .args([
+                    "-a",
+                    tr("Clipboard", "Буфер обмена"),
+                    "-u",
+                    "low",
+                    tr("No images in clipboard history", "В истории буфера нет изображений"),
+                ])
+                .status();
+        }
         return;
     }
 
@@ -324,8 +343,18 @@ fn main() {
         save_metadata(meta_registry);
     }
 
-    let prompt = format!("󰅍  {}", tr("Clipboard", "Буфер обмена"));
-    let theme_file = home_dir().join(".config/rofi/clipboard.rasi");
+    let (prompt, theme_name) = if images_only {
+        (
+            format!("󰋩  {}", tr("Screenshots & Media", "Галерея скриншотов")),
+            "clipboard-grid.rasi",
+        )
+    } else {
+        (
+            format!("󰅍  {}", tr("Clipboard", "Буфер обмена")),
+            "clipboard.rasi",
+        )
+    };
+    let theme_file = home_dir().join(".config/rofi").join(theme_name);
 
     let mut rofi_cmd = Command::new("rofi");
     rofi_cmd.args([
