@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use gdk4::BUTTON_SECONDARY;
 use gtk4::prelude::*;
-use gtk4::{Align, Button, Label, Orientation, PolicyType};
+use gtk4::{Align, Button, CheckButton, Label, Orientation, PolicyType};
 use inerium_i18n::{tr, tr_fmt};
 use relm4::prelude::*;
 
@@ -622,12 +622,12 @@ impl SimpleComponent for NetworkModel {
                         let saved_map = query_saved_wifi_connections();
                         let res = if let Some(conn) = saved_map.get(&ssid) {
                             Command::new("nmcli")
-                                .args(["--ask", "connection", "up", "uuid", &conn.uuid])
+                                .args(["--wait", "15", "connection", "up", "uuid", &conn.uuid])
                                 .stdin(std::process::Stdio::null())
                                 .output()
                         } else {
                             Command::new("nmcli")
-                                .args(["--ask", "connection", "up", "id", &ssid])
+                                .args(["--wait", "15", "connection", "up", "id", &ssid])
                                 .stdin(std::process::Stdio::null())
                                 .output()
                         };
@@ -648,7 +648,7 @@ impl SimpleComponent for NetworkModel {
                     let ssid = net.ssid.clone();
                     thread::spawn(move || {
                         let res = Command::new("nmcli")
-                            .args(["--ask", "dev", "wifi", "connect", &ssid])
+                            .args(["--wait", "15", "dev", "wifi", "connect", &ssid])
                             .stdin(std::process::Stdio::null())
                             .output();
                         let (success, err_msg) = parse_cmd_output(res);
@@ -704,64 +704,88 @@ impl SimpleComponent for NetworkModel {
 
                     thread::spawn(move || {
                         let res = if is_ent {
-                            // Clean up any stale profile with this SSID name first
-                            let _ = Command::new("nmcli")
-                                .args(["connection", "delete", "id", &ssid_task])
-                                .output();
+                            // Check if a connection with this SSID already exists
+                            let exists = Command::new("nmcli")
+                                .args(["-t", "-f", "NAME", "connection", "show"])
+                                .output()
+                                .map(|o| {
+                                    String::from_utf8_lossy(&o.stdout)
+                                        .lines()
+                                        .any(|l| l.trim() == ssid_task)
+                                })
+                                .unwrap_or(false);
 
-                            let mut add_args = vec![
-                                "--ask".to_string(),
-                                "connection".to_string(),
-                                "add".to_string(),
-                                "type".to_string(),
-                                "wifi".to_string(),
-                                "con-name".to_string(),
-                                ssid_task.clone(),
-                                "ssid".to_string(),
-                                ssid_task.clone(),
-                                "wifi-sec.key-mgmt".to_string(),
-                                "wpa-eap".to_string(),
-                                "802-1x.eap".to_string(),
-                                "peap".to_string(),
-                                "802-1x.phase2-auth".to_string(),
-                                "mschapv2".to_string(),
-                                "802-1x.identity".to_string(),
-                                identity,
-                                "802-1x.password".to_string(),
-                                pass,
-                            ];
-                            if no_ca {
-                                add_args.push("802-1x.ca-cert".to_string());
-                                add_args.push("".to_string());
-                            }
-
-                            let add_res = Command::new("nmcli")
-                                .args(&add_args)
-                                .stdin(std::process::Stdio::null())
-                                .output();
-
-                            let (add_ok, add_err) = parse_cmd_output(add_res);
-                            if !add_ok {
-                                Err(std::io::Error::other(add_err))
-                            } else {
-                                let up_res = Command::new("nmcli")
-                                    .args(["--wait", "15", "--ask", "connection", "up", "id", &ssid_task])
+                            let cfg_ok = if exists {
+                                let mut mod_args = vec![
+                                    "connection".to_string(),
+                                    "modify".to_string(),
+                                    "id".to_string(),
+                                    ssid_task.clone(),
+                                    "wifi-sec.key-mgmt".to_string(),
+                                    "wpa-eap".to_string(),
+                                    "802-1x.eap".to_string(),
+                                    "peap".to_string(),
+                                    "802-1x.phase2-auth".to_string(),
+                                    "mschapv2".to_string(),
+                                    "802-1x.identity".to_string(),
+                                    identity,
+                                    "802-1x.password".to_string(),
+                                    pass,
+                                ];
+                                if no_ca {
+                                    mod_args.push("802-1x.ca-cert".to_string());
+                                    mod_args.push("".to_string());
+                                }
+                                let mod_res = Command::new("nmcli")
+                                    .args(&mod_args)
                                     .stdin(std::process::Stdio::null())
                                     .output();
-                                let (up_ok, _) = match &up_res {
-                                    Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                                    Err(e) => (false, e.to_string()),
-                                };
-                                if !up_ok {
-                                    let _ = Command::new("nmcli")
-                                        .args(["connection", "delete", "id", &ssid_task])
-                                        .output();
+                                parse_cmd_output(mod_res).0
+                            } else {
+                                let mut add_args = vec![
+                                    "connection".to_string(),
+                                    "add".to_string(),
+                                    "type".to_string(),
+                                    "wifi".to_string(),
+                                    "con-name".to_string(),
+                                    ssid_task.clone(),
+                                    "ifname".to_string(),
+                                    "*".to_string(),
+                                    "ssid".to_string(),
+                                    ssid_task.clone(),
+                                    "wifi-sec.key-mgmt".to_string(),
+                                    "wpa-eap".to_string(),
+                                    "802-1x.eap".to_string(),
+                                    "peap".to_string(),
+                                    "802-1x.phase2-auth".to_string(),
+                                    "mschapv2".to_string(),
+                                    "802-1x.identity".to_string(),
+                                    identity,
+                                    "802-1x.password".to_string(),
+                                    pass,
+                                ];
+                                if no_ca {
+                                    add_args.push("802-1x.ca-cert".to_string());
+                                    add_args.push("".to_string());
                                 }
-                                up_res
+                                let add_res = Command::new("nmcli")
+                                    .args(&add_args)
+                                    .stdin(std::process::Stdio::null())
+                                    .output();
+                                parse_cmd_output(add_res).0
+                            };
+
+                            if !cfg_ok {
+                                Err(std::io::Error::other("Failed to configure 802.1X profile"))
+                            } else {
+                                Command::new("nmcli")
+                                    .args(["--wait", "15", "connection", "up", "id", &ssid_task])
+                                    .stdin(std::process::Stdio::null())
+                                    .output()
                             }
                         } else {
                             Command::new("nmcli")
-                                .args(["--wait", "15", "--ask", "dev", "wifi", "connect", &ssid_task, "password", &pass])
+                                .args(["--wait", "15", "dev", "wifi", "connect", &ssid_task, "password", &pass])
                                 .stdin(std::process::Stdio::null())
                                 .output()
                         };
@@ -1389,24 +1413,21 @@ fn populate_wifi_list(
 
                 // 3. CA bypass toggle (Enterprise only)
                 if is_ent {
-                    let ca_btn = Button::new();
-                    ca_btn.add_css_class("drawer-chip");
-                    ca_btn.set_hexpand(true);
-                    if cur_no_ca {
-                        ca_btn.add_css_class("on");
-                        ca_btn.set_label(tr("󰄬 No CA cert required", "󰄬 Без проверки CA"));
-                    } else {
-                        ca_btn.set_label(tr("󰄬 Validate CA cert", "󰄬 Проверять CA"));
-                    }
-                    ca_btn.set_tooltip_text(Some(tr(
+                    let ca_check = CheckButton::with_label(tr(
+                        "Don't validate CA certificate",
+                        "Не проверять сертификат CA",
+                    ));
+                    ca_check.add_css_class("auth-ca-check");
+                    ca_check.set_active(cur_no_ca);
+                    ca_check.set_tooltip_text(Some(tr(
                         "Skip CA server certificate validation (recommended for university networks)",
                         "Не проверять сертификат CA (рекомендуется для университетских сетей)",
                     )));
                     let s_ca = sender.clone();
-                    ca_btn.connect_clicked(move |_| {
+                    ca_check.connect_toggled(move |_| {
                         s_ca.input(NetworkMsg::ToggleNoCaCert);
                     });
-                    drawer.append(&ca_btn);
+                    drawer.append(&ca_check);
                 }
 
                 // 4. Error label (if any)

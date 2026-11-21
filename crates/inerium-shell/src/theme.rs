@@ -676,6 +676,29 @@ window.popup-window decoration {
     margin-bottom: 2px;
 }
 
+.auth-ca-check {
+    font-size: 11px;
+    font-weight: 500;
+    color: @cc_fg_subtle;
+    margin: 2px 0 2px 2px;
+}
+.auth-ca-check:hover {
+    color: @cc_fg_bright;
+}
+.auth-ca-check check {
+    border-radius: 4px;
+    background-color: @cc_surface;
+    border: 1px solid @cc_line;
+    min-width: 14px;
+    min-height: 14px;
+    margin-right: 6px;
+}
+.auth-ca-check check:checked {
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+    color: @cc_primary;
+}
+
 .drawer-entry {
     min-height: 28px;
     padding: 4px 8px;
