@@ -19,21 +19,21 @@ impl SystemConfig {
         // Prioritize XDG_CONFIG_HOME (user config), defaulting to $HOME/.config
         let xdg_config_home = std::env::var_os("XDG_CONFIG_HOME")
             .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".config").into()));
-        let xdg_path = xdg_config_home.map(|c| Path::new(&c).join("soteria/config.toml"));
+        let xdg_path = xdg_config_home.as_ref().map(|c| Path::new(&c).join("inerium-polkit/config.toml"));
+        let xdg_fallback = xdg_config_home.as_ref().map(|c| Path::new(&c).join("inerium/polkit.toml"));
 
-        if xdg_path.as_ref().is_some_and(|p| p.exists()) {
-            let path = xdg_path.unwrap();
+        if let Some(path) = xdg_path.filter(|p| p.exists()) {
             fig = fig.merge(Toml::file_exact(path.clone()));
             tracing::info!("using configuration file found at {}", path.display());
-        }
-        // Prioritize configuration in local, as semantically that is the users config
-        else if Path::new("/usr/local/etc/soteria/config.toml").exists() {
-            fig = fig.merge(Toml::file_exact("/usr/local/etc/soteria/config.toml"));
-            tracing::info!("using configuration file found at /usr/local/etc/soteria/config.toml");
-        // Try the configuration location of the distro
-        } else if Path::new("/etc/soteria/config.toml").exists() {
-            fig = fig.merge(Toml::file_exact("/etc/soteria/config.toml"));
-            tracing::info!("using configuration file found at /etc/soteria/config.toml");
+        } else if let Some(path) = xdg_fallback.filter(|p| p.exists()) {
+            fig = fig.merge(Toml::file_exact(path.clone()));
+            tracing::info!("using configuration file found at {}", path.display());
+        } else if Path::new("/usr/local/etc/inerium-polkit/config.toml").exists() {
+            fig = fig.merge(Toml::file_exact("/usr/local/etc/inerium-polkit/config.toml"));
+            tracing::info!("using configuration file found at /usr/local/etc/inerium-polkit/config.toml");
+        } else if Path::new("/etc/inerium-polkit/config.toml").exists() {
+            fig = fig.merge(Toml::file_exact("/etc/inerium-polkit/config.toml"));
+            tracing::info!("using configuration file found at /etc/inerium-polkit/config.toml");
         // Fall back to default
         } else {
             fig = fig.merge(Serialized::defaults(Self::default()));

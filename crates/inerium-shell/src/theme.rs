@@ -473,9 +473,45 @@ window.popup-window decoration {
     border-color: @cc_red_border;
     color: @cc_fg_bright;
 }
+.cc-chip.active {
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+    color: @cc_fg_bright;
+}
 .cc-chip:disabled {
     opacity: 0.70;
     color: @cc_amber;
+}
+
+/* Filter Pills */
+.filter-pill {
+    border-radius: 99px;
+    padding: 4px 10px;
+    border: 1px solid @cc_line;
+    background-color: @cc_surface;
+    font-size: 11px;
+    font-weight: 600;
+    color: @cc_fg_subtle;
+    box-shadow: none;
+    transition: all 120ms ease;
+}
+.filter-pill:hover {
+    background-color: @cc_surface_hover;
+    color: @cc_fg_bright;
+}
+.filter-pill.active {
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+    color: @cc_fg_bright;
+}
+
+.cc-sep {
+    background-color: @cc_line;
+    min-height: 1px;
+    margin: 4px 0;
+}
+.section-header-box {
+    padding: 2px 0;
 }
 
 .cc-foot {
@@ -844,17 +880,23 @@ window.power-window {
 }
 
 /* Wallpaper Gallery */
+.wall-btn {
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
 .wall-card {
     min-width: 140px;
     border-radius: 12px;
     background-color: @cc_surface;
-    border: 2px solid @cc_line;
+    border: 1.5px solid @cc_line;
     padding: 6px;
     transition: all 0.2s ease;
 }
 .wall-card:hover {
     background-color: @cc_surface_hover;
-    border-color: @cc_primary_border;
+    border-color: @cc_line_light;
 }
 .wall-card.active {
     border-color: @cc_primary;
@@ -863,14 +905,148 @@ window.power-window {
 .wall-thumb {
     border-radius: 8px;
 }
-.wall-caption {
-    font-size: 10px;
+.wall-caption,
+.wall-name {
+    font-size: 10.5px;
     font-weight: 600;
     color: @cc_fg_subtle;
-    margin-top: 4px;
 }
-.wall-card.active .wall-caption {
+.wall-card.active .wall-caption,
+.wall-card.active .wall-name {
     color: @cc_fg_bright;
+}
+.wall-del-btn {
+    min-width: 22px;
+    min-height: 22px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: @cc_fg_muted;
+    font-size: 12px;
+}
+.wall-del-btn:hover {
+    background-color: @cc_red_bg;
+    border-color: @cc_red_border;
+    color: @cc_red;
+}
+.wall-del-confirm {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    background-color: @cc_red_bg;
+    border: 1px solid @cc_red_border;
+    color: @cc_red;
+}
+.wall-del-confirm:hover {
+    background-color: @cc_red;
+    color: @cc_fg_on_accent;
+}
+.wall-del-cancel {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    background-color: @cc_surface_hover;
+    border: 1px solid @cc_line;
+    color: @cc_fg_subtle;
+}
+.wall-del-cancel:hover {
+    color: @cc_fg_bright;
+}
+
+/* Theme Cards */
+.theme-card {
+    background-color: @cc_surface;
+    border: 1px solid @cc_line;
+    border-radius: 11px;
+    padding: 8px 12px;
+    margin-bottom: 3px;
+    box-shadow: none;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+.theme-card:hover {
+    background-color: @cc_surface_hover;
+    border-color: @cc_line_light;
+}
+.theme-card.active {
+    background-color: @cc_primary_bg;
+    border-color: @cc_primary_border;
+    border-left: 3px solid @cc_primary;
+}
+.theme-variant-pill {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background-color: @cc_surface_hover;
+    color: @cc_fg_muted;
+    border: 1px solid @cc_line;
+}
+.theme-card.active .theme-variant-pill {
+    background-color: @cc_primary_bg;
+    color: @cc_fg_bright;
+    border-color: @cc_primary_border;
+}
+
+/* Custom Background Studio */
+.custom-bg-card {
+    background-color: @cc_surface;
+    border: 1px solid @cc_line_light;
+    border-radius: 12px;
+    padding: 10px;
+}
+.bg-preview-area {
+    min-height: 70px;
+    border-radius: 8px;
+    border: 1px solid @cc_line_light;
+}
+.color-swatch-box {
+    border-radius: 8px;
+    border: 1.5px solid @cc_line_light;
+}
+.hex-input {
+    min-height: 28px;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 8px;
+    background-color: @cc_surface_hover;
+    border: 1px solid @cc_line;
+    color: @cc_fg_bright;
+}
+.color-preset-btn {
+    padding: 2px;
+    border-radius: 99px;
+    background: transparent;
+    border: 2px solid transparent;
+    box-shadow: none;
+    transition: transform 100ms ease, border-color 100ms ease;
+}
+.color-preset-btn:hover {
+    transform: scale(1.18);
+}
+.color-preset-btn.active {
+    border-color: @cc_fg_bright;
+    background-color: @cc_surface_hover;
+}
+.btn-primary-action {
+    background-color: @cc_primary;
+    color: @cc_fg_on_accent;
+    font-weight: 700;
+    font-size: 11.5px;
+    border-radius: 9px;
+    padding: 6px 14px;
+    border: none;
+    box-shadow: none;
+    transition: opacity 120ms ease;
+}
+.btn-primary-action:hover {
+    opacity: 0.90;
 }
 
 /* Media Player Card & Controls */

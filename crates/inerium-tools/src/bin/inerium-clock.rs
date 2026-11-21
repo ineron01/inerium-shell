@@ -16,25 +16,6 @@ use inerium_tools::format::escape_json;
 use inerium_tools::ipc::{PidRegistry, SelfPipe};
 use inerium_tools::sys::posix::*;
 
-#[repr(C)]
-struct Tm {
-    tm_sec: i32,
-    tm_min: i32,
-    tm_hour: i32,
-    tm_mday: i32,
-    tm_mon: i32,
-    tm_year: i32,
-    tm_wday: i32,
-    tm_yday: i32,
-    tm_isdst: i32,
-    tm_gmtoff: i64,
-    tm_zone: *const std::ffi::c_char,
-}
-
-unsafe extern "C" {
-    fn localtime_r(timep: *const i64, result: *mut Tm) -> *mut Tm;
-}
-
 fn clock_registry() -> PidRegistry {
     PidRegistry::new("clock-detailed")
 }
@@ -127,8 +108,7 @@ fn format_time() -> String {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    let mut tm: Tm = unsafe { std::mem::zeroed() };
-    unsafe { localtime_r(&now, &mut tm); }
+    let tm = posix_localtime_r(&now);
 
     let show_seconds = is_seconds_active();
     let time_str = if show_seconds {
@@ -193,8 +173,7 @@ fn format_tooltip() -> String {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    let mut tm: Tm = unsafe { std::mem::zeroed() };
-    unsafe { localtime_r(&now, &mut tm); }
+    let tm = posix_localtime_r(&now);
 
     let real_year = tm.tm_year + 1900;
     let real_month = tm.tm_mon.clamp(0, 11) as usize;
@@ -340,8 +319,7 @@ fn run_watch(waybar: bool) {
         let now_secs = now_dur.as_secs() as i64;
         let subsec_ms = now_dur.subsec_millis() as i32;
 
-        let mut tm: Tm = unsafe { std::mem::zeroed() };
-        unsafe { localtime_r(&now_secs, &mut tm); }
+        let tm = posix_localtime_r(&now_secs);
 
         let current = if waybar {
             let offset = get_month_offset();

@@ -10,6 +10,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::thread;
+use std::time::Duration;
 
 use inerium_tools::ipc::hyprland::{get_socket_dir, get_socket2};
 use inerium_tools::sys::posix::*;
@@ -20,7 +21,7 @@ static RUNNING: AtomicBool = AtomicBool::new(true);
 
 extern "C" fn handle_signal(_: i32) {
     restore_sockets();
-    std::process::exit(0);
+    posix_exit(0);
 }
 
 fn restore_sockets() {
@@ -118,25 +119,52 @@ pub fn translate(cmd: &str) -> Option<String> {
 }
 
 fn handle_client(mut client: UnixStream, real_sock: &Path) {
-    let mut buf = [0u8; 4096];
-    let n = match client.read(&mut buf) {
-        Ok(0) | Err(_) => return,
-        Ok(n) => n,
-    };
+    let _ = client.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = client.set_write_timeout(Some(Duration::from_secs(5)));
+
+    let mut buf = [0u8; 8192];
+    let mut request_data = Vec::new();
+    loop {
+        match client.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                request_data.extend_from_slice(&buf[..n]);
+                if request_data.ends_with(b"\n") || request_data.ends_with(b"\0") {
+                    break;
+                }
+                client.set_nonblocking(true).ok();
+                match client.read(&mut buf) {
+                    Ok(extra) if extra > 0 => {
+                        request_data.extend_from_slice(&buf[..extra]);
+                    }
+                    _ => break,
+                }
+                client.set_nonblocking(false).ok();
+                break;
+            }
+            Err(_) => break,
+        }
+    }
+
+    if request_data.is_empty() {
+        return;
+    }
 
     let mut upstream = match UnixStream::connect(real_sock) {
         Ok(u) => u,
         Err(_) => return,
     };
+    let _ = upstream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = upstream.set_write_timeout(Some(Duration::from_secs(5)));
 
-    let data_to_send: Vec<u8> = if let Ok(cmd_str) = std::str::from_utf8(&buf[..n]) {
+    let data_to_send: Vec<u8> = if let Ok(cmd_str) = std::str::from_utf8(&request_data) {
         if let Some(translated) = translate(cmd_str) {
             translated.into_bytes()
         } else {
-            buf[..n].to_vec()
+            request_data
         }
     } else {
-        buf[..n].to_vec()
+        request_data
     };
 
     if upstream.write_all(&data_to_send).is_err() {

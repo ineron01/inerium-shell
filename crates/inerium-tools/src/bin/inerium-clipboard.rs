@@ -13,6 +13,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use inerium_tools::sys::posix::posix_localtime_r;
 
 const THUMB_SIZE: u32 = 56;
 const MAX_HISTORY_ITEMS: usize = 100;
@@ -142,29 +143,7 @@ fn format_current_timestamp() -> (String, String) {
         .unwrap_or_default()
         .as_secs() as i64;
 
-    #[repr(C)]
-    struct Tm {
-        tm_sec: i32,
-        tm_min: i32,
-        tm_hour: i32,
-        tm_mday: i32,
-        tm_mon: i32,
-        tm_year: i32,
-        tm_wday: i32,
-        tm_yday: i32,
-        tm_isdst: i32,
-        tm_gmtoff: i64,
-        tm_zone: *const std::ffi::c_char,
-    }
-
-    unsafe extern "C" {
-        fn localtime_r(timep: *const i64, result: *mut Tm) -> *mut Tm;
-    }
-
-    let mut tm: Tm = unsafe { std::mem::zeroed() };
-    unsafe {
-        localtime_r(&now, &mut tm);
-    }
+    let tm = posix_localtime_r(&now);
 
     let year = tm.tm_year + 1900;
     let month = tm.tm_mon + 1;

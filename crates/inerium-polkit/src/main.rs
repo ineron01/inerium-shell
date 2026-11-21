@@ -36,6 +36,13 @@ fn setup_tracing() -> Result<()> {
     Ok(())
 }
 
+unsafe fn get_current_uid() -> u32 {
+    unsafe extern "C" {
+        fn getuid() -> u32;
+    }
+    unsafe { getuid() }
+}
+
 fn resolve_session_id() -> String {
     // 1. Проверяем переменную окружения XDG_SESSION_ID
     if let Ok(id) = std::env::var("XDG_SESSION_ID")
@@ -44,7 +51,9 @@ fn resolve_session_id() -> String {
         return id.trim().to_string();
     }
 
-    // 2. Опрашиваем loginctl для поиска графической сессии пользователя seat0
+    let my_uid = unsafe { get_current_uid() }.to_string();
+
+    // 2. Опрашиваем loginctl для поиска сессии текущего пользователя
     if let Ok(output) = std::process::Command::new("loginctl")
         .args(["list-sessions", "--no-legend"])
         .output()
@@ -52,7 +61,13 @@ fn resolve_session_id() -> String {
     {
         for line in text.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 && parts[3] == "seat0" {
+            if parts.len() >= 4 && parts[1] == my_uid && parts[3] == "seat0" {
+                return parts[0].to_string();
+            }
+        }
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 && parts[1] == my_uid {
                 return parts[0].to_string();
             }
         }
@@ -66,7 +81,7 @@ fn resolve_session_id() -> String {
         }
     }
 
-    "3".to_string()
+    String::new()
 }
 
 #[tokio::main]

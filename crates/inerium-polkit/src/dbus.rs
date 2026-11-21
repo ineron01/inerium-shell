@@ -63,10 +63,10 @@ impl AuthenticationAgent {
         for identity in identities.iter() {
             let details = identity.get_details();
             if identity.get_kind() == "unix-user" {
-                let Value::U32(uid) = details["uid"] else {
+                let Some(Value::U32(uid)) = details.get("uid") else {
                     continue;
                 };
-                if let Ok(Some(u)) = etc_passwd::Passwd::from_uid(uid)
+                if let Ok(Some(u)) = etc_passwd::Passwd::from_uid(*uid)
                     && let Ok(n) = u.name.into_string()
                 {
                     names.push(n);
@@ -102,9 +102,10 @@ impl AuthenticationAgent {
                     if c == cookie {
                         let mut stream = UnixStream::connect(self.config.get_socket_path()).await;
 
-                        let (reader, mut writer): (
+                        let (reader, mut writer, child_proc): (
                             BufReader<Box<dyn tokio::io::AsyncRead + Unpin + Send>>,
                             Box<dyn tokio::io::AsyncWrite + Unpin + Send>,
+                            Option<process::Child>,
                         ) = if let Ok(stream) = &mut stream {
                             let (read_half, mut write_half) = stream.split();
 
@@ -113,7 +114,7 @@ impl AuthenticationAgent {
                             write_half.write_all(cookie.as_bytes()).await?;
                             write_half.write_all(b"\n").await?;
 
-                            (BufReader::new(Box::new(read_half)), Box::new(write_half))
+                            (BufReader::new(Box::new(read_half)), Box::new(write_half), None)
                         } else {
                             let mut child = process::Command::new(self.config.get_helper_path())
                                 .arg(user)
@@ -123,7 +124,7 @@ impl AuthenticationAgent {
                                 .spawn()
                                 .map_err(|_| {
                                     PolkitError::Failed(
-                                        "Failed to the spawn polkit authentication helper."
+                                        "Failed to spawn polkit authentication helper."
                                             .to_string(),
                                     )
                                 })?;
@@ -138,7 +139,7 @@ impl AuthenticationAgent {
                             stdin.write_all(cookie.as_bytes()).await?;
                             stdin.write_all(b"\n").await?;
 
-                            (BufReader::new(Box::new(stdout)), Box::new(stdin))
+                            (BufReader::new(Box::new(stdout)), Box::new(stdin), Some(child))
                         };
 
                         let mut last_info: Option<String> = None;
@@ -159,13 +160,12 @@ impl AuthenticationAgent {
 
                                 if msg.contains("minute") && msg.contains("unlock") {
                                     last_info = Some(msg.clone());
-                                    self.sender
+                                    let _ = self.sender
                                         .send(AuthenticationAgentEvent::AuthorizationRetry {
                                             cookie: cookie.to_string(),
                                             retry_message: Some(msg),
                                         })
-                                        .await
-                                        .unwrap();
+                                        .await;
                                 }
                             } else if line.starts_with("FAILURE") {
                                 tracing::debug!("helper replied with failure.");
@@ -173,27 +173,31 @@ impl AuthenticationAgent {
                                 let retry_msg = last_info.clone().unwrap_or_else(|| {
                                     gettext("Authentication failed. Please try again.")
                                 });
-                                self.sender
+                                let _ = self.sender
                                     .send(AuthenticationAgentEvent::AuthorizationRetry {
                                         cookie: cookie.to_string(),
                                         retry_message: Some(retry_msg),
                                     })
-                                    .await
-                                    .unwrap();
+                                    .await;
                                 continue;
                             } else if line.starts_with("SUCCESS") {
                                 tracing::debug!("helper replied with success.");
 
-                                self.sender
+                                let _ = self.sender
                                     .send(AuthenticationAgentEvent::AuthorizationSucceeded {
                                         cookie: cookie.to_string(),
                                     })
-                                    .await
-                                    .unwrap();
+                                    .await;
+                                if let Some(mut ch) = child_proc {
+                                    let _ = ch.wait().await;
+                                }
                                 return Ok(());
                             }
                         }
                         writer.flush().await?;
+                        if let Some(mut ch) = child_proc {
+                            let _ = ch.wait().await;
+                        }
                     }
                 }
             }

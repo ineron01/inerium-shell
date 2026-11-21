@@ -15,7 +15,7 @@ gtk4 = { workspace = true }
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 relm4 = { workspace = true }
 serde = { workspace = true }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "net"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["std", "fmt", "env-filter", "ansi"] }
 zbus = { version = "5.7", default-features = false, features = ["tokio"] }

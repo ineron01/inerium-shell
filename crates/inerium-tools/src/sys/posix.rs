@@ -27,6 +27,26 @@ pub const IN_NONBLOCK: i32 = 0x00000800;
 pub const IN_CREATE: u32 = 0x00000100;
 pub const IN_DELETE: u32 = 0x00000200;
 
+pub const O_NONBLOCK: i32 = 0x00000800;
+pub const O_CLOEXEC: i32 = 0x00080000;
+pub const SIG_IGN: usize = 1;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default)]
+pub struct Tm {
+    pub tm_sec: i32,
+    pub tm_min: i32,
+    pub tm_hour: i32,
+    pub tm_mday: i32,
+    pub tm_mon: i32,
+    pub tm_year: i32,
+    pub tm_wday: i32,
+    pub tm_yday: i32,
+    pub tm_isdst: i32,
+    pub tm_gmtoff: i64,
+    pub tm_zone: *const std::ffi::c_char,
+}
+
 #[repr(C)]
 struct Ifaddrs {
     ifa_next: *mut Ifaddrs,
@@ -63,8 +83,8 @@ unsafe extern "C" {
     fn getuid() -> u32;
     fn getpid() -> i32;
     fn kill(pid: i32, sig: i32) -> i32;
-    fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
-    fn pipe(pipefd: *mut i32) -> i32;
+    fn signal(sig: i32, handler: usize) -> usize;
+    fn pipe2(pipefd: *mut i32, flags: i32) -> i32;
     fn close(fd: i32) -> i32;
     fn read(fd: i32, buf: *mut std::ffi::c_void, count: usize) -> isize;
     fn write(fd: i32, buf: *const std::ffi::c_void, count: usize) -> isize;
@@ -75,6 +95,20 @@ unsafe extern "C" {
     fn inotify_add_watch(fd: i32, pathname: *const std::ffi::c_char, mask: u32) -> i32;
     fn getifaddrs(ifap: *mut *mut Ifaddrs) -> i32;
     fn freeifaddrs(ifa: *mut Ifaddrs);
+    fn localtime_r(timep: *const i64, result: *mut Tm) -> *mut Tm;
+    fn _exit(status: i32) -> !;
+}
+
+pub fn posix_exit(status: i32) -> ! {
+    unsafe { _exit(status) }
+}
+
+pub fn posix_localtime_r(timep: &i64) -> Tm {
+    let mut tm = Tm::default();
+    unsafe {
+        localtime_r(timep, &mut tm);
+    }
+    tm
 }
 
 pub fn posix_getuid() -> u32 {
@@ -95,16 +129,16 @@ pub fn posix_kill(pid: i32, sig: i32) -> io::Result<()> {
 }
 
 pub fn posix_signal(sig: i32, handler: extern "C" fn(i32)) -> usize {
-    unsafe { signal(sig, handler) }
+    unsafe { signal(sig, handler as usize) }
 }
 
 pub fn posix_signal_ign(sig: i32) -> usize {
-    unsafe { signal(sig, std::mem::transmute::<usize, extern "C" fn(i32)>(1usize)) }
+    unsafe { signal(sig, SIG_IGN) }
 }
 
 pub fn posix_pipe() -> io::Result<(i32, i32)> {
     let mut fds = [0i32; 2];
-    let ret = unsafe { pipe(fds.as_mut_ptr()) };
+    let ret = unsafe { pipe2(fds.as_mut_ptr(), O_NONBLOCK | O_CLOEXEC) };
     if ret == 0 {
         Ok((fds[0], fds[1]))
     } else {
@@ -122,20 +156,32 @@ pub fn posix_close(fd: i32) -> io::Result<()> {
 }
 
 pub fn posix_read(fd: i32, buf: &mut [u8]) -> io::Result<usize> {
-    let ret = unsafe { read(fd, buf.as_mut_ptr() as *mut std::ffi::c_void, buf.len()) };
-    if ret >= 0 {
-        Ok(ret as usize)
-    } else {
-        Err(io::Error::last_os_error())
+    loop {
+        let ret = unsafe { read(fd, buf.as_mut_ptr() as *mut std::ffi::c_void, buf.len()) };
+        if ret >= 0 {
+            return Ok(ret as usize);
+        }
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(4) {
+            // EINTR
+            continue;
+        }
+        return Err(err);
     }
 }
 
 pub fn posix_write(fd: i32, buf: &[u8]) -> io::Result<usize> {
-    let ret = unsafe { write(fd, buf.as_ptr() as *const std::ffi::c_void, buf.len()) };
-    if ret >= 0 {
-        Ok(ret as usize)
-    } else {
-        Err(io::Error::last_os_error())
+    loop {
+        let ret = unsafe { write(fd, buf.as_ptr() as *const std::ffi::c_void, buf.len()) };
+        if ret >= 0 {
+            return Ok(ret as usize);
+        }
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(4) {
+            // EINTR
+            continue;
+        }
+        return Err(err);
     }
 }
 

@@ -17,6 +17,7 @@ use inerium_tools::sys::posix::*;
 const WEBCAM_SYSFS: &str = "/sys/devices/platform/msi-ec/webcam";
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 struct InotifyEventHeader {
     wd: i32,
     mask: u32,
@@ -100,7 +101,7 @@ fn webcam_watcher() {
         let mut relevant_change = false;
 
         while offset + std::mem::size_of::<InotifyEventHeader>() <= n {
-            let header = unsafe { &*(buf.as_ptr().add(offset) as *const InotifyEventHeader) };
+            let header = unsafe { std::ptr::read_unaligned(buf.as_ptr().add(offset) as *const InotifyEventHeader) };
             let name_len = header.len as usize;
             let name_start = offset + std::mem::size_of::<InotifyEventHeader>();
             let name_end = name_start + name_len;
