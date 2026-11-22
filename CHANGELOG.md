@@ -10,29 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.2] - 2026-11-22
 
 ### Added
-- **Opt-in GitHub CLI Addon**: Added `--with-github` flag, manifest tracking (`ADDON github`), and optional interactive setup step (`first-login.d/10-github`).
-- **Enhanced System Diagnostics (`inerium doctor`)**: Added validation checks for orphaned packages, systemd user/system unit health, and configuration symlink integrity.
-- **Qt5ct / Qt6ct & KDE Theming in `inerium-theme`**: Added native generator for Qt5ct and Qt6ct color schemes (`emit_qtct_colors`) and idempotent KDE globals synchronization (`update_kdeglobals`).
-- **Atomic Self-Pipe Event Wakeup (`SelfPipe`)**: Added robust non-blocking self-pipe IPC mechanism in `inerium-tools` for waking event loops without thread spin-locks.
-- **CI Test Coverage for MSI Fan Regulator**: Added automated `cargo test -p inerium-tools --features msi-ec` in GitHub Actions CI workflow.
+- **Event-Driven Idle Architecture**: Switched `inerium-bluetooth` to `dbus-monitor` signal streaming, `inerium-layout` to blocking `poll(-1)` on Hyprland `socket2`, cached power supply / hwmon sensor paths in `inerium-battery` and `inerium-hwmon`, and moved `inerium-camera` bridge idle waits to `Condvar` + `v4l2loopback` `sustain_framerate=1` with a blocking GStreamer bus.
+- **Modular Crate Architecture**: Split monolithic views and models into submodules across `inerium-shell` (`control_center/`, `network/`, `appearance/`), `inerium-setup` (`model/`, `ui/interface/`, `ui/integrations/`), `inerium-hw` (`backlight.rs`, `gpu.rs`), and `inerium-tools` (`desktop/`).
+- **Opt-in GitHub CLI & Distro Selector**: Added `--with-github` documentation (`docs/addons*.md`), `inerium distro` Waybar icon switcher, bilingual `Title[ru]:` headers in `first-login.d/*`, live EN/RU switching with preserved status warnings in `inerium-setup`, and dynamic `@cc_*` theming in `inerium-camera`.
+- **Theme Alignment & MSI CI Tests**: Added read-only default theme consistency test (`test_align_default_theme_kanagawa_dragon`) and CI test coverage for `inerium-tools --features msi-ec`.
 
 ### Changed
-- **Memory & Runtime Lifecycle Management in `inerium-shell`**: Refactored all 7 Layer-Shell popups to eliminate Relm4 runtime detach leaks by retaining the active controller in the application root component.
-- **Optimized Hyprland Layout Manager**: Eliminated repetitive `hyprctl` process spawning in stream mode; event loop now waits directly on IPC file descriptors with zero idle CPU utilization.
-- **Asynchronous Bluetooth Device Discovery**: Refactored Bluetooth status tracking to use asynchronous DBus object queries with robust EOF/EINTR/EAGAIN pipe draining.
-- **Stabilized Input Overrides**: Reset idle dirty flags on layout reset to prevent runaway Hyprland configuration reload loops.
+- **Responsive GTK4 / Relm4 UI**: Consolidated `wpctl` calls, coalesced `ddcutil` worker queue, and offloaded blocking `init()` probes (Wi-Fi/BT scans, wallpapers, `powerprofilesctl`, `envycontrol`) to background threads with loading placeholders in `inerium-shell`.
+- **Default Theme Synchronization**: Aligned bundled `config/*` and Qt5ct/Qt6ct `Inerium-Current.conf` with `themes/kanagawa-dragon.toml` and removed legacy/personal theme and WirePlumber configs.
+- **Installer Hardening**: Added `run_live_step` nesting guard, strict `pacman`/`paru` error propagation, and per-UID log isolation (`/tmp/inerium-install-${UID}.log`).
 
 ### Fixed
-- **Safe `greetd` Handling in Manifest & Uninstaller**: Implemented safe helper to stop `greetd` only when running outside the target session, correctly preserving and restoring original PAM configs without killing active user sessions.
-- **Theme Preservation During Updates**: Ensured user-selected themes, wallpapers, and generated color assets are preserved during `inerium update` (`IS_UPDATE=1`).
-- **Race Condition in `SelfPipe` Tests**: Fixed multi-threaded test contention with atomic drop ordering and process-level test locking.
-- **Desktop Indexer File Deletion**: Fixed `inerium-desktop-indexer` inadvertently purging user-created `.desktop` files when executed unprivileged.
-- **Legacy Orphan Cleanup Safeguards**: Protected `google-chrome-direct.desktop` and user-defined application shortcuts from being purged during manifest orphan cleanup.
-- **Persistent `hyprlock-i18n.conf` Tracking**: Fixed configuration rotation to prevent `hyprlock-i18n.conf` from being moved to `.bak` on consecutive updates.
+- **Memory & Borrow Safety in `inerium-shell`**: Eliminated Relm4 controller/runtime leaks and potential `RefCell already borrowed` panics via deferred `cleanup_displaced` and `WeakRef` cleanup.
+- **`SelfPipe` & Event-Loop Reliability**: Added full drain loop, `EINTR` handling, atomic `compare_exchange` in `Drop`, and `TEST_LOCK` serialization in `SelfPipe` tests; eliminated EOF busy-loop risk in `inerium-bluetooth` and idle subprocess forks in `inerium-layout` and `inerium-bluetooth`.
+- **Safe `inerium update` & `--uninstall`**: Protected `~/.config/locale.conf`, user-preserved themes (`RESTORE_ASSETS=0`), and user-generated `google-chrome-direct.desktop` shortcuts from manifest pruning; implemented safe `greetd` disabling/restoration without killing active sessions.
+- **Setup & Appearance Fixes**: Fixed `inerium-setup` reset leaving `idle_dirty` set (recreating deleted `hypridle_local.conf` on `Save & Apply`), strict 6-digit HEX parsing in Background Studio, `saved_connections` sync in Network view, and unprivileged user `.desktop` retention in `inerium-desktop-indexer`.
 
 ### Security
-- **Hardened Systemd Service Units**: Applied strict filesystem and privilege isolation (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`) across helper units.
-- **PAM Configuration Sanitization**: Ensured atomic file swapping and verified PAM module arguments during greetd configuration generation.
+- **Hyprland IPC Bridge**: Added Lua string escaping and strict command boundary matching in `hypr-ipc-bridge`.
+- **Desktop Indexer Privilege Drop**: Executed per-user directory indexing via `run_as_owner` with `mkstemp` atomic writes and symlink protections in `inerium-desktop-indexer`.
+- **Greeter Theme & Installer Isolation**: Added symlink checks and `create_new(true)` atomic writes in `inerium-theme`, plus per-UID installer log files.
 
 ## [0.2.0] - 2026-11-17
 
