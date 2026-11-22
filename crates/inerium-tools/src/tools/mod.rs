@@ -10,7 +10,6 @@ pub mod hwmon;
 pub mod hypr_ipc_bridge;
 pub mod layout;
 pub mod network;
-pub mod notify_sound;
 pub mod osd_watcher;
 pub mod popup;
 pub mod theme;
@@ -28,7 +27,6 @@ pub fn run_tool(name: &str, args: &[String]) -> Result<(), String> {
         "inerium-hwmon" | "hwmon" => hwmon::run(args),
         "inerium-layout" | "layout" => layout::run(args),
         "inerium-network" | "network" => network::run(args),
-        "inerium-notify-sound" | "notify-sound" => notify_sound::run(args),
         "inerium-updates" | "updates" => updates::run(args),
         "inerium-clipboard" | "clipboard" => clipboard::run(args),
         "inerium-popup" | "popup" => popup::run(args),

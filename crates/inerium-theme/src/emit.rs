@@ -312,19 +312,11 @@ border-color={}
 format=<span color="{}"><b>%s</b></span>\n%b
 default-timeout=0
 
-[app-name="Telegram Desktop"]
-on-notify=exec inerium-ctl notify-sound telegram
-
-[urgency=critical]
-on-notify=exec inerium-ctl notify-sound dialog-warning --cooldown-ms 500
-
 [mode=dnd]
 invisible=1
-on-notify=none
 
 [mode=do-not-disturb]
 invisible=1
-on-notify=none
 "#,
         theme.theme.name,
         theme.theme.author,
@@ -960,4 +952,27 @@ accent_aqua = "#7aa89f"         # Дополнительный акцент
 accent_purple = "#938aa9"       # Фиолетовый / аметистовый
 "##
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn test_align_default_theme_kanagawa_dragon() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+        let toml_path = repo_root.join("themes/kanagawa-dragon.toml");
+        let content = fs::read_to_string(&toml_path).expect("read kanagawa-dragon.toml");
+        let theme: ThemeConfig = toml::from_str(&content).expect("parse toml");
+
+        assert_eq!(fs::read_to_string(repo_root.join("config/gtk-3.0/gtk.css")).unwrap(), emit_gtk_vars(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/gtk-4.0/gtk.css")).unwrap(), emit_gtk_vars(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/waybar/colors.css")).unwrap(), emit_waybar_css(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/rofi/colors.rasi")).unwrap(), emit_rofi_rasi(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/kitty/themes/current-theme.conf")).unwrap(), emit_kitty_conf(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/mako/config")).unwrap(), emit_mako_config(&theme));
+        assert_eq!(fs::read_to_string(repo_root.join("config/hypr/config/colors.lua")).unwrap(), emit_hyprland_lua(&theme));
+    }
 }

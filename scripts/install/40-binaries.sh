@@ -7,7 +7,7 @@
 USER_BINS_STR="inerium-ctl inerium-shell inerium-setup inerium-polkit"
 
 # Multicall utilities symlinked directly to inerium-ctl
-MULTICALL_TOOLS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-notify-sound inerium-osd-watcher inerium-popup inerium-updates inerium-wallpaper inerium-theme"
+MULTICALL_TOOLS_STR="hypr-ipc-bridge inerium-battery inerium-bluetooth inerium-clipboard inerium-clock inerium-dnd inerium-hotspot inerium-hwmon inerium-layout inerium-network inerium-osd-watcher inerium-popup inerium-updates inerium-wallpaper inerium-theme"
 
 install_from_binaries() {
     local base_url="${1:-$RELEASE_BASE_URL}"
@@ -174,7 +174,7 @@ deliver_binaries() {
             printf '[DRY-RUN] cargo build --manifest-path %s/Cargo.toml --release -p inerium-tools -p inerium-shell -p inerium-setup -p inerium-polkit -p inerium-theme\n' "$REPO_DIR"
             printf '[DRY-RUN] install core binaries -> ~/.local/bin/\n'
         fi
-        printf '[DRY-RUN] create symlinks for 16 tools (inerium-clock, etc.) -> inerium-ctl\n'
+        printf '[DRY-RUN] create symlinks for 15 tools (inerium-clock, etc.) -> inerium-ctl\n'
         printf '[DRY-RUN] ln -sfn inerium-wallpaper -> ~/.local/bin/set-wallpaper\n'
         return 0
     fi

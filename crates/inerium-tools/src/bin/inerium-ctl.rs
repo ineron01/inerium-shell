@@ -16,7 +16,6 @@ const TOOLS: &[&str] = &[
     "inerium-hwmon",
     "inerium-layout",
     "inerium-network",
-    "inerium-notify-sound",
     "inerium-updates",
     "inerium-clipboard",
     "inerium-popup",
@@ -77,7 +76,6 @@ fn print_help() {
     println!();
     println!("SUBCOMMANDS:");
     println!("    notify <target> [signal]   Send signal to target daemon (default: SIGUSR1)");
-    println!("    notify-sound [options]     Play notification sound with debounce (--sound, --cooldown-ms)");
     println!();
     println!("AVAILABLE TOOLS:");
     for tool in TOOLS {
@@ -141,9 +139,6 @@ fn main() {
                     process::exit(1);
                 }
             }
-        }
-        "notify-sound" => {
-            inerium_tools::tools::notify_sound::run(&args[2..]);
         }
         other => {
             if let Some(tool) = canonical_tool_name(other) {
