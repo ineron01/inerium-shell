@@ -37,7 +37,7 @@ static LAST_CLI_STATE: std::sync::Mutex<Option<CliStateSnapshot>> = std::sync::M
 pub fn on_ddc_updated(val: u32) {
     DDC_SENDER.with(|s| {
         if let Some((_, ref sender)) = *s.borrow() {
-            sender.input(ControlCenterMsg::DdcUpdated(val));
+            let _ = sender.input_sender().send(ControlCenterMsg::DdcUpdated(val));
         }
     });
 }
@@ -1049,7 +1049,7 @@ impl SimpleComponent for ControlCenterModel {
                 *g = Some(snap);
             }
 
-            sender_cli.input(ControlCenterMsg::CliStateLoaded {
+            let _ = sender_cli.input_sender().send(ControlCenterMsg::CliStateLoaded {
                 has_ppd,
                 current_profile,
                 has_envycontrol,
@@ -1141,9 +1141,8 @@ impl SimpleComponent for ControlCenterModel {
         let gen_dest = instance_gen;
         root.connect_destroy(move |_| {
             DDC_SENDER.with(|s| {
-                if let Some((g, _)) = *s.borrow()
-                    && g == gen_dest
-                {
+                let should_clear = s.borrow().as_ref().is_some_and(|(g, _)| *g == gen_dest);
+                if should_clear {
                     *s.borrow_mut() = None;
                 }
             });
@@ -1233,9 +1232,8 @@ impl Drop for ControlCenterModel {
     fn drop(&mut self) {
         let instance_gen = self.instance_gen;
         DDC_SENDER.with(|s| {
-            if let Some((g, _)) = *s.borrow()
-                && g == instance_gen
-            {
+            let should_clear = s.borrow().as_ref().is_some_and(|(g, _)| *g == instance_gen);
+            if should_clear {
                 *s.borrow_mut() = None;
             }
         });

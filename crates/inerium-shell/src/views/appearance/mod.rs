@@ -271,7 +271,7 @@ impl SimpleComponent for AppearanceModel {
         let sender_init = sender.clone();
         std::thread::spawn(move || {
             let walls = hw::list_available_wallpapers();
-            sender_init.input(AppearanceMsg::WallpapersReloaded(walls));
+            let _ = sender_init.input_sender().send(AppearanceMsg::WallpapersReloaded(walls));
         });
 
         let bg_state = Rc::new(RefCell::new(CustomBgState {
@@ -345,7 +345,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_clone = sender.clone();
                 std::thread::spawn(move || {
                     let _ = Command::new("inerium-theme").arg("set").arg(&id_clone).status();
-                    sender_clone.input(AppearanceMsg::RefreshThemes);
+                    let _ = sender_clone.input_sender().send(AppearanceMsg::RefreshThemes);
                 });
             }
             AppearanceMsg::RefreshThemes => {
@@ -407,7 +407,7 @@ impl SimpleComponent for AppearanceModel {
                     let sender_del = sender.clone();
                     std::thread::spawn(move || {
                         let walls = hw::list_available_wallpapers();
-                        sender_del.input(AppearanceMsg::WallpapersReloaded(walls));
+                        let _ = sender_del.input_sender().send(AppearanceMsg::WallpapersReloaded(walls));
                     });
                 }
                 self.dirty_wallpapers.set(true);
@@ -460,7 +460,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_add = sender.clone();
                 std::thread::spawn(move || {
                     let walls = hw::list_available_wallpapers();
-                    sender_add.input(AppearanceMsg::WallpapersReloaded(walls));
+                    let _ = sender_add.input_sender().send(AppearanceMsg::WallpapersReloaded(walls));
                 });
             }
             AppearanceMsg::WallpapersReloaded(walls) => {
@@ -604,7 +604,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_gen = sender.clone();
                 std::thread::spawn(move || {
                     if let Ok(path) = spec.generate_and_save(&dir) {
-                        sender_gen.input(AppearanceMsg::CustomBgGenerated {
+                        let _ = sender_gen.input_sender().send(AppearanceMsg::CustomBgGenerated {
                             path_str: path.to_string_lossy().to_string(),
                             notify: false,
                         });
@@ -622,7 +622,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_gen = sender.clone();
                 std::thread::spawn(move || {
                     if let Ok(path) = spec.generate_and_save(&dir) {
-                        sender_gen.input(AppearanceMsg::CustomBgGenerated {
+                        let _ = sender_gen.input_sender().send(AppearanceMsg::CustomBgGenerated {
                             path_str: path.to_string_lossy().to_string(),
                             notify: true,
                         });
@@ -656,7 +656,7 @@ impl SimpleComponent for AppearanceModel {
                 let sender_reload = sender.clone();
                 std::thread::spawn(move || {
                     let walls = hw::list_available_wallpapers();
-                    sender_reload.input(AppearanceMsg::WallpapersReloaded(walls));
+                    let _ = sender_reload.input_sender().send(AppearanceMsg::WallpapersReloaded(walls));
                 });
             }
             AppearanceMsg::Back => {
