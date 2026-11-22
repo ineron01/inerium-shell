@@ -38,7 +38,7 @@ window#waybar {
 
 #custom-launcher {
     margin-left: 0;
-    padding: 0 10px;
+    padding: 0 12px 0 8px;
     font-size: 1.12em;
     color: @primary;
 }
