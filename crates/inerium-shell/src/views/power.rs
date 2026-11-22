@@ -240,6 +240,7 @@ impl SimpleComponent for PowerMenuModel {
         // Keyboard controller for keys 1..5 and Esc
         let key_sender = sender.clone();
         let key_ctrl = EventControllerKey::new();
+        key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
         key_ctrl.connect_key_pressed(move |_, key, _, _| {
             let action = match key {
                 Key::_1 | Key::KP_1 => Some(PowerAction::Lock),
@@ -330,14 +331,13 @@ impl SimpleComponent for PowerMenuModel {
     }
 }
 
-pub fn build_power_menu<FClose>(close_cb: FClose) -> (gtk4::Box, i32, i32)
+pub fn build_power_menu<FClose>(close_cb: FClose) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FClose: Fn() + 'static + Clone,
 {
-    let mut controller = PowerMenuModel::builder()
+    let controller = PowerMenuModel::builder()
         .launch(Box::new(close_cb))
         .detach();
-    controller.detach_runtime();
     let root = controller.widget().clone();
-    (root, 840, 320)
+    (root, 840, 320, Box::new(controller))
 }

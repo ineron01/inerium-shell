@@ -289,6 +289,17 @@ pub fn get_interface_ipv4(target_iface: &str) -> Option<String> {
     result
 }
 
+/// Returns the user's runtime directory (`$XDG_RUNTIME_DIR` or fallback to `/run/user/{uid}`).
+pub fn runtime_dir() -> std::path::PathBuf {
+    if let Ok(rt) = std::env::var("XDG_RUNTIME_DIR") {
+        let p = std::path::PathBuf::from(rt);
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+    std::path::PathBuf::from(format!("/run/user/{}", posix_getuid()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

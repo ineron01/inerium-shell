@@ -7,13 +7,13 @@ ensure_paru() {
     if command -v paru >/dev/null 2>&1; then
         return 0
     fi
-    sudo pacman -S --needed --noconfirm base-devel git
+    sudo pacman -S --needed --noconfirm base-devel git || return 1
     if pacman -Si paru >/dev/null 2>&1; then
-        sudo pacman -S --needed --noconfirm paru
+        sudo pacman -S --needed --noconfirm paru || return 1
     else
         local tmp_dir
         tmp_dir="$(mktemp -d)"
-        git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp_dir/paru-bin"
+        git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp_dir/paru-bin" || { rm -rf "$tmp_dir"; return 1; }
         (cd "$tmp_dir/paru-bin" && makepkg -si --noconfirm) || { rm -rf "$tmp_dir"; return 1; }
         rm -rf "$tmp_dir"
     fi
@@ -34,7 +34,7 @@ install_pkgs() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] sudo pacman -S --needed --noconfirm %s\n' "${missing[*]}"
         else
-            sudo pacman -S --needed --noconfirm "${missing[@]}"
+            sudo pacman -S --needed --noconfirm "${missing[@]}" || return 1
         fi
         return 0
     fi
@@ -60,7 +60,7 @@ install_pkgs() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] sudo pacman -S --needed --noconfirm %s\n' "${repo_pkgs[*]}"
         else
-            sudo pacman -S --needed --noconfirm "${repo_pkgs[@]}"
+            sudo pacman -S --needed --noconfirm "${repo_pkgs[@]}" || return 1
         fi
     fi
 
@@ -68,7 +68,7 @@ install_pkgs() {
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] paru -S --needed --noconfirm --skipreview --sudoloop %s\n' "${aur_pkgs[*]}"
         else
-            paru -S --needed --noconfirm --skipreview --sudoloop "${aur_pkgs[@]}"
+            paru -S --needed --noconfirm --skipreview --sudoloop "${aur_pkgs[@]}" || return 1
         fi
     fi
 }
@@ -102,6 +102,16 @@ install_base_packages() {
         [[ "${INSTALL_LANG:-}" == "ru" ]] && title="Полное обновление системы (pacman -Syu)..."
         run_live_step "$title" sudo pacman -Syu --noconfirm
     else
+        local -a sync_dbs=(/var/lib/pacman/sync/*.db)
+        if [[ ! -e "${sync_dbs[0]}" ]]; then
+            local sync_title="Syncing pacman databases..."
+            [[ "${INSTALL_LANG:-}" == "ru" ]] && sync_title="Синхронизация баз данных pacman..."
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] sudo pacman -Sy --noconfirm\n'
+            else
+                run_live_step "$sync_title" sudo pacman -Sy --noconfirm
+            fi
+        fi
         local msg="Fast dependency check (resolving missing packages only)..."
         [[ "${INSTALL_LANG:-}" == "ru" ]] && msg="Быстрая проверка зависимостей (установка только недостающих пакетов)..."
         log "$msg"
@@ -123,6 +133,10 @@ install_base_packages() {
         fi
     }
     run_live_step "Installing base packages from pkglist-base.txt..." install_base_pkglist
+
+    if [[ "${WITH_CAMERA:-0}" -eq 1 ]]; then
+        install_pkgs gstreamer gst-plugins-base-libs
+    fi
 
     if [[ "$INSTALL_MODE" == "source" && "$SKIP_BUILD" -eq 0 ]]; then
         run_live_step "Installing Rust build toolchain (--from-source)..." install_pkgs rust base-devel pkgconf clang mold
@@ -156,6 +170,9 @@ install_base_packages() {
             "$tmp_colloid/install.sh" -d "$HOME/.local/share/icons" -notint
             for t in Colloid Colloid-Dark Colloid-Light; do
                 rm -rf "$HOME/.local/share/icons/$t"/apps*
+                if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+                    gtk-update-icon-cache -q -t -f "$HOME/.local/share/icons/$t" 2>/dev/null || true
+                fi
             done
             rm -rf "$tmp_colloid"
         else

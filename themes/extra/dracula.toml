@@ -10,7 +10,7 @@ description = "A dark gothic theme with vibrant high-contrast neon accents"
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(40, 42, 54, 0.98)"

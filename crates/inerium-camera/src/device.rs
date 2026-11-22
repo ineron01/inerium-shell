@@ -473,7 +473,7 @@ impl DeviceManager {
             .args(["-d", "tcpip", "5555"])
             .output()
             .await
-            .map_err(|e| format!("Ошибка adb tcpip: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to run adb tcpip", "Ошибка adb tcpip"), e))?;
 
         if out.status.success() {
             Ok(())

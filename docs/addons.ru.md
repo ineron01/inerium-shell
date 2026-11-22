@@ -1,6 +1,6 @@
 # Inerium Shell — Дополнительные модули и компоненты
 
-В состав Inerium Shell входят опциональные системные модули, которые можно выбрать при установке в интерактивном TUI или через флаги командной строки (`--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
+В состав Inerium Shell входят опциональные системные модули, которые можно выбрать при установке в интерактивном TUI или через флаги командной строки (`--with-github`, `--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-fan-regulator`, `--with-novpn`, `--all-addons`).
 
 ---
 
@@ -20,17 +20,22 @@
 
 ---
 
-## 2. Модуль охлаждения MSI (`--with-msi-ec`)
+## 2. Модуль охлаждения MSI (`--with-msi-ec`, `--with-fan-regulator`)
 
-- **Описание:** Официальный DKMS-драйвер ядра `msi-ec` (пакет `msi-ec-dkms-git` из AUR) и системный демон регулировки скорости кулеров (`msi-fan-regulator`).
+- **Описание:** Пропатченный DKMS-драйвер ядра `msi-ec` (пакет `msi-ec-dkms-git` из AUR) и системный демон регулировки скорости кулеров (`msi-fan-regulator`).
+- **Флаги:**
+  - `--with-msi-ec`: Устанавливает драйвер ядра `msi-ec-dkms-git`, правила udev и модули ядра для лимита батареи и регистров платформы.
+  - `--with-fan-regulator`: Устанавливает и активирует службу `msi-fan-regulator.service` (автоматически включает `--with-msi-ec`, если он не был указан).
 - **Совместимость и особенности:**
   - Начиная с версии 0.18 (PR #773), `msi-ec` поддерживает семейство Bravo 15 C7VE / C7V / C7UCX из коробки благодаря сопоставлению префикса прошивки EC (`158NIMS1.1`).
-  - Демон регулятора непрерывно считывает температуры CPU/GPU и регулирует обороты кулеров через стандартные регистры `msi-ec` в sysfs.
+  - Демон регулятора непрерывно считывает температуры CPU/GPU и регулирует обороты кулеров через debug-регистры `ec_sys` (`options ec_sys write_support=1`).
   - Предназначен для ноутбуков MSI, где штатное охлаждение в Linux не справляется или кулеры работают неэффективно.
 - **Состав:**
   - Пакет `msi-ec-dkms-git` (AUR)
   - Бинарник `msi-fan-regulator` (собирается из `crates/inerium-tools` с флагом `--features msi-ec`)
   - `/etc/systemd/system/msi-fan-regulator.service`
+  - `/etc/modprobe.d/msi-fan-regulator.conf` (`options ec_sys write_support=1`)
+  - `/etc/modules-load.d/msi-fan-regulator.conf` (`ec_sys`)
   - `/etc/udev/rules.d/99-msi-ec.rules`
   - `/etc/modules-load.d/msi-ec.conf`
 
@@ -77,3 +82,16 @@
   - Быстрая конвертация офисных документов (PDF, DOCX, ODT через LibreOffice и Pandoc), медиафайлов (MP4, MP3, WAV, WEBP через FFmpeg и ImageMagick).
   - Параллельная обработка очередей файлов на пуле потоков Rayon.
   - Опциональное локальное ИИ-удаление фона с изображений через ONNX Runtime (`silueta.onnx`).
+
+---
+
+## 6. Консольный клиент GitHub (`--with-github`)
+
+- **Описание:** Официальная консольная утилита GitHub (`github-cli` / `gh`), интегрированная в сценарий первого входа для быстрой авторизации, настройки git push по HTTPS и подписи коммитов.
+- **Состав:**
+  - Пакет `github-cli` (`gh`)
+  - `~/.config/inerium/first-login.d/10-github`
+- **Ключевые возможности:**
+  - Интерактивная авторизация в GitHub через `gh auth login` прямо из мастера `inerium-setup` или терминала.
+  - Автоматическая настройка диспетчера учетных данных git (`git credential helper`) для HTTPS-репозиториев.
+  - Поддержка создания и привязки ключей для подписи коммитов.

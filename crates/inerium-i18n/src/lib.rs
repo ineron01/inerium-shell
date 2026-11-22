@@ -162,8 +162,11 @@ macro_rules! tr_fmt {
 mod tests {
     use super::*;
 
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_lang_switching() {
+        let _guard = TEST_LOCK.lock().unwrap();
         Lang::set(Lang::En);
         assert_eq!(Lang::get(), Lang::En);
         assert_eq!(tr("Power", "Питание"), "Power");
@@ -175,6 +178,7 @@ mod tests {
 
     #[test]
     fn test_pluralization() {
+        let _guard = TEST_LOCK.lock().unwrap();
         Lang::set(Lang::En);
         assert_eq!(tr_plural(1, "update", "updates", "обновление", "обновления", "обновлений"), "update");
         assert_eq!(tr_plural(5, "update", "updates", "обновление", "обновления", "обновлений"), "updates");

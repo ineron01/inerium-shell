@@ -2,14 +2,16 @@
 Description=Inerium Camera persistent V4L2/SHM bridge
 PartOf=graphical-session.target
 After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 ExecStartPre=/usr/bin/mkdir -p %t/inerium
 ExecStartPre=/usr/bin/rm -f %t/inerium/cam-ingest.sock %t/inerium/cam-preview.sock
 ExecStart=%h/.local/bin/inerium-camera _bridge
-Restart=always
-RestartSec=1
+Restart=on-failure
+RestartSec=5
 Slice=background-graphical.slice
 
 [Install]

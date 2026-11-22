@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 use std::thread;
 
 use inerium_i18n::tr_fmt;
@@ -31,6 +30,7 @@ pub fn toggle_hypridle(enable: bool) {
 // -------------------------------------------------------------
 // WALLPAPERS
 // -------------------------------------------------------------
+#[derive(Clone, Debug)]
 pub struct WallpaperItem {
     pub path: String,
     pub name: String,
@@ -147,6 +147,7 @@ fn ensure_wallpapers_dir_populated(dir: &Path) {
     if !already_has_files {
         let home = home_dir();
         let brand_sources = [
+            home.join(".local/share/inerium/shell/assets/wallpapers"),
             home.join(".local/share/inerium-shell/assets/wallpapers"),
             home.join("inerium-shell/assets/wallpapers"),
             home.join("Repos/inerium-shell/assets/wallpapers"),
@@ -239,9 +240,12 @@ pub fn list_available_wallpapers() -> Vec<WallpaperItem> {
 
 pub fn set_wallpaper_async(path: String, monitor: Option<String>) {
     thread::spawn(move || {
-        let p = Path::new(&path);
-        let mon = monitor.as_deref().filter(|m| *m != "all");
-        let _ = inerium_hw::wallpaper::apply_wallpaper(p, mon, true);
+        let mut cmd = Command::new("inerium-wallpaper");
+        cmd.arg(&path);
+        if let Some(ref mon) = monitor.filter(|m| m != "all") {
+            cmd.arg(mon);
+        }
+        let _ = cmd.output();
     });
 }
 
@@ -279,16 +283,8 @@ pub struct SystemUpdates {
     pub sample_packages: Vec<String>,
 }
 
-unsafe fn libc_getuid() -> u32 {
-    unsafe extern "C" {
-        fn getuid() -> u32;
-    }
-    unsafe { getuid() }
-}
-
 pub fn get_updates_info() -> SystemUpdates {
-    let uid = unsafe { libc_getuid() };
-    let cache_path = format!("/run/user/{}/inerium-updates-cache.json", uid);
+    let cache_path = inerium_tools::sys::runtime_dir().join("inerium-updates-cache.json");
 
     let mut cache: Option<SystemUpdates> = None;
     let mut need_refresh = false;
@@ -317,41 +313,6 @@ pub fn get_updates_info() -> SystemUpdates {
     }
 
     cache.unwrap_or_default()
-}
-
-// -------------------------------------------------------------
-// ENVYCONTROL (GPU Switch)
-// -------------------------------------------------------------
-static HAS_ENVYCONTROL: OnceLock<bool> = OnceLock::new();
-
-pub fn has_envycontrol() -> bool {
-    *HAS_ENVYCONTROL.get_or_init(|| {
-        Command::new("envycontrol")
-            .arg("--query")
-            .output()
-            .is_ok_and(|o| o.status.success())
-    })
-}
-
-pub fn get_gpu_mode() -> String {
-    if let Ok(output) = Command::new("envycontrol").arg("--query").output() {
-        let s = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
-        if s.contains("hybrid") {
-            return "hybrid".to_string();
-        } else if s.contains("integrated") {
-            return "integrated".to_string();
-        } else if s.contains("nvidia") {
-            return "nvidia".to_string();
-        }
-    }
-    "hybrid".to_string()
-}
-
-pub fn switch_gpu_mode(mode: &str) -> bool {
-    let out = Command::new("sudo")
-        .args(["-n", "envycontrol", "-s", mode])
-        .output();
-    matches!(out, Ok(res) if res.status.success())
 }
 
 // -------------------------------------------------------------

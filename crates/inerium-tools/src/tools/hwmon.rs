@@ -5,7 +5,6 @@
 //! - Click toggle for detailed (CPU+RAM) vs compact mode via SIGUSR1
 //! - Tooltip with detailed breakdown and warning/critical thresholds
 
-use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::thread;
@@ -24,7 +23,7 @@ fn hwmon_registry() -> PidRegistry {
 fn toggle_detailed() {
     let reg = hwmon_registry();
     reg.toggle_state();
-    reg.notify_all(SIGUSR1);
+    let _ = reg.notify(SIGUSR1);
 }
 
 fn is_detailed() -> bool {
@@ -46,9 +45,9 @@ fn parse_proc_stat() -> (u64, u64) {
     (total, idle)
 }
 
-fn read_cpu_with_file_cache(uid: u32) -> u32 {
+fn read_cpu_with_file_cache() -> u32 {
     let (total, idle) = parse_proc_stat();
-    let cache_path = format!("/run/user/{}/inerium-hwmon-cpu", uid);
+    let cache_path = crate::sys::runtime_dir().join("inerium-hwmon-cpu");
 
     let mut usage = 0;
     if let Ok(prev_str) = fs::read_to_string(&cache_path) {
@@ -183,13 +182,10 @@ fn format_output(cpu: u32, plain: bool, detailed: bool) -> String {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     let plain = args.iter().any(|a| a == "--plain");
     let oneshot = args.iter().any(|a| a == "--oneshot");
     let toggle = args.iter().any(|a| a == "--toggle");
-
-    let uid = posix_getuid();
 
     if toggle {
         toggle_detailed();
@@ -198,7 +194,7 @@ fn main() {
 
     if oneshot {
         let detailed = is_detailed();
-        let cpu = read_cpu_with_file_cache(uid);
+        let cpu = read_cpu_with_file_cache();
         let out = format_output(cpu, plain, detailed);
         println!("{}", out);
         return;
@@ -233,7 +229,9 @@ fn main() {
             last_output = out;
         }
 
-        self_pipe.wait_event(2500);
+        if self_pipe.wait_event(2500) {
+            inerium_i18n::Lang::reinit();
+        }
     }
 }
 

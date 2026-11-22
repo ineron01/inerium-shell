@@ -3,14 +3,13 @@
 //! - Fast cache in /run/user/<uid>/inerium-updates-cache.json
 //! - Instant read (< 1ms) for Center of Control and scripts
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use inerium_tools::ipc::PidRegistry;
-use inerium_tools::sys::posix::{posix_getuid, SIGUSR1};
+use inerium_tools::sys::posix::SIGUSR1;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -23,8 +22,7 @@ pub struct UpdatesCache {
 }
 
 pub fn get_cache_path() -> PathBuf {
-    let uid = posix_getuid();
-    PathBuf::from(format!("/run/user/{}/inerium-updates-cache.json", uid))
+    crate::sys::runtime_dir().join("inerium-updates-cache.json")
 }
 
 pub fn read_cache() -> Option<UpdatesCache> {
@@ -96,14 +94,12 @@ pub fn perform_check() -> UpdatesCache {
         let _ = fs::write(&cache_path, serialized);
     }
 
-    PidRegistry::new("updates").notify_all(SIGUSR1);
+    let _ = PidRegistry::notify_all("updates", SIGUSR1);
 
     cache
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--check" || a == "-c") {
         let res = perform_check();
         println!("{}", res.total);

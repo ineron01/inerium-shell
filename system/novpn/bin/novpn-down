@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+is_ru() {
+    local loc=""
+    if [[ -f "/etc/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "/etc/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
 # Remove firewall rules
 iptables -D FORWARD -i veth-host -j ACCEPT 2>/dev/null || true
 iptables -D FORWARD -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED 2>/dev/null || true
@@ -8,8 +17,10 @@ iptables -D FORWARD -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED 2>/d
 # Flush any novpn nat masquerade rules
 while iptables -t nat -D POSTROUTING -s 10.200.1.0/24 ! -o amn0 -j MASQUERADE 2>/dev/null; do :; done
 while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q -- "-s 10.200.1.0/24"; do
-    rule=$(iptables -t nat -S POSTROUTING | grep -- "-s 10.200.1.0/24" | head -n1 | sed 's/^-A //')
-    iptables -t nat -D $rule 2>/dev/null || break
+    rule_str="$(iptables -t nat -S POSTROUTING 2>/dev/null | grep -- "-s 10.200.1.0/24" | head -n1 | sed 's/^-A //')"
+    [[ -n "$rule_str" ]] || break
+    read -ra rule_args <<< "$rule_str"
+    iptables -t nat -D "${rule_args[@]}" 2>/dev/null || break
 done
 
 # Remove routing rules & table
@@ -22,4 +33,8 @@ ip link del veth-host 2>/dev/null || true
 ip netns del novpn 2>/dev/null || true
 rm -rf /etc/netns/novpn
 
-echo "Изолированная сеть (novpn) отключена."
+if is_ru; then
+    echo "Изолированная сеть (novpn) отключена."
+else
+    echo "Isolated direct network (novpn) disabled."
+fi

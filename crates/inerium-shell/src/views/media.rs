@@ -78,11 +78,36 @@ pub fn query_media_info() -> Option<MediaInfo> {
     })
 }
 
-fn get_art_cache_path(url: &str) -> PathBuf {
+fn url_decode(s: &str) -> String {
+    let mut result = Vec::new();
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(val) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        {
+            result.push(val);
+            i += 3;
+            continue;
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).into_owned()
+}
+
+fn get_art_cache_path(url: &str) -> (PathBuf, PathBuf) {
     let mut hasher = DefaultHasher::new();
     url.hash(&mut hasher);
     let hash = hasher.finish();
-    PathBuf::from(format!("/tmp/inerium_art_{:x}.png", hash))
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+    let target = runtime_dir.join(format!("inerium-art-{:x}.png", hash));
+    let tmp = runtime_dir.join(format!("inerium-art-{:x}.tmp", hash));
+    (target, tmp)
 }
 
 fn get_player_badge(name: &str) -> (&'static str, String) {
@@ -108,14 +133,14 @@ fn resolve_art(url: &str, sender: &ComponentSender<MediaModel>) -> (Option<PathB
     }
 
     if let Some(file_path) = url.strip_prefix("file://") {
-        let p = PathBuf::from(file_path);
+        let p = PathBuf::from(url_decode(file_path));
         if p.exists() {
             (Some(p), url.to_string())
         } else {
             (None, url.to_string())
         }
     } else if url.starts_with("http://") || url.starts_with("https://") {
-        let cache_p = get_art_cache_path(url);
+        let (cache_p, tmp_p) = get_art_cache_path(url);
         if cache_p.exists() {
             (Some(cache_p), url.to_string())
         } else {
@@ -123,20 +148,28 @@ fn resolve_art(url: &str, sender: &ComponentSender<MediaModel>) -> (Option<PathB
             let target_path = cache_p.clone();
             let s = sender.clone();
             thread::spawn(move || {
-                let _ = Command::new("curl")
+                let status = Command::new("curl")
                     .args([
-                        "-s",
-                        "-L",
-                        "-o",
-                        target_path.to_str().unwrap_or(""),
-                        &target_url,
+                        "-fsSL",
                         "--max-time",
-                        "2",
+                        "3",
+                        "-o",
+                        tmp_p.to_str().unwrap_or(""),
+                        &target_url,
                     ])
-                    .output();
-                if target_path.exists() {
-                    s.input(MediaMsg::UpdateArt(Some(target_path)));
+                    .status();
+                if let Ok(st) = status
+                    && st.success()
+                    && tmp_p.exists()
+                {
+                    let _ = std::fs::rename(&tmp_p, &target_path);
+                    if target_path.exists() {
+                        s.input(MediaMsg::UpdateArt(target_url, Some(target_path)));
+                        return;
+                    }
                 }
+                let _ = std::fs::remove_file(&tmp_p);
+                s.input(MediaMsg::UpdateArt(target_url, None));
             });
             (None, url.to_string())
         }
@@ -158,7 +191,7 @@ pub struct MediaModel {
 pub enum MediaMsg {
     PollTick,
     UpdateInfo(Option<MediaInfo>),
-    UpdateArt(Option<PathBuf>),
+    UpdateArt(String, Option<PathBuf>),
     PlayPause,
     Previous,
     Next,
@@ -456,8 +489,10 @@ impl SimpleComponent for MediaModel {
                 }
                 self.info = info;
             }
-            MediaMsg::UpdateArt(path) => {
-                self.art_path = path;
+            MediaMsg::UpdateArt(url, path) => {
+                if url == self.last_art_url {
+                    self.art_path = path;
+                }
             }
             MediaMsg::PlayPause => {
                 self.info.is_playing = !self.info.is_playing;
@@ -508,7 +543,7 @@ impl SimpleComponent for MediaModel {
 pub fn build_media_view<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (gtk4::Box, i32, i32)
+) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
@@ -518,8 +553,7 @@ where
         close_cb: std::boxed::Box::new(close_cb),
     };
 
-    let mut controller = MediaModel::builder().launch(init).detach();
-    controller.detach_runtime();
+    let controller = MediaModel::builder().launch(init).detach();
     let root = controller.widget().clone();
-    (root, 390, 210)
+    (root, 390, 210, Box::new(controller))
 }

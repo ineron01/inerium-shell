@@ -1,6 +1,14 @@
+pub mod graphics;
+pub mod header;
+pub mod power_cooling;
+pub mod sliders;
+pub mod tiles;
+
+pub use header::get_theme_info;
+pub use power_cooling::compute_fan_string;
+pub use tiles::get_wifi_sub;
+
 use std::cell::RefCell;
-use std::process::Command;
-use std::thread;
 use std::time::Duration;
 
 use gtk4::prelude::*;
@@ -11,118 +19,27 @@ use relm4::prelude::*;
 use crate::hw;
 
 thread_local! {
-    static DDC_SENDER: RefCell<Option<ComponentSender<ControlCenterModel>>> = const { RefCell::new(None) };
+    static DDC_SENDER: RefCell<Option<(u64, ComponentSender<ControlCenterModel>)>> = const { RefCell::new(None) };
 }
+static DDC_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[derive(Clone, Default)]
+struct CliStateSnapshot {
+    has_ppd: bool,
+    current_profile: String,
+    has_envycontrol: bool,
+    gpu_mode: String,
+    wifi_sub: String,
+}
+
+static LAST_CLI_STATE: std::sync::Mutex<Option<CliStateSnapshot>> = std::sync::Mutex::new(None);
 
 pub fn on_ddc_updated(val: u32) {
     DDC_SENDER.with(|s| {
-        if let Some(ref sender) = *s.borrow() {
+        if let Some((_, ref sender)) = *s.borrow() {
             sender.input(ControlCenterMsg::DdcUpdated(val));
         }
     });
-}
-
-fn get_wifi_sub(wifi_on: bool) -> String {
-    if wifi_on {
-        if hw::is_hotspot_active() {
-            tr("Hotspot", "Точка доступа").to_string()
-        } else if let Some(ref ssid) = hw::get_active_wifi_ssid() {
-            ssid.clone()
-        } else {
-            tr("Connected", "Включен").to_string()
-        }
-    } else {
-        tr("Disabled", "Выключен").to_string()
-    }
-}
-
-fn get_theme_info() -> (bool, String, String, usize) {
-    let home = hw::home_dir();
-
-    let mut theme_ids = std::collections::HashSet::new();
-    let user_themes = home.join(".config/inerium/themes");
-    if let Ok(entries) = std::fs::read_dir(&user_themes) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file()
-                && path.extension().is_some_and(|e| e == "toml")
-                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            {
-                theme_ids.insert(stem.to_string());
-            }
-        }
-    }
-    let count = theme_ids.len().max(2);
-
-    let cur_json = home.join(".config/inerium/current.json");
-    if let Ok(content) = std::fs::read_to_string(&cur_json)
-        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
-    {
-        let variant = val.get("variant").and_then(|v| v.as_str()).unwrap_or("dark");
-        let name = val.get("name").and_then(|v| v.as_str()).unwrap_or("Kanagawa Dragon");
-        let author = val.get("author").and_then(|v| v.as_str()).unwrap_or("rebelot");
-        return (variant == "dark", name.to_string(), author.to_string(), count);
-    }
-    let is_dark = crate::theme::detect_theme() == crate::theme::ThemeMode::Dark;
-    if is_dark {
-        (true, "Kanagawa Dragon".to_string(), "rebelot".to_string(), count)
-    } else {
-        (false, "Inerium Light".to_string(), "Inerium Core".to_string(), count)
-    }
-}
-
-fn compute_fan_string(is_cb: bool) -> String {
-    let (cpu_rpm, gpu_rpm, cpu_pct, gpu_pct) = hw::get_fan_telemetry();
-    let c_pct = cpu_pct.unwrap_or(0);
-    let g_pct = gpu_pct.unwrap_or(0);
-
-    if is_cb {
-        match (cpu_rpm, gpu_rpm) {
-            (Some(cr), Some(gr)) if cr > 0 && gr > 0 => {
-                format!("󰈐 Cooler Boost: CPU {} RPM  ·  GPU {} RPM", cr, gr)
-            }
-            _ => tr(
-                "󰈐 Cooler Boost: maximum speed (100%)",
-                "󰈐 Cooler Boost: максимальные обороты (100%)",
-            )
-            .to_string(),
-        }
-    } else {
-        let mut parts = Vec::new();
-        if let Some(cr) = cpu_rpm {
-            if cr > 0 {
-                if cpu_pct.is_some() {
-                    parts.push(format!("CPU {}% ({} RPM)", c_pct, cr));
-                } else {
-                    parts.push(format!("Fan 1: {} RPM", cr));
-                }
-            } else if cpu_pct.is_some() {
-                parts.push(format!("CPU {}%", c_pct));
-            }
-        } else if cpu_pct.is_some() {
-            parts.push(format!("CPU {}%", c_pct));
-        }
-
-        if let Some(gr) = gpu_rpm {
-            if gr > 0 {
-                if gpu_pct.is_some() {
-                    parts.push(format!("GPU {}% ({} RPM)", g_pct, gr));
-                } else {
-                    parts.push(format!("Fan 2: {} RPM", gr));
-                }
-            } else if gpu_pct.is_some() {
-                parts.push(format!("GPU {}%", g_pct));
-            }
-        } else if gpu_pct.is_some() {
-            parts.push(format!("GPU {}%", g_pct));
-        }
-
-        if parts.is_empty() {
-            tr("󰈨  Fans: active", "󰈨  Кулеры: активный режим").to_string()
-        } else {
-            format!("󰈨  {}: {}", tr("Fans", "Кулеры"), parts.join(" · "))
-        }
-    }
 }
 
 pub struct ControlCenterModel {
@@ -170,18 +87,32 @@ pub struct ControlCenterModel {
     pub gpu_status_ok: bool,
     pub show_reboot: bool,
 
-    nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
-    close_cb: std::boxed::Box<dyn Fn() + 'static>,
+    pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
+    pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
+    pub instance_gen: u64,
 }
 
 #[derive(Debug)]
 pub enum ControlCenterMsg {
+    CliStateLoaded {
+        has_ppd: bool,
+        current_profile: String,
+        has_envycontrol: bool,
+        gpu_mode: String,
+        wifi_sub: String,
+    },
     // Header
     CheckUpdates,
     UpdatesChecked(hw::SystemUpdates),
     LaunchUpdateTerminal,
     ToggleHypridle,
     ToggleTheme,
+    ThemeUpdated {
+        is_dark: bool,
+        name: String,
+        author: String,
+        count: usize,
+    },
     LockScreen,
     PowerMenu,
     NavAppearance,
@@ -1041,15 +972,13 @@ impl SimpleComponent for ControlCenterModel {
         let updates = hw::get_updates_info();
 
         let is_wifi = hw::is_wifi_enabled();
-        let wifi_sub = get_wifi_sub(is_wifi);
         let is_bt = hw::is_bluetooth_enabled();
         let is_dnd = hw::is_dnd_active();
         let is_mic_muted = hw::is_mic_muted();
         let is_idle_active = hw::is_hypridle_active();
         let (is_dark_theme, theme_name, theme_author, available_themes_count) = get_theme_info();
 
-        let volume = hw::get_volume();
-        let volume_muted = hw::is_volume_muted();
+        let (volume, volume_muted) = hw::get_sink_volume_state();
         let has_backlight = hw::has_backlight();
         let laptop_brightness = if has_backlight {
             hw::get_laptop_brightness()
@@ -1063,12 +992,71 @@ impl SimpleComponent for ControlCenterModel {
             0
         };
 
-        let has_ppd = hw::has_power_profiles();
-        let current_profile = if has_ppd {
-            hw::get_power_profile()
-        } else {
-            String::new()
+        let (has_ppd, current_profile, has_envycontrol, gpu_mode, wifi_sub) = {
+            let guard = LAST_CLI_STATE.lock().unwrap();
+            if let Some(ref snap) = *guard {
+                let w_sub = if !is_wifi {
+                    tr("Disabled", "Выключен").to_string()
+                } else {
+                    snap.wifi_sub.clone()
+                };
+                (
+                    snap.has_ppd,
+                    snap.current_profile.clone(),
+                    snap.has_envycontrol,
+                    snap.gpu_mode.clone(),
+                    w_sub,
+                )
+            } else {
+                (
+                    false,
+                    String::new(),
+                    false,
+                    String::new(),
+                    if is_wifi {
+                        tr("Enabled", "Включен").to_string()
+                    } else {
+                        tr("Disabled", "Выключен").to_string()
+                    },
+                )
+            }
         };
+
+        let sender_cli = sender.clone();
+        std::thread::spawn(move || {
+            let has_ppd = hw::has_power_profiles();
+            let current_profile = if has_ppd {
+                hw::get_power_profile()
+            } else {
+                String::new()
+            };
+            let has_envycontrol = hw::has_envycontrol();
+            let gpu_mode = if has_envycontrol {
+                hw::get_gpu_mode()
+            } else {
+                String::new()
+            };
+            let wifi_sub = get_wifi_sub(is_wifi);
+
+            let snap = CliStateSnapshot {
+                has_ppd,
+                current_profile: current_profile.clone(),
+                has_envycontrol,
+                gpu_mode: gpu_mode.clone(),
+                wifi_sub: wifi_sub.clone(),
+            };
+            if let Ok(mut g) = LAST_CLI_STATE.lock() {
+                *g = Some(snap);
+            }
+
+            sender_cli.input(ControlCenterMsg::CliStateLoaded {
+                has_ppd,
+                current_profile,
+                has_envycontrol,
+                gpu_mode,
+                wifi_sub,
+            });
+        });
 
         let has_fan_telem = hw::has_fan_telemetry();
         let has_ec = hw::has_msi_ec();
@@ -1090,12 +1078,7 @@ impl SimpleComponent for ControlCenterModel {
             100
         };
 
-        let has_envycontrol = hw::has_envycontrol();
-        let gpu_mode = if has_envycontrol {
-            hw::get_gpu_mode()
-        } else {
-            String::new()
-        };
+        let instance_gen = DDC_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
         let model = ControlCenterModel {
             hostname,
@@ -1140,11 +1123,12 @@ impl SimpleComponent for ControlCenterModel {
 
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
+            instance_gen,
         };
 
-        // Register DDC sender in thread-local for hw/backlight.rs:on_ddc_updated
+        // Register DDC sender with generation in thread-local for hw/backlight.rs:on_ddc_updated
         DDC_SENDER.with(|s| {
-            *s.borrow_mut() = Some(sender.clone());
+            *s.borrow_mut() = Some((instance_gen, sender.clone()));
         });
 
         // Trigger asynchronous DDC hardware refresh if external monitor exists
@@ -1153,6 +1137,17 @@ impl SimpleComponent for ControlCenterModel {
         }
 
         let widgets = view_output!();
+
+        let gen_dest = instance_gen;
+        root.connect_destroy(move |_| {
+            DDC_SENDER.with(|s| {
+                if let Some((g, _)) = *s.borrow()
+                    && g == gen_dest
+                {
+                    *s.borrow_mut() = None;
+                }
+            });
+        });
 
         // Updates button LMB / RMB gesture
         let s_upd = sender.clone();
@@ -1203,179 +1198,54 @@ impl SimpleComponent for ControlCenterModel {
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
-        match msg {
-            ControlCenterMsg::CheckUpdates => {
-                self.is_updating_check = true;
-                let s = sender.clone();
-                thread::spawn(move || {
-                    let _ = Command::new("inerium-updates").arg("--check").output();
-                    let fresh = hw::get_updates_info();
-                    s.input(ControlCenterMsg::UpdatesChecked(fresh));
-                });
-            }
-            ControlCenterMsg::UpdatesChecked(fresh) => {
-                self.is_updating_check = false;
-                self.updates = fresh;
-            }
-            ControlCenterMsg::LaunchUpdateTerminal => {
-                (self.close_cb)();
-                thread::spawn(|| {
-                    let _ = Command::new("uwsm")
-                        .args([
-                            "app",
-                            "--",
-                            "kitty",
-                            "-e",
-                            "sh",
-                            "-c",
-                            "paru; rc=$?; inerium-updates --check >/dev/null 2>&1 || true; if [ \"$rc\" -ne 0 ]; then printf '\\n[paru завершился с кодом %s] Нажмите Enter для закрытия...' \"$rc\"; read -r _; fi",
-                        ])
-                        .spawn();
-                });
-            }
-            ControlCenterMsg::ToggleHypridle => {
-                self.is_idle_active = !self.is_idle_active;
-                hw::toggle_hypridle(self.is_idle_active);
-            }
-            ControlCenterMsg::ToggleTheme => {
-                let _ = Command::new("inerium-theme").arg("toggle").status();
-                let (is_dark, name, author, count) = get_theme_info();
-                self.is_dark_theme = is_dark;
-                self.theme_name = name;
-                self.theme_author = author;
-                self.available_themes_count = count;
-            }
-            ControlCenterMsg::NavAppearance => {
-                (self.nav_cb)("appearance");
-            }
-            ControlCenterMsg::LockScreen => {
-                (self.close_cb)();
-                thread::spawn(|| {
-                    let _ = Command::new("sh")
-                        .args(["-c", "hyprlock || loginctl lock-session"])
-                        .output();
-                });
-            }
-            ControlCenterMsg::PowerMenu => {
-                (self.nav_cb)("power");
-            }
-
-            // Quick Tiles
-            ControlCenterMsg::ToggleWifi => {
-                self.is_wifi = !self.is_wifi;
-                self.wifi_sub = get_wifi_sub(self.is_wifi);
-                hw::toggle_wifi(self.is_wifi);
-            }
-            ControlCenterMsg::ToggleBt => {
-                self.is_bt = !self.is_bt;
-                hw::toggle_bluetooth(self.is_bt);
-            }
-            ControlCenterMsg::ToggleDnd => {
-                self.is_dnd = !self.is_dnd;
-                hw::toggle_dnd();
-            }
-            ControlCenterMsg::ToggleMic => {
-                self.is_mic_muted = !self.is_mic_muted;
-                hw::toggle_mic_mute();
-            }
-            ControlCenterMsg::NavNetwork => {
-                (self.nav_cb)("network");
-            }
-            ControlCenterMsg::NavBluetooth => {
-                (self.nav_cb)("bluetooth");
-            }
-            ControlCenterMsg::NavAudio => {
-                (self.nav_cb)("audio");
-            }
-
-            // Sliders
-            ControlCenterMsg::ToggleVolumeMute => {
-                hw::toggle_volume_mute();
-                self.volume_muted = hw::is_volume_muted();
-            }
-            ControlCenterMsg::SetVolume(val) => {
-                self.volume = val;
-                hw::set_volume(val);
-            }
-            ControlCenterMsg::SetLaptopBrightness(val) => {
-                self.laptop_brightness = val;
-                hw::set_laptop_brightness(val);
-            }
-            ControlCenterMsg::SetDdcBrightness(val) => {
-                self.ddc_brightness = val;
-                hw::set_ddc_brightness_async(val);
-            }
-            ControlCenterMsg::DdcUpdated(val) => {
-                self.ddc_brightness = val;
-            }
-
-            // Power & Cooling
-            ControlCenterMsg::SetProfile(profile) => {
-                self.current_profile = profile.clone();
-                hw::set_power_profile(&profile);
-            }
-            ControlCenterMsg::RefreshFanTelemetry => {
-                if self.has_fan_telem {
-                    self.fan_str = compute_fan_string(self.cooler_boost);
-                }
-            }
-            ControlCenterMsg::ToggleCoolerBoost => {
-                self.cooler_boost = !self.cooler_boost;
-                hw::set_cooler_boost(self.cooler_boost);
-                if self.has_fan_telem {
-                    self.fan_str = compute_fan_string(self.cooler_boost);
-                }
-            }
-            ControlCenterMsg::ToggleBatteryThreshold => {
-                let next = if self.battery_threshold < 100 { 100 } else { 80 };
-                self.battery_threshold = next;
-                hw::set_battery_threshold(next);
-            }
-
-            // Graphics
-            ControlCenterMsg::SwitchGpuMode(target) => {
-                self.gpu_switching = true;
-                self.gpu_status_text = format!(
-                    "󰑐 Переключение на {}: пересборка initramfs...",
-                    target
-                );
-                let s = sender.clone();
-                thread::spawn(move || {
-                    let ok = hw::switch_gpu_mode(target);
-                    s.input(ControlCenterMsg::GpuSwitchFinished(ok, target));
-                });
-            }
-            ControlCenterMsg::GpuSwitchFinished(ok, target) => {
-                self.gpu_switching = false;
-                if ok {
-                    self.gpu_mode = target.to_string();
-                    self.gpu_status_ok = true;
-                    self.gpu_status_text = tr(
-                        "󰄬 Ready. Mode will apply after reboot.",
-                        "󰄬 Готово. Режим применится после перезагрузки.",
-                    )
-                    .to_string();
-                    self.show_reboot = true;
-                } else {
-                    self.gpu_status_ok = false;
-                    self.gpu_status_text = tr(
-                        "󰅙 Envycontrol switch error",
-                        "󰅙 Ошибка переключения envycontrol",
-                    )
-                    .to_string();
-                }
-            }
-            ControlCenterMsg::Reboot => {
-                let _ = Command::new("systemctl").arg("reboot").spawn();
-            }
+        if let ControlCenterMsg::CliStateLoaded {
+            has_ppd,
+            current_profile,
+            has_envycontrol,
+            gpu_mode,
+            wifi_sub,
+        } = msg
+        {
+            self.has_ppd = has_ppd;
+            self.current_profile = current_profile;
+            self.has_envycontrol = has_envycontrol;
+            self.gpu_mode = gpu_mode;
+            self.wifi_sub = wifi_sub;
+            return;
         }
+        if header::handle_header_msg(self, &msg, &sender) {
+            return;
+        }
+        if tiles::handle_tiles_msg(self, &msg) {
+            return;
+        }
+        if sliders::handle_sliders_msg(self, &msg) {
+            return;
+        }
+        if power_cooling::handle_power_cooling_msg(self, &msg) {
+            return;
+        }
+        graphics::handle_graphics_msg(self, &msg, &sender);
+    }
+}
+
+impl Drop for ControlCenterModel {
+    fn drop(&mut self) {
+        let instance_gen = self.instance_gen;
+        DDC_SENDER.with(|s| {
+            if let Some((g, _)) = *s.borrow()
+                && g == instance_gen
+            {
+                *s.borrow_mut() = None;
+            }
+        });
     }
 }
 
 pub fn build_control_center<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (gtk4::Box, i32, i32)
+) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
@@ -1385,8 +1255,7 @@ where
         close_cb: std::boxed::Box::new(close_cb),
     };
 
-    let mut controller = ControlCenterModel::builder().launch(init).detach();
-    controller.detach_runtime();
+    let controller = ControlCenterModel::builder().launch(init).detach();
     let root = controller.widget().clone();
-    (root, 384, 540)
+    (root, 384, 540, Box::new(controller))
 }

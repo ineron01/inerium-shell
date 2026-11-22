@@ -48,7 +48,7 @@ pub fn build_main_window(
     app: &Application,
     paths: SetupPaths,
     autostart_mode: bool,
-    start_on_integrations: bool,
+    initial_tab: Option<String>,
 ) -> ApplicationWindow {
     let lang = Lang::get();
     let win = ApplicationWindow::builder()
@@ -66,21 +66,22 @@ pub fn build_main_window(
         glib::Propagation::Proceed
     });
 
-    let initial_tab = Rc::new(RefCell::new(if start_on_integrations {
-        "integrations".to_string()
-    } else {
-        "displays".to_string()
-    }));
+    let tab_name = match initial_tab.as_deref() {
+        Some("interface") => "interface",
+        Some("integrations") => "integrations",
+        _ => "displays",
+    };
+    let initial_tab = Rc::new(RefCell::new(tab_name.to_string()));
 
     let rebuild: RebuildCb = Rc::new(RefCell::new(None));
-    let rebuild_fn: Rc<dyn Fn(Lang)> = {
+    let rebuild_fn: RebuildFn = {
         let win = win.clone();
         let paths = paths.clone();
         let active_tab = initial_tab.clone();
         let rebuild_ref = rebuild.clone();
-        Rc::new(move |new_lang: Lang| {
+        Rc::new(move |new_lang: Lang, init_status: InitialStatus| {
             win.set_title(Some(tr(new_lang, "Inerium Setup", "Настройка Inerium")));
-            let shell = build_shell(
+            let (shell, status_cb) = build_shell(
                 &win,
                 &paths,
                 autostart_mode,
@@ -88,16 +89,25 @@ pub fn build_main_window(
                 new_lang,
                 rebuild_ref.clone(),
             );
+            if let Some(res) = init_status {
+                match res {
+                    Ok(Some(warn)) => status_cb.warn(&warn),
+                    Err(e) => status_cb.error(&e),
+                    _ => {}
+                }
+            }
             win.set_child(Some(&shell));
         })
     };
     *rebuild.borrow_mut() = Some(rebuild_fn.clone());
-    rebuild_fn(lang);
+    rebuild_fn(lang, None);
 
     win
 }
 
-type RebuildCb = Rc<RefCell<Option<Rc<dyn Fn(Lang)>>>>;
+type InitialStatus = Option<Result<Option<String>, String>>;
+type RebuildFn = Rc<dyn Fn(Lang, InitialStatus)>;
+type RebuildCb = Rc<RefCell<Option<RebuildFn>>>;
 
 fn build_shell(
     win: &ApplicationWindow,
@@ -106,7 +116,7 @@ fn build_shell(
     active_tab: Rc<RefCell<String>>,
     lang: Lang,
     rebuild_ref: RebuildCb,
-) -> Box {
+) -> (Box, StatusCallback) {
     let shell = Box::new(Orientation::Vertical, 12);
     shell.add_css_class("setup-shell");
 
@@ -153,14 +163,9 @@ fn build_shell(
     update_btn.set_valign(Align::Center);
     update_btn.set_visible(false);
     update_btn.connect_clicked(|_| {
-        let _ = std::process::Command::new("kitty")
-            .args(["--title", "Inerium Update", "-e", "inerium", "update"])
-            .spawn()
-            .or_else(|_| {
-                std::process::Command::new("inerium")
-                    .arg("update")
-                    .spawn()
-            });
+        let _ = std::process::Command::new("inerium")
+            .arg("update")
+            .spawn();
     });
     header.append(&update_btn);
 
@@ -258,16 +263,12 @@ fn build_shell(
     for (btn, target_lang) in [(btn_en, Lang::En), (btn_ru, Lang::Ru)] {
         let rebuild_ref = rebuild_ref.clone();
         let paths_l = paths.clone();
-        let save_displays = save_displays.clone();
-        let save_interface = save_interface.clone();
         btn.connect_clicked(move |_| {
             if target_lang != lang
                 && let Some(ref f) = *rebuild_ref.borrow()
             {
-                let _ = save_displays();
-                let _ = save_interface();
-                let _ = apply_system_language(&paths_l, target_lang);
-                f(target_lang);
+                let res = apply_system_language(&paths_l, target_lang);
+                f(target_lang, Some(res));
             }
         });
     }
@@ -389,5 +390,5 @@ fn build_shell(
     }
 
     shell.append(&footer);
-    shell
+    (shell, status_cb)
 }

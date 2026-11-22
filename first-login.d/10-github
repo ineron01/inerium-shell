@@ -1,19 +1,39 @@
 #!/usr/bin/env bash
-# Title: GitHub — вход, git push по HTTPS и подпись коммитов
+# Title: GitHub — authentication, HTTPS git push and commit signing
+# Title[ru]: GitHub — вход, git push по HTTPS и подпись коммитов
 set -euo pipefail
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
 configured() { gh auth status >/dev/null 2>&1 && git config --global user.email >/dev/null; }
 if [[ "${1:-}" == --check ]]; then configured; exit; fi
 
 if ! gh auth status >/dev/null 2>&1; then
-    echo "Сейчас появится код: откройте https://github.com/login/device (можно с телефона) и введите его."
+    if is_ru; then
+        echo "Сейчас появится код: откройте https://github.com/login/device (можно с телефона) и введите его."
+    else
+        echo "A one-time code will appear: open https://github.com/login/device and enter it."
+    fi
     gh auth login -h github.com -p https -w
 fi
 gh auth setup-git
 if ! git config --global user.email >/dev/null; then
     login="$(gh api user --jq .login)"
     id="$(gh api user --jq .id)"
-    read -rp "Имя для коммитов [$login]: " name
-    read -rp "Email для коммитов [$id+$login@users.noreply.github.com]: " email
+    if is_ru; then
+        read -rp "Имя для коммитов [$login]: " name
+        read -rp "Email для коммитов [$id+$login@users.noreply.github.com]: " email
+    else
+        read -rp "Git commit author name [$login]: " name
+        read -rp "Git commit email [$id+$login@users.noreply.github.com]: " email
+    fi
     git config --global user.name "${name:-$login}"
     git config --global user.email "${email:-$id+$login@users.noreply.github.com}"
 fi

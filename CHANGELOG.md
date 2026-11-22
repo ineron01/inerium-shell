@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-22
+
+### Added
+- **Opt-in GitHub CLI Addon**: Added `--with-github` flag, manifest tracking (`ADDON github`), and optional interactive setup step (`first-login.d/10-github`).
+- **Enhanced System Diagnostics (`inerium doctor`)**: Added validation checks for orphaned packages, systemd user/system unit health, and configuration symlink integrity.
+- **Qt5ct / Qt6ct & KDE Theming in `inerium-theme`**: Added native generator for Qt5ct and Qt6ct color schemes (`emit_qtct_colors`) and idempotent KDE globals synchronization (`update_kdeglobals`).
+- **Atomic Self-Pipe Event Wakeup (`SelfPipe`)**: Added robust non-blocking self-pipe IPC mechanism in `inerium-tools` for waking event loops without thread spin-locks.
+- **CI Test Coverage for MSI Fan Regulator**: Added automated `cargo test -p inerium-tools --features msi-ec` in GitHub Actions CI workflow.
+
+### Changed
+- **Memory & Runtime Lifecycle Management in `inerium-shell`**: Refactored all 7 Layer-Shell popups to eliminate Relm4 runtime detach leaks by retaining the active controller in the application root component.
+- **Optimized Hyprland Layout Manager**: Eliminated repetitive `hyprctl` process spawning in stream mode; event loop now waits directly on IPC file descriptors with zero idle CPU utilization.
+- **Asynchronous Bluetooth Device Discovery**: Refactored Bluetooth status tracking to use asynchronous DBus object queries with robust EOF/EINTR/EAGAIN pipe draining.
+- **Stabilized Input Overrides**: Reset idle dirty flags on layout reset to prevent runaway Hyprland configuration reload loops.
+
+### Fixed
+- **Safe `greetd` Handling in Manifest & Uninstaller**: Implemented safe helper to stop `greetd` only when running outside the target session, correctly preserving and restoring original PAM configs without killing active user sessions.
+- **Theme Preservation During Updates**: Ensured user-selected themes, wallpapers, and generated color assets are preserved during `inerium update` (`IS_UPDATE=1`).
+- **Race Condition in `SelfPipe` Tests**: Fixed multi-threaded test contention with atomic drop ordering and process-level test locking.
+- **Desktop Indexer File Deletion**: Fixed `inerium-desktop-indexer` inadvertently purging user-created `.desktop` files when executed unprivileged.
+- **Legacy Orphan Cleanup Safeguards**: Protected `google-chrome-direct.desktop` and user-defined application shortcuts from being purged during manifest orphan cleanup.
+- **Persistent `hyprlock-i18n.conf` Tracking**: Fixed configuration rotation to prevent `hyprlock-i18n.conf` from being moved to `.bak` on consecutive updates.
+
+### Security
+- **Hardened Systemd Service Units**: Applied strict filesystem and privilege isolation (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`) across helper units.
+- **PAM Configuration Sanitization**: Ensured atomic file swapping and verified PAM module arguments during greetd configuration generation.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added

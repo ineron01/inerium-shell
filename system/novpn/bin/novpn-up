@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+is_ru() {
+    local loc=""
+    if [[ -f "/etc/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "/etc/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
 # 1. Enable IP forwarding on host
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 
@@ -17,14 +26,22 @@ get_physical_default_route() {
     done | sort -n -k1,1 | head -n1 | awk '{print $2, $3}'
 }
 
-read -r PHYS_GW PHYS_DEV < <(get_physical_default_route || true)
+read -r PHYS_GW PHYS_DEV < <(get_physical_default_route) || true
 
 if [ -z "${PHYS_DEV:-}" ] || [ -z "${PHYS_GW:-}" ]; then
-    echo "Ошибка: Не удалось определить физический сетевой шлюз (eno1/wlp4s0)." >&2
+    if is_ru; then
+        echo "Ошибка: Не удалось определить физический сетевой шлюз (eno1/wlp4s0)." >&2
+    else
+        echo "Error: Failed to determine physical network gateway (eno1/wlp4s0)." >&2
+    fi
     exit 1
 fi
 
-echo "Используется физический адаптер: $PHYS_DEV, шлюз: $PHYS_GW"
+if is_ru; then
+    echo "Используется физический адаптер: $PHYS_DEV, шлюз: $PHYS_GW"
+else
+    echo "Using physical interface: $PHYS_DEV, gateway: $PHYS_GW"
+fi
 
 # 3. Create namespace if not exists
 if ! ip netns list | grep -qw "novpn"; then
@@ -85,6 +102,16 @@ iptables -I FORWARD 1 -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED -j
 # Clean up legacy and specific NAT rules
 iptables -t nat -D POSTROUTING -s 10.200.1.0/24 ! -o amn0 -j MASQUERADE 2>/dev/null || true
 iptables -t nat -D POSTROUTING -s 10.200.1.0/24 -o "$PHYS_DEV" -j MASQUERADE 2>/dev/null || true
+while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q -- "-s 10.200.1.0/24"; do
+    rule_str="$(iptables -t nat -S POSTROUTING 2>/dev/null | grep -- "-s 10.200.1.0/24" | head -n1 | sed 's/^-A //')"
+    [[ -n "$rule_str" ]] || break
+    read -ra rule_args <<< "$rule_str"
+    iptables -t nat -D "${rule_args[@]}" 2>/dev/null || break
+done
 iptables -t nat -I POSTROUTING 1 -s 10.200.1.0/24 -o "$PHYS_DEV" -j MASQUERADE
 
-echo "Изолированная прямая сеть (novpn) успешно активирована."
+if is_ru; then
+    echo "Изолированная прямая сеть (novpn) успешно активирована."
+else
+    echo "Isolated direct network (novpn) successfully activated."
+fi

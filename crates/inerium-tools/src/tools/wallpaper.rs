@@ -1,21 +1,22 @@
-use std::env;
 use std::path::Path;
 use std::process;
 
 fn print_usage() {
-    eprintln!("inerium-wallpaper v0.1.2 — Dynamic wallpaper setter for hyprpaper in Hyprland");
+    eprintln!(
+        "inerium-wallpaper v{} — Dynamic wallpaper setter for hyprpaper in Hyprland",
+        env!("CARGO_PKG_VERSION")
+    );
     eprintln!();
     eprintln!("USAGE:");
     eprintln!("    inerium-wallpaper <IMAGE_PATH> [MONITOR_NAME|all] [--no-notify]");
     eprintln!();
     eprintln!("EXAMPLES:");
-    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall3_minimal_wave.png");
-    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall4_dark_geometry.png DP-1");
-    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/wall3_minimal_wave.png all --no-notify");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/01_nordic_mountains.webp");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/04_abstract_silk_waves.webp DP-1");
+    eprintln!("    inerium-wallpaper ~/.local/share/inerium/wallpapers/01_nordic_mountains.webp all --no-notify");
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.len() < 2 || args[1] == "--help" || args[1] == "-h" {
         print_usage();
         process::exit(if args.len() < 2 { 1 } else { 0 });
@@ -33,7 +34,7 @@ fn main() {
         }
     }
 
-    if let Err(err) = inerium_hw::wallpaper::apply_wallpaper(image_path, target_monitor, notify) {
+    if let Err(err) = inerium_tools::desktop::wallpaper::apply_wallpaper(image_path, target_monitor, notify) {
         eprintln!("Error: {err}");
         process::exit(1);
     }

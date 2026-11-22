@@ -1,13 +1,15 @@
 //! Inerium Dragon — Native Rust Keyboard Layout Watcher for Waybar
 
-use std::env;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::process::Command;
 
 use inerium_i18n::tr;
-use inerium_tools::format::escape_json;
-use inerium_tools::ipc::hyprland::get_socket2;
+use crate::format::escape_json;
+use crate::ipc::hyprland::get_socket2;
+use crate::ipc::{PidRegistry, SelfPipe};
+use crate::sys::posix::{posix_poll, PollFd, POLLERR, POLLHUP, POLLIN};
 
 fn get_current_layout() -> &'static str {
     if let Ok(out) = Command::new("hyprctl").args(["devices", "-j"]).output()
@@ -39,7 +41,7 @@ fn get_current_layout() -> &'static str {
             };
         }
     }
-    "RU"
+    "EN"
 }
 
 fn switch_keyboards() {
@@ -72,8 +74,7 @@ fn format_output(layout: &str, waybar: bool) -> String {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--switch") {
         switch_keyboards();
         println!("{}", get_current_layout());
@@ -91,22 +92,111 @@ fn main() {
         return;
     }
 
-    if let Some(s2) = get_socket2()
-        && let Ok(stream) = UnixStream::connect(s2) {
-            let reader = BufReader::new(stream);
-            for line in reader.lines().map_while(Result::ok) {
-                if let Some(ev) = line.strip_prefix("activelayout>>") {
-                    let new_layout = if ev.contains("Russian") || ev.contains("RU") {
-                        "RU"
-                    } else {
-                        "EN"
-                    };
-                    if new_layout != current {
-                        current = new_layout;
-                        println!("{}", format_output(current, waybar));
-                        std::io::stdout().flush().ok();
+    let reg = PidRegistry::new("layout");
+    let _pid_guard = reg.register();
+    let self_pipe = match SelfPipe::new() {
+        Ok(sp) => sp,
+        Err(e) => {
+            eprintln!("Failed to setup self-pipe: {e}");
+            return;
+        }
+    };
+
+    let mut read_buf = Vec::with_capacity(1024);
+
+    loop {
+        if let Some(s2) = get_socket2()
+            && let Ok(mut stream) = UnixStream::connect(&s2)
+        {
+            let sock_fd = stream.as_raw_fd();
+            let _ = stream.set_nonblocking(true);
+            read_buf.clear();
+            let refreshed = get_current_layout();
+            if refreshed != current {
+                current = refreshed;
+                println!("{}", format_output(current, waybar));
+                std::io::stdout().flush().ok();
+            }
+
+            'inner: loop {
+                let mut fds = [
+                    PollFd {
+                        fd: self_pipe.read_fd(),
+                        events: POLLIN,
+                        revents: 0,
+                    },
+                    PollFd {
+                        fd: sock_fd,
+                        events: POLLIN,
+                        revents: 0,
+                    },
+                ];
+
+                match posix_poll(&mut fds, -1) {
+                    Ok(n) if n > 0 => {
+                        // Check for SIGUSR1 / locale reload
+                        if (fds[0].revents & POLLIN) != 0 {
+                            self_pipe.drain();
+                            inerium_i18n::Lang::reinit();
+                            current = get_current_layout();
+                            println!("{}", format_output(current, waybar));
+                            std::io::stdout().flush().ok();
+                        }
+
+                        // Check for socket events
+                        let rev = fds[1].revents;
+                        if (rev & (POLLERR | POLLHUP)) != 0 {
+                            break 'inner;
+                        }
+
+                        if (rev & POLLIN) != 0 {
+                            let mut chunk = [0u8; 512];
+                            match stream.read(&mut chunk) {
+                                Ok(0) => break 'inner,
+                                Ok(bytes_read) => {
+                                    read_buf.extend_from_slice(&chunk[..bytes_read]);
+                                    while let Some(pos) = read_buf.iter().position(|&b| b == b'\n') {
+                                        let line = String::from_utf8_lossy(&read_buf[..pos]);
+                                        if let Some(ev) = line.strip_prefix("activelayout>>") {
+                                            let new_layout = if ev.contains("Russian") || ev.contains("RU") {
+                                                "RU"
+                                            } else {
+                                                "EN"
+                                            };
+                                            if new_layout != current {
+                                                current = new_layout;
+                                                println!("{}", format_output(current, waybar));
+                                                std::io::stdout().flush().ok();
+                                            }
+                                        }
+                                        read_buf.drain(..=pos);
+                                    }
+                                }
+                                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                                Err(_) => break 'inner,
+                            }
+                        }
                     }
+                    Ok(_) => continue,
+                    Err(e) if e.raw_os_error() == Some(libc::EINTR) => {
+                        if self_pipe.drain_if_ready() {
+                            inerium_i18n::Lang::reinit();
+                            current = get_current_layout();
+                            println!("{}", format_output(current, waybar));
+                            std::io::stdout().flush().ok();
+                        }
+                    }
+                    Err(_) => break 'inner,
                 }
             }
         }
+
+        // Wait before reconnecting to Hyprland socket
+        if self_pipe.wait_event(2000) {
+            inerium_i18n::Lang::reinit();
+            current = get_current_layout();
+            println!("{}", format_output(current, waybar));
+            std::io::stdout().flush().ok();
+        }
+    }
 }

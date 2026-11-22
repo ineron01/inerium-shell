@@ -46,17 +46,17 @@ impl LivePreviewPipeline {
         );
 
         let element = gst::parse::launch(&pipe_str)
-            .map_err(|e| format!("Ошибка создания GStreamer превью: {}", e))?;
+            .map_err(|e| format!("{}: {}", tr("Failed to create GStreamer preview pipeline", "Ошибка создания GStreamer превью"), e))?;
 
         let pipeline = element
             .dynamic_cast::<gst::Pipeline>()
-            .map_err(|_| "Не удалось привести элемент к Pipeline".to_string())?;
+            .map_err(|_| tr("Failed to cast element to Pipeline", "Не удалось привести элемент к Pipeline").to_string())?;
 
         let sink = pipeline
             .by_name("preview_sink")
-            .ok_or_else(|| "Элемент preview_sink не найден".to_string())?
+            .ok_or_else(|| tr("Element preview_sink not found", "Элемент preview_sink не найден").to_string())?
             .dynamic_cast::<gst_app::AppSink>()
-            .map_err(|_| "Не удалось привести preview_sink к AppSink".to_string())?;
+            .map_err(|_| tr("Failed to cast preview_sink to AppSink", "Не удалось привести preview_sink к AppSink").to_string())?;
 
         // Bounded channel drops stale frames; task terminates automatically when pipeline drops
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(i32, i32, Vec<u8>)>(1);
@@ -104,7 +104,7 @@ impl LivePreviewPipeline {
 
         pipeline
             .set_state(gst::State::Playing)
-            .map_err(|e| format!("Ошибка запуска воспроизведения превью: {:?}", e))?;
+            .map_err(|e| format!("{}: {:?}", tr("Failed to start preview playback", "Ошибка запуска воспроизведения превью"), e))?;
 
         self.pipeline = Some(pipeline);
         Ok(())

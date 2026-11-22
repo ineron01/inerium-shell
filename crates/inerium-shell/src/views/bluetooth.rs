@@ -138,11 +138,30 @@ pub fn query_devices() -> Vec<BtDevice> {
     devices
 }
 
+fn binary_in_path(bin: &str) -> bool {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for p in std::env::split_paths(&paths) {
+            let full = p.join(bin);
+            if full.is_file() {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = full.metadata()
+                    && meta.permissions().mode() & 0o111 != 0
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 pub struct BluetoothModel {
     enabled: bool,
     scanning: bool,
+    initial_loading: bool,
     devices: Vec<BtDevice>,
     expanded_mac: Option<String>,
+    needs_list_rebuild: std::cell::Cell<bool>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
@@ -150,6 +169,7 @@ pub struct BluetoothModel {
 
 #[derive(Debug)]
 pub enum BtMsg {
+    InitialDevicesLoaded(Vec<BtDevice>),
     TogglePower(bool),
     StartScan,
     ScanProgress(Vec<BtDevice>),
@@ -284,21 +304,31 @@ impl SimpleComponent for BluetoothModel {
         let model = BluetoothModel {
             enabled,
             scanning: false,
+            initial_loading: enabled,
             devices: devices.clone(),
             expanded_mac: None,
+            needs_list_rebuild: std::cell::Cell::new(false),
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
 
         let widgets = view_output!();
 
-        let _ = populate_list(&widgets.list_box, &devices, None, enabled, false, &sender);
+        let _ = populate_list(
+            &widgets.list_box,
+            &devices,
+            None,
+            enabled,
+            false,
+            enabled,
+            &sender,
+        );
 
         if enabled {
             let s_init = sender.clone();
             std::thread::spawn(move || {
                 let fresh = query_devices();
-                s_init.input(BtMsg::DevicesUpdated(fresh));
+                s_init.input(BtMsg::InitialDevicesLoaded(fresh));
             });
         }
 
@@ -316,6 +346,11 @@ impl SimpleComponent for BluetoothModel {
     }
 
     fn post_view() {
+        if !self.needs_list_rebuild.get() {
+            return;
+        }
+        self.needs_list_rebuild.set(false);
+
         let vadj = scroll_win.vadjustment();
         let prev_val = vadj.value();
 
@@ -325,6 +360,7 @@ impl SimpleComponent for BluetoothModel {
             self.expanded_mac.as_deref(),
             self.enabled,
             self.scanning,
+            self.initial_loading,
             &sender,
         );
 
@@ -358,13 +394,23 @@ impl SimpleComponent for BluetoothModel {
                     });
                 }
             }
+            BtMsg::InitialDevicesLoaded(fresh) => {
+                self.initial_loading = false;
+                if self.enabled {
+                    self.devices = fresh;
+                    self.needs_list_rebuild.set(true);
+                }
+            }
             BtMsg::DevicesUpdated(fresh) => {
                 if !self.scanning && self.enabled && fresh != self.devices {
                     self.devices = fresh;
+                    self.needs_list_rebuild.set(true);
                 }
             }
             BtMsg::TogglePower(state) => {
                 self.enabled = state;
+                self.initial_loading = false;
+                self.needs_list_rebuild.set(true);
                 if !state {
                     self.scanning = false;
                     self.devices.clear();
@@ -420,6 +466,7 @@ impl SimpleComponent for BluetoothModel {
                     return;
                 }
                 self.scanning = true;
+                self.needs_list_rebuild.set(true);
                 let s = sender.clone();
                 thread::spawn(move || {
                     let start = std::time::Instant::now();
@@ -453,11 +500,21 @@ impl SimpleComponent for BluetoothModel {
                 });
             }
             BtMsg::ScanProgress(devices) => {
+                if !self.enabled {
+                    return;
+                }
                 self.devices = devices;
+                self.needs_list_rebuild.set(true);
             }
             BtMsg::ScanFinished(fresh) => {
                 self.scanning = false;
+                if !self.enabled {
+                    self.devices.clear();
+                    self.needs_list_rebuild.set(true);
+                    return;
+                }
                 self.devices = fresh;
+                self.needs_list_rebuild.set(true);
             }
             BtMsg::ConnectDevice(mac, is_conn, is_paired) => {
                 let s = sender.clone();
@@ -486,6 +543,7 @@ impl SimpleComponent for BluetoothModel {
             }
             BtMsg::ConnectFinished(fresh) => {
                 self.devices = fresh;
+                self.needs_list_rebuild.set(true);
             }
             BtMsg::ToggleExpandDevice(mac) => {
                 if self.expanded_mac.as_ref() == Some(&mac) {
@@ -493,33 +551,36 @@ impl SimpleComponent for BluetoothModel {
                 } else {
                     self.expanded_mac = Some(mac);
                 }
+                self.needs_list_rebuild.set(true);
             }
             BtMsg::ToggleTrusted(mac, trust) => {
                 let s = sender.clone();
                 thread::spawn(move || {
                     hw::set_bluetooth_trusted(&mac, trust);
                     let fresh = query_devices();
-                    s.input(BtMsg::ScanFinished(fresh));
+                    s.input(BtMsg::ConnectFinished(fresh));
                 });
             }
             BtMsg::ForgetDevice(mac) => {
                 self.expanded_mac = None;
+                self.needs_list_rebuild.set(true);
                 let s = sender.clone();
                 thread::spawn(move || {
                     hw::remove_bluetooth_device(&mac);
                     let fresh = query_devices();
-                    s.input(BtMsg::ScanFinished(fresh));
+                    s.input(BtMsg::ConnectFinished(fresh));
                 });
             }
             BtMsg::OpenManager => {
                 for bin in ["blueman-manager", "overskride", "blueberry"] {
-                    if Command::new("which")
-                        .arg(bin)
-                        .output()
-                        .map(|o| o.status.success())
-                        .unwrap_or(false)
-                    {
-                        let _ = Command::new(bin).spawn();
+                    if binary_in_path(bin) {
+                        if Command::new("uwsm")
+                            .args(["app", "--", bin])
+                            .spawn()
+                            .is_err()
+                        {
+                            let _ = Command::new(bin).spawn();
+                        }
                         break;
                     }
                 }
@@ -540,6 +601,7 @@ fn populate_list(
     expanded_mac: Option<&str>,
     enabled: bool,
     scanning: bool,
+    initial_loading: bool,
     sender: &ComponentSender<BluetoothModel>,
 ) -> Option<gtk4::Box> {
     while let Some(child) = list_box.first_child() {
@@ -547,7 +609,7 @@ fn populate_list(
     }
 
     if devices.is_empty() {
-        let empty_lbl = Label::new(Some(if scanning {
+        let empty_lbl = Label::new(Some(if scanning || initial_loading {
             tr(
                 "󰑐 Searching for Bluetooth devices...",
                 "󰑐 Поиск Bluetooth-устройств...",
@@ -849,7 +911,7 @@ fn populate_list(
 pub fn build_bluetooth_view<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (gtk4::Box, i32, i32)
+) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
@@ -859,8 +921,7 @@ where
         close_cb: std::boxed::Box::new(close_cb),
     };
 
-    let mut controller = BluetoothModel::builder().launch(init).detach();
-    controller.detach_runtime();
+    let controller = BluetoothModel::builder().launch(init).detach();
     let root = controller.widget().clone();
-    (root, 380, 400)
+    (root, 380, 400, Box::new(controller))
 }

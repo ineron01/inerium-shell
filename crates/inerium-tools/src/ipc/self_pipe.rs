@@ -35,33 +35,63 @@ impl SelfPipe {
         self.read_fd
     }
 
-    /// Wait up to `timeout_ms` for a signal or timeout.
-    /// Returns `true` if woken by a signal, `false` if timed out.
-    pub fn wait_event(&self, timeout_ms: i32) -> bool {
-        let mut fds = [PollFd {
-            fd: self.read_fd,
-            events: POLLIN,
-            revents: 0,
-        }];
-
-        if let Ok(n) = posix_poll(&mut fds, timeout_ms)
-            && n > 0 && (fds[0].revents & POLLIN != 0) {
-                self.drain();
-                return true;
-            }
-        false
-    }
-
     /// Drain all pending wake bytes from the pipe.
     pub fn drain(&self) {
         let mut buf = [0u8; 64];
-        let _ = posix_read(self.read_fd, &mut buf);
+        while matches!(posix_read(self.read_fd, &mut buf), Ok(n) if n > 0) {}
+    }
+
+    /// Non-blocking drain: returns true if at least 1 byte was read.
+    pub fn drain_if_ready(&self) -> bool {
+        let mut buf = [0u8; 64];
+        let mut read_any = false;
+        while matches!(posix_read(self.read_fd, &mut buf), Ok(n) if n > 0) {
+            read_any = true;
+        }
+        read_any
+    }
+
+    /// Wait up to `timeout_ms` for a signal or timeout.
+    /// Returns `true` if woken by a signal, `false` if timed out.
+    pub fn wait_event(&self, timeout_ms: i32) -> bool {
+        let start = std::time::Instant::now();
+        let mut remaining = timeout_ms;
+
+        loop {
+            let mut fds = [PollFd {
+                fd: self.read_fd,
+                events: POLLIN,
+                revents: 0,
+            }];
+
+            match posix_poll(&mut fds, remaining) {
+                Ok(n) if n > 0 && (fds[0].revents & POLLIN != 0) => {
+                    self.drain();
+                    return true;
+                }
+                Ok(_) => return false,
+                Err(e) if e.raw_os_error() == Some(libc::EINTR) => {
+                    if self.drain_if_ready() {
+                        return true;
+                    }
+                    if timeout_ms < 0 {
+                        continue;
+                    }
+                    let elapsed = start.elapsed().as_millis() as i32;
+                    if elapsed >= timeout_ms {
+                        return false;
+                    }
+                    remaining = timeout_ms - elapsed;
+                }
+                Err(_) => return false,
+            }
+        }
     }
 }
 
 impl Drop for SelfPipe {
     fn drop(&mut self) {
-        WAKE_FD.store(-1, Ordering::SeqCst);
+        let _ = WAKE_FD.compare_exchange(self.write_fd, -1, Ordering::SeqCst, Ordering::Relaxed);
         let _ = posix_close(self.read_fd);
         let _ = posix_close(self.write_fd);
     }
@@ -73,10 +103,24 @@ use std::io;
 mod tests {
     use super::*;
 
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_self_pipe_timeout() {
+        let _guard = TEST_LOCK.lock().unwrap();
         let sp = SelfPipe::new().expect("Failed to create SelfPipe");
         // Wait 10ms with no signal
+        assert!(!sp.wait_event(10));
+    }
+
+    #[test]
+    fn test_self_pipe_wake_signal() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let sp = SelfPipe::new().expect("Failed to create SelfPipe");
+        unsafe {
+            libc::raise(libc::SIGUSR1);
+        }
+        assert!(sp.wait_event(500));
         assert!(!sp.wait_event(10));
     }
 }

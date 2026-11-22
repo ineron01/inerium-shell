@@ -23,7 +23,7 @@ for dev in /sys/class/net/en* /sys/class/net/eth*; do
 done
 
 if [ -n "$ETH_IF" ]; then
-    STATE=$(nmcli -t -f DEVICE,STATE dev | grep "^${ETH_IF}:" | cut -d: -f2)
+    STATE="$(nmcli -t -f DEVICE,STATE dev 2>/dev/null | grep "^${ETH_IF}:" | cut -d: -f2 || true)"
     if [ "$STATE" = "connected" ]; then
         nmcli dev disconnect "$ETH_IF"
         if is_ru; then
@@ -40,7 +40,7 @@ if [ -n "$ETH_IF" ]; then
         fi
     fi
 else
-    WIFI_STATUS=$(nmcli radio wifi)
+    WIFI_STATUS="$(nmcli radio wifi 2>/dev/null || true)"
     if [ "$WIFI_STATUS" = "enabled" ]; then
         nmcli radio wifi off
         if is_ru; then
@@ -57,3 +57,6 @@ else
         fi
     fi
 fi
+
+# Notify network module via inerium-ctl with fallback to pkill
+inerium-ctl notify network 2>/dev/null || pkill -SIGUSR1 inerium-network 2>/dev/null || true

@@ -566,17 +566,17 @@ impl StreamingManager {
         custom_ip: Option<&str>,
     ) -> Result<CameraSessionInfo, String> {
         let v4l2_dev = DeviceManager::find_v4l2_loopback()
-            .ok_or_else(|| "Виртуальное устройство PhoneWebcam (/dev/video0) не найдено.".to_string())?;
+            .ok_or_else(|| tr("Virtual device PhoneWebcam (/dev/video0) not found.", "Виртуальное устройство PhoneWebcam (/dev/video0) не найдено.").to_string())?;
 
         // Validate input availability BEFORE tearing down existing producer/bridge
         let builtin_dev_path = if source == CameraSource::Builtin {
             match DeviceManager::detect_builtin_webcam() {
                 BuiltinStatus::Available { device_path } => Some(device_path),
                 BuiltinStatus::HardwareDisabled => {
-                    return Err("Встроенная камера отключена аппаратно клавишей Fn + F6.".to_string());
+                    return Err(tr("Built-in camera disabled via hardware switch Fn + F6.", "Встроенная камера отключена аппаратно клавишей Fn + F6.").to_string());
                 }
                 BuiltinStatus::NotFound => {
-                    return Err("Встроенная камера ноутбука не найдена в системе.".to_string());
+                    return Err(tr("Built-in laptop camera not found in system.", "Встроенная камера ноутбука не найдена в системе.").to_string());
                 }
             }
         } else {

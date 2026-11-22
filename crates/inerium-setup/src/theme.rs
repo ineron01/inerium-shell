@@ -1,92 +1,30 @@
 use std::cell::RefCell;
-use std::rc::Rc;
 
 use gdk4::RGBA;
 use gio::prelude::*;
 use vte4::prelude::*;
 
-#[allow(dead_code)]
-pub mod palette {
-    pub const BG: &str = "#181616";
-    pub const SURFACE: &str = "#221f1f";
-    pub const SURFACE_ALT: &str = "#282727";
-    pub const FG: &str = "#c5c9c5";
-    pub const FG_BRIGHT: &str = "#e6e2cc";
-    pub const MUTED: &str = "#737c73";
-    pub const SUBTLE: &str = "#a6a69c";
-    pub const GREEN: &str = "#87a987";
-    pub const BLUE: &str = "#8ba4b0";
-    pub const AQUA: &str = "#8ea4a2";
-    pub const YELLOW: &str = "#c4b28a";
-    pub const ORANGE: &str = "#b6927b";
-    pub const RED: &str = "#c4746e";
-    pub const VIOLET: &str = "#8992a7";
-}
-
 thread_local! {
     static CSS_PROVIDER: RefCell<Option<gtk4::CssProvider>> = const { RefCell::new(None) };
-    static LISTENERS: RefCell<Vec<Rc<dyn Fn()>>> = const { RefCell::new(Vec::new()) };
+    static LISTENERS: RefCell<Vec<Box<dyn Fn() -> bool>>> = const { RefCell::new(Vec::new()) };
     static FILE_MONITOR: RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
 }
 
-pub use inerium_theme::is_dark_theme;
+pub use inerium_theme::{
+    compute_vte_palette, is_dark_theme, Rgba,
+    DRAGON_VARS as FALLBACK_DRAGON_VARS, LOTUS_VARS as FALLBACK_LIGHT_VARS,
+    THEME_ALIASES,
+};
 
 pub fn vte_palette() -> (RGBA, RGBA, [RGBA; 16]) {
-    let parse = |hex: &str| RGBA::parse(hex).unwrap_or(RGBA::BLACK);
-    let mut fg = parse(palette::FG);
-    let mut bg = parse(palette::BG);
-    let mut pal = [
-        parse("#181616"), // 0 black
-        parse(palette::RED),
-        parse(palette::GREEN),
-        parse(palette::YELLOW),
-        parse(palette::BLUE),
-        parse(palette::VIOLET),
-        parse(palette::AQUA),
-        parse(palette::FG),
-        parse(palette::MUTED),
-        parse("#d48680"),
-        parse("#9ab89a"),
-        parse("#d4c49c"),
-        parse("#9cb4c0"),
-        parse("#9ba4b8"),
-        parse("#9eb4b2"),
-        parse(palette::FG_BRIGHT),
-    ];
+    let current_id = inerium_theme::get_current_theme_id();
+    let theme_cfg = inerium_theme::load_theme_by_id(&current_id)
+        .unwrap_or_else(|_| inerium_theme::get_fallback_theme(is_dark_theme()));
 
-    let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let kitty_theme = home.join(".config/kitty/themes/current-theme.conf");
-    if let Ok(content) = std::fs::read_to_string(&kitty_theme) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let mut parts = line.split_whitespace();
-            if let (Some(key), Some(val)) = (parts.next(), parts.next()) {
-                match key {
-                    "foreground" => fg = parse(val),
-                    "background" => bg = parse(val),
-                    k if k.starts_with("color") => {
-                        if let Ok(idx) = k[5..].parse::<usize>()
-                            && idx < 16
-                        {
-                            pal[idx] = parse(val);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    } else if !is_dark_theme() {
-        fg = parse("#545464");
-        bg = parse("#f2ecbc");
-        pal[0] = parse("#e5dfc5");
-        pal[7] = parse("#545464");
-        pal[15] = parse("#43436c");
-    }
-
-    (fg, bg, pal)
+    let (fg, bg, colors) = compute_vte_palette(&theme_cfg.palette);
+    let to_gdk = |r: Rgba| RGBA::new(r.0 as f32 / 255.0, r.1 as f32 / 255.0, r.2 as f32 / 255.0, r.3 as f32 / 255.0);
+    let pal = std::array::from_fn(|i| to_gdk(colors[i]));
+    (to_gdk(fg), to_gdk(bg), pal)
 }
 
 pub fn update_terminal_palette(terminal: &vte4::Terminal) {
@@ -94,12 +32,6 @@ pub fn update_terminal_palette(terminal: &vte4::Terminal) {
     let pal_refs: Vec<&gdk4::RGBA> = pal.iter().collect();
     terminal.set_colors(Some(&fg), Some(&bg), &pal_refs);
 }
-
-pub use inerium_theme::{
-    DRAGON_VARS as FALLBACK_DRAGON_VARS,
-    LOTUS_VARS as FALLBACK_LIGHT_VARS,
-    THEME_ALIASES,
-};
 
 pub fn get_setup_css() -> String {
     let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default();
@@ -129,13 +61,15 @@ pub fn init_theme(provider: &gtk4::CssProvider) {
 
     let home = std::env::var("HOME").map(std::path::PathBuf::from).unwrap_or_default();
     let cfg_dir = gio::File::for_path(home.join(".config/inerium"));
-    if let Ok(mon) = cfg_dir.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE) {
+    if let Ok(mon) = cfg_dir.monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) {
         mon.connect_changed(move |_, file, _, event| {
             if matches!(
                 event,
                 gio::FileMonitorEvent::Changed
                     | gio::FileMonitorEvent::Created
                     | gio::FileMonitorEvent::ChangesDoneHint
+                    | gio::FileMonitorEvent::MovedIn
+                    | gio::FileMonitorEvent::Renamed
             ) && let Some(name) = file.basename() {
                 let s = name.to_string_lossy();
                 if s == "theme-vars.css" || s == "current.json" {
@@ -166,17 +100,13 @@ pub fn reload_theme() {
     });
 }
 
-pub fn add_theme_listener<F: Fn() + 'static>(f: F) -> Rc<dyn Fn()> {
-    let rc: Rc<dyn Fn()> = Rc::new(f);
-    LISTENERS.with(|l| l.borrow_mut().push(rc.clone()));
-    rc
+pub fn add_theme_listener<F: Fn() -> bool + 'static>(f: F) {
+    LISTENERS.with(|l| l.borrow_mut().push(Box::new(f)));
 }
 
 fn notify_theme_changed() {
     LISTENERS.with(|l| {
-        for listener in l.borrow().iter() {
-            listener();
-        }
+        l.borrow_mut().retain(|listener| listener());
     });
 }
 

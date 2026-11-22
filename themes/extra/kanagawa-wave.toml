@@ -10,7 +10,7 @@ description = "Classic dark Kanagawa variant inspired by the famous Great Wave o
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(31, 31, 40, 0.98)"

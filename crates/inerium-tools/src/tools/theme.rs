@@ -1,1559 +1,43 @@
-use std::collections::BTreeMap;
-use std::env;
 use std::fs;
-use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-
-pub const EMBEDDED_DRAGON: &str = include_str!("../../../../themes/kanagawa-dragon.toml");
-pub const EMBEDDED_INERIUM_LIGHT: &str = include_str!("../../../../themes/inerium-light.toml");
-
-pub use inerium_theme::{DisplayConfig, Palette, Rgba, ThemeConfig, ThemeMeta, Typography};
-
-fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let pid = std::process::id();
-    let tmp_path = path.with_extension(format!("tmp.{}", pid));
-    fs::write(&tmp_path, content)?;
-    fs::rename(&tmp_path, path)?;
-    Ok(())
-}
-
-fn update_kdeglobals(path: &Path, scheme_name: &str, theme_name: &str, icon_theme: &str, kde_colors: &str) {
-    let existing = fs::read_to_string(path).unwrap_or_default();
-    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
-    let mut current_sec_name = String::new();
-    let mut current_lines = Vec::new();
-
-    for line in existing.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            if !current_sec_name.is_empty() || !current_lines.is_empty() {
-                sections.push((current_sec_name, current_lines));
-            }
-            current_sec_name = trimmed.to_string();
-            current_lines = Vec::new();
-        } else {
-            current_lines.push(line.to_string());
-        }
-    }
-    if !current_sec_name.is_empty() || !current_lines.is_empty() {
-        sections.push((current_sec_name, current_lines));
-    }
-
-    sections.retain(|(name, _)| {
-        !name.starts_with("[Colors:") && !name.starts_with("[ColorEffects:")
-    });
-
-    let general_idx = sections.iter().position(|(name, _)| name == "[General]");
-    if let Some(idx) = general_idx {
-        let lines = &mut sections[idx].1;
-        let mut cs_found = false;
-        let mut name_found = false;
-        for line in lines.iter_mut() {
-            if line.starts_with("ColorScheme=") {
-                *line = format!("ColorScheme={}", scheme_name);
-                cs_found = true;
-            } else if line.starts_with("Name=") {
-                *line = format!("Name={}", theme_name);
-                name_found = true;
-            }
-        }
-        if !cs_found {
-            lines.push(format!("ColorScheme={}", scheme_name));
-        }
-        if !name_found {
-            lines.push(format!("Name={}", theme_name));
-        }
-    } else {
-        sections.insert(
-            0,
-            (
-                "[General]".to_string(),
-                vec![
-                    format!("ColorScheme={}", scheme_name),
-                    format!("Name={}", theme_name),
-                    "TerminalApplication=kitty".to_string(),
-                ],
-            ),
-        );
-    }
-
-    let icons_idx = sections.iter().position(|(name, _)| name == "[Icons]");
-    if let Some(idx) = icons_idx {
-        let lines = &mut sections[idx].1;
-        let mut theme_found = false;
-        for line in lines.iter_mut() {
-            if line.starts_with("Theme=") {
-                *line = format!("Theme={}", icon_theme);
-                theme_found = true;
-            }
-        }
-        if !theme_found {
-            lines.push(format!("Theme={}", icon_theme));
-        }
-    } else {
-        sections.push((
-            "[Icons]".to_string(),
-            vec![format!("Theme={}", icon_theme)],
-        ));
-    }
-
-    if !sections.iter().any(|(name, _)| name == "[KDE]") {
-        sections.push((
-            "[KDE]".to_string(),
-            vec!["contrast=4".to_string(), "widgetStyle=Fusion".to_string()],
-        ));
-    }
-
-    let mut out = String::new();
-    for (sec, lines) in sections {
-        if !sec.is_empty() {
-            out.push_str(&sec);
-            out.push('\n');
-        }
-        for l in lines {
-            out.push_str(&l);
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-
-    let mut in_skip = false;
-    for line in kde_colors.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[General]" {
-            in_skip = true;
-            continue;
-        }
-        if in_skip && trimmed.starts_with('[') {
-            in_skip = false;
-        }
-        if !in_skip {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-
-    let _ = atomic_write(path, out.trim_start());
-}
-
-fn get_home() -> PathBuf {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
-}
-
-fn scan_dir_for_themes(dir: &Path, map: &mut BTreeMap<String, ThemeConfig>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file()
-                && path.extension().is_some_and(|e| e == "toml")
-                && let Ok(content) = fs::read_to_string(&path)
-                && let Ok(c) = toml::from_str::<ThemeConfig>(&content)
-            {
-                map.insert(c.theme.id.clone(), c);
-            }
-        }
-    }
-}
-
-pub fn load_available_themes() -> BTreeMap<String, ThemeConfig> {
-    let mut map = BTreeMap::new();
-
-    // 1. Embedded fallbacks (Default Dark & Default Light)
-    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_DRAGON) {
-        map.insert(c.theme.id.clone(), c);
-    }
-    if let Ok(c) = toml::from_str::<ThemeConfig>(EMBEDDED_INERIUM_LIGHT) {
-        map.insert(c.theme.id.clone(), c);
-    }
-
-    let home = get_home();
-    let theme_roots = [
-        home.join("Repos/inerium-shell/themes"),
-        home.join(".config/inerium/themes"),
-    ];
-
-    for root in &theme_roots {
-        scan_dir_for_themes(root, &mut map);
-    }
-
-    map
-}
-
-pub fn get_extra_theme_roots() -> Vec<PathBuf> {
-    let home = get_home();
-    vec![
-        home.join("Repos/inerium-shell/themes/extra"),
-        home.join(".local/share/inerium/themes/extra"),
-        PathBuf::from("/usr/share/inerium/themes/extra"),
-        PathBuf::from("/usr/share/inerium-shell/themes/extra"),
-    ]
-}
-
-pub fn load_all_themes() -> BTreeMap<String, ThemeConfig> {
-    let mut map = load_available_themes();
-    for root in get_extra_theme_roots() {
-        scan_dir_for_themes(&root, &mut map);
-    }
-    map
-}
-
-pub fn install_extra_theme(id: &str) -> Result<ThemeConfig, String> {
-    let home = get_home();
-    let dest_dir = home.join(".config/inerium/themes");
-    let dest_file = dest_dir.join(format!("{id}.toml"));
-
-    if dest_file.exists()
-        && let Ok(content) = fs::read_to_string(&dest_file)
-        && let Ok(cfg) = toml::from_str::<ThemeConfig>(&content)
-    {
-        return Ok(cfg);
-    }
-
-    for root in get_extra_theme_roots() {
-        let src = root.join(format!("{id}.toml"));
-        if src.exists() {
-            let _ = fs::create_dir_all(&dest_dir);
-            if let Err(e) = fs::copy(&src, &dest_file) {
-                return Err(format!("Failed to copy theme file: {e}"));
-            }
-            if let Ok(content) = fs::read_to_string(&dest_file)
-                && let Ok(cfg) = toml::from_str::<ThemeConfig>(&content)
-            {
-                return Ok(cfg);
-            }
-        }
-    }
-
-    Err(format!("Тема '{id}' не найдена в дополнительных палитрах."))
-}
-
-fn resolve_theme_alias(input_id: &str) -> &str {
-    match input_id {
-        "dark" | "dragon" => "kanagawa-dragon",
-        "light" => "inerium-light",
-        "lotus" => "kanagawa-lotus",
-        "wave" => "kanagawa-wave",
-        "mocha" => "catppuccin-mocha",
-        "latte" => "catppuccin-latte",
-        "tokyo" | "tokyonight" => "tokyo-night",
-        "gruvbox" => "gruvbox-dark",
-        other => other,
-    }
-}
-
-pub fn get_current_theme_id() -> String {
-    let home = get_home();
-    let cur_json = home.join(".config/inerium/current.json");
-    if let Ok(content) = fs::read_to_string(&cur_json)
-        && let Ok(meta) = serde_json::from_str::<ThemeMeta>(&content)
-    {
-        return meta.id;
-    }
-
-    // Fallback: gsettings color-scheme
-    if let Ok(output) = Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.interface", "color-scheme"])
-        .output()
-    {
-        let s = String::from_utf8_lossy(&output.stdout);
-        if s.contains("prefer-light") {
-            return "inerium-light".to_string();
-        }
-    }
-
-    "kanagawa-dragon".to_string()
-}
-
-// ============================================================================
-// CONFIG EMITTERS
-// ============================================================================
-
-fn emit_hyprland_lua(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    format!(
-r#"-- Generated by inerium-theme for {} (author: {})
--- Upstream: {}
-
-INERIUM_BASE                    = "{}"
-INERIUM_SURFACE                 = "{}"
-INERIUM_BORDER                  = "{}"
-INERIUM_BORDER_ACTIVE           = "{}"
-INERIUM_BORDER_ACTIVE_SECONDARY = "{}"
-INERIUM_TEXT                    = "{}"
-INERIUM_MUTED                   = "{}"
-
-INERIUM_GREEN                   = "{}"
-INERIUM_BLUE                    = "{}"
-INERIUM_AMBER                   = "{}"
-INERIUM_RED                     = "{}"
-INERIUM_PURPLE                  = "{}"
-INERIUM_ACCENT_PRIMARY          = "{}"
-INERIUM_SHADOW                  = "{}"
-
-INERIUM_DRAGON_GRAY             = "{}"
-INERIUM_DRAGON_BLUE             = "{}"
-"#,
-        theme.theme.name,
-        theme.theme.author,
-        theme.theme.upstream.as_deref().unwrap_or("N/A"),
-        Rgba::parse(&p.bg_canvas).to_hypr(),
-        Rgba::parse(&p.bg_surface).to_hypr(),
-        Rgba::parse(&p.border_subtle).to_hypr(),
-        Rgba::parse(&p.border_active).to_hypr(),
-        Rgba::parse(p.get_border_active_secondary()).to_hypr(),
-        Rgba::parse(&p.text_primary).to_hypr(),
-        Rgba::parse(&p.get_text_muted()).to_hypr(),
-        Rgba::parse(&p.accent_green).to_hypr(),
-        Rgba::parse(&p.accent_blue).to_hypr(),
-        Rgba::parse(&p.accent_amber).to_hypr(),
-        Rgba::parse(&p.accent_red).to_hypr(),
-        Rgba::parse(&p.accent_purple).to_hypr(),
-        Rgba::parse(p.get_primary()).to_hypr(),
-        Rgba::parse(p.get_shadow()).to_hypr(),
-        Rgba::parse(&p.border_subtle).to_hypr(),
-        Rgba::parse(p.get_primary()).to_hypr(),
-    )
-}
-
-fn emit_waybar_css(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let typo_css = if let Some(t) = &theme.typography {
-        let waybar_size = (t.get_size() * 1.14).clamp(11.0, 16.0);
-        format!(
-            "\n* {{\n    font-family: {};\n    font-size: {:.1}px;\n}}\n",
-            t.to_css_font_family(),
-            waybar_size
-        )
-    } else {
-        String::new()
-    };
-    format!(
-r#"/* Generated by inerium-theme for {} (author: {}) */
-@define-color bg                      {};
-@define-color surface                 {};
-@define-color hover                   {};
-@define-color line                    {};
-@define-color fg                      {};
-@define-color fg-bright               {};
-@define-color muted                   {};
-@define-color subtle                  {};
-@define-color green                   {};
-@define-color blue                    {};
-@define-color aqua                    {};
-@define-color yellow                  {};
-@define-color orange                  {};
-@define-color red                     {};
-@define-color violet                  {};
-@define-color primary                 {};
-@define-color slider_fill             {};
-@define-color slider_fill_secondary   {};
-{typo_css}"#,
-        theme.theme.name,
-        theme.theme.author,
-        p.bg_canvas,
-        p.bg_surface,
-        p.get_surface_hover(),
-        p.border_subtle,
-        p.text_primary,
-        p.text_heading,
-        p.get_text_muted(),
-        p.get_text_subtle(),
-        p.accent_green,
-        p.accent_blue,
-        p.accent_aqua,
-        p.accent_amber,
-        p.get_orange(),
-        p.accent_red,
-        p.accent_purple,
-        p.get_primary(),
-        p.get_slider_fill(),
-        p.get_slider_fill_secondary(),
-    )
-}
-
-fn emit_rofi_rasi(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let font_str = if let Some(t) = &theme.typography {
-        format!("    font:         \"{} {:.1}\";\n", t.get_ui_font(), t.get_size())
-    } else {
-        String::new()
-    };
-    format!(
-r#"/* Generated by inerium-theme for {} (author: {}) */
-* {{
-{font_str}    bg:           {};
-    surface:      {};
-    surface-hi:   {};
-    line:         {};
-    line-soft:    {};
-    fg:           {};
-    fg-bright:    {};
-    muted:        {};
-    green:        {};
-    green-soft:   {};
-    green-line:   {};
-    red:          {};
-    primary:      {};
-    primary-soft: {};
-    primary-line: {};
-}}
-"#,
-        theme.theme.name,
-        theme.theme.author,
-        p.bg_canvas,
-        p.bg_surface,
-        p.get_surface_hover(),
-        p.border_active,
-        p.border_subtle,
-        p.text_primary,
-        p.text_heading,
-        p.get_text_muted(),
-        p.accent_green,
-        p.get_green_bg(),
-        p.get_green_border(),
-        p.accent_red,
-        p.get_primary(),
-        p.get_primary_bg(),
-        p.get_primary_border(),
-    )
-}
-
-fn emit_kitty_conf(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let bg = Rgba::parse(&p.bg_canvas).to_hex_rgb();
-    let fg = Rgba::parse(&p.text_primary).to_hex_rgb();
-    let sel_bg = Rgba::parse(&p.get_surface_hover()).to_hex_rgb();
-    let green = Rgba::parse(&p.accent_green).to_hex_rgb();
-    let blue = Rgba::parse(&p.accent_blue).to_hex_rgb();
-    let red = Rgba::parse(&p.accent_red).to_hex_rgb();
-    let amber = Rgba::parse(&p.accent_amber).to_hex_rgb();
-    let aqua = Rgba::parse(&p.accent_aqua).to_hex_rgb();
-    let purple = Rgba::parse(&p.accent_purple).to_hex_rgb();
-    let muted = Rgba::parse(&p.get_text_muted()).to_hex_rgb();
-    let heading = Rgba::parse(&p.text_heading).to_hex_rgb();
-    let primary = Rgba::parse(p.get_primary()).to_hex_rgb();
-
-    let bright_red = Rgba::parse(&p.accent_red).lighten(0.18).to_hex_rgb();
-    let bright_green = Rgba::parse(&p.accent_green).lighten(0.18).to_hex_rgb();
-    let bright_amber = Rgba::parse(&p.accent_amber).lighten(0.18).to_hex_rgb();
-    let bright_blue = Rgba::parse(&p.accent_blue).lighten(0.18).to_hex_rgb();
-    let bright_purple = Rgba::parse(&p.accent_purple).lighten(0.18).to_hex_rgb();
-    let bright_aqua = Rgba::parse(&p.accent_aqua).lighten(0.18).to_hex_rgb();
-
-    let font_directives = if let Some(t) = &theme.typography {
-        format!(
-            "font_family {}\nfont_size {:.1}\n\n",
-            t.get_mono_font(),
-            t.get_size()
-        )
-    } else {
-        String::new()
-    };
-
-    format!(
-r#"# Generated by inerium-theme for {} (author: {})
-
-{font_directives}foreground            {}
-background            {}
-selection_foreground  {}
-selection_background  {}
-
-cursor                {}
-cursor_text_color     {}
-
-url_color             {}
-
-# Tabs
-active_tab_foreground   {}
-active_tab_background   {}
-inactive_tab_foreground {}
-inactive_tab_background {}
-
-# Borders
-active_border_color   {}
-inactive_border_color {}
-
-# Normal colors
-color0 {}
-color1 {}
-color2 {}
-color3 {}
-color4 {}
-color5 {}
-color6 {}
-color7 {}
-
-# Bright colors
-color8 {}
-color9 {}
-color10 {}
-color11 {}
-color12 {}
-color13 {}
-color14 {}
-color15 {}
-"#,
-        theme.theme.name,
-        theme.theme.author,
-        fg,
-        bg,
-        fg,
-        sel_bg,
-        fg,
-        bg,
-        primary,
-        bg,
-        primary,
-        muted,
-        sel_bg,
-        primary,
-        sel_bg,
-        bg,
-        red,
-        green,
-        amber,
-        blue,
-        purple,
-        aqua,
-        fg,
-        muted,
-        bright_red,
-        bright_green,
-        bright_amber,
-        bright_blue,
-        bright_purple,
-        bright_aqua,
-        heading,
-    )
-}
-
-fn emit_mako_config(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let bg = Rgba::parse(&p.bg_canvas).to_hex_rgba();
-    let text = Rgba::parse(&p.text_primary).to_hex_rgb();
-    let text_subtle = Rgba::parse(&p.get_text_subtle()).to_hex_rgb();
-    let text_muted = Rgba::parse(&p.get_text_muted()).to_hex_rgb();
-    let border = Rgba::parse(&p.border_subtle).to_hex_rgba();
-    let red = Rgba::parse(&p.accent_red).to_hex_rgb();
-    let primary_progress = Rgba::parse(&p.get_primary_bg()).to_hex_rgba();
-
-    let font_ui = theme.typography.as_ref().map(|t| t.get_ui_font()).unwrap_or("JetBrainsMono Nerd Font");
-    let font_size = theme.typography.as_ref().map(|t| t.get_size()).unwrap_or(10.0);
-
-    format!(
-r#"# Generated by inerium-theme for {} (author: {})
-font={} {:.0}
-width=360
-background-color={}
-text-color={}
-border-color={}
-border-size=1
-border-radius=16
-padding=12,14
-margin=8,8,0,8
-outer-margin=4,0,0,0
-icon-border-radius=10
-max-icon-size=40
-icons=1
-actions=1
-progress-color=over {}
-format=<b>%s</b>\n<span color="{}">%b</span>
-default-timeout=5000
-layer=overlay
-anchor=top-right
-
-history=0
-max-history=0
-
-[urgency=low]
-border-color={}
-format=<span color="{}"><b>%s</b></span>\n<span color="{}">%b</span>
-default-timeout=3000
-
-[urgency=normal]
-default-timeout=5000
-
-[urgency=high]
-border-color={}
-format=<span color="{}"><b>%s</b></span>\n%b
-default-timeout=0
-
-[mode=dnd]
-invisible=1
-
-[mode=do-not-disturb]
-invisible=1
-"#,
-        theme.theme.name,
-        theme.theme.author,
-        font_ui,
-        font_size,
-        bg,
-        text,
-        border,
-        primary_progress,
-        text_subtle,
-        border,
-        text_subtle,
-        text_muted,
-        red,
-        red,
-    )
-}
-
-fn emit_gtk_vars(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let typo_css = if let Some(t) = &theme.typography {
-        format!(
-            "\n.popup-container, .cc, window.popup-window {{\n    font-family: {};\n}}\n",
-            t.to_css_font_family()
-        )
-    } else {
-        String::new()
-    };
-    format!(
-r#"/* Generated by inerium-theme for {} (author: {}) */
-@define-color cc_bg                   {};
-@define-color cc_surface              {};
-@define-color cc_surface_alt          {};
-@define-color cc_surface_hover        {};
-@define-color cc_surface_active       {};
-@define-color cc_line                 {};
-@define-color cc_line_light           {};
-@define-color cc_border_active_secondary {};
-@define-color cc_fg                   {};
-@define-color cc_fg_bright            {};
-@define-color cc_fg_muted             {};
-@define-color cc_fg_subtle            {};
-@define-color cc_fg_on_accent         {};
-
-@define-color cc_green                {};
-@define-color cc_green_bg             {};
-@define-color cc_green_border         {};
-
-@define-color cc_blue                 {};
-@define-color cc_blue_bg              {};
-@define-color cc_blue_border          {};
-
-@define-color cc_amber                {};
-@define-color cc_amber_bg             {};
-@define-color cc_amber_border         {};
-
-@define-color cc_red                  {};
-@define-color cc_red_bg               {};
-@define-color cc_red_border           {};
-
-@define-color cc_aqua                 {};
-@define-color cc_aqua_bg              {};
-@define-color cc_aqua_border          {};
-
-@define-color cc_violet               {};
-@define-color cc_violet_bg            {};
-@define-color cc_violet_border        {};
-
-@define-color cc_shadow               {};
-@define-color cc_modal_backdrop       {};
-@define-color cc_slider_trough        {};
-@define-color cc_slider_thumb         {};
-@define-color cc_orange               {};
-@define-color cc_primary              {};
-@define-color cc_primary_bg           {};
-@define-color cc_primary_border       {};
-@define-color cc_slider_fill          {};
-@define-color cc_slider_fill_secondary {};
-{typo_css}"#,
-        theme.theme.name,
-        theme.theme.author,
-        p.bg_canvas,
-        p.bg_surface,
-        p.get_surface_alt(),
-        p.get_surface_hover(),
-        p.get_surface_active(),
-        p.border_subtle,
-        p.border_active,
-        p.get_border_active_secondary(),
-        p.text_primary,
-        p.text_heading,
-        p.get_text_muted(),
-        p.get_text_subtle(),
-        p.get_text_inverted(),
-        p.accent_green,
-        p.get_green_bg(),
-        p.get_green_border(),
-        p.accent_blue,
-        p.get_blue_bg(),
-        p.get_blue_border(),
-        p.accent_amber,
-        p.get_amber_bg(),
-        p.get_amber_border(),
-        p.accent_red,
-        p.get_red_bg(),
-        p.get_red_border(),
-        p.accent_aqua,
-        p.get_aqua_bg(),
-        p.get_aqua_border(),
-        p.accent_purple,
-        p.get_purple_bg(),
-        p.get_purple_border(),
-        p.get_shadow(),
-        p.get_modal_backdrop(),
-        p.get_slider_trough(),
-        p.get_slider_thumb(),
-        p.get_orange(),
-        p.get_primary(),
-        p.get_primary_bg(),
-        p.get_primary_border(),
-        p.get_slider_fill(),
-        p.get_slider_fill_secondary(),
-    )
-}
-
-fn emit_libadwaita_css(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let primary = p.get_primary();
-    format!(
-r#"/* Generated by inerium-theme for {} (author: {}) */
-@define-color window_bg_color {};
-@define-color window_fg_color {};
-@define-color view_bg_color {};
-@define-color view_fg_color {};
-@define-color headerbar_bg_color {};
-@define-color headerbar_fg_color {};
-@define-color headerbar_backdrop_color {};
-@define-color card_bg_color {};
-@define-color card_fg_color {};
-@define-color popover_bg_color {};
-@define-color popover_fg_color {};
-@define-color dialog_bg_color {};
-@define-color dialog_fg_color {};
-@define-color borders {};
-@define-color accent_color {};
-@define-color accent_bg_color {};
-@define-color accent_fg_color {};
-@define-color destructive_color {};
-@define-color destructive_bg_color {};
-@define-color destructive_fg_color {};
-"#,
-        theme.theme.name,
-        theme.theme.author,
-        p.bg_canvas,
-        p.text_primary,
-        p.bg_surface,
-        p.text_primary,
-        p.bg_surface,
-        p.text_primary,
-        p.bg_canvas,
-        p.bg_surface,
-        p.text_primary,
-        p.bg_surface,
-        p.text_primary,
-        p.bg_surface,
-        p.text_primary,
-        p.border_subtle,
-        primary,
-        primary,
-        p.get_text_inverted(),
-        p.accent_red,
-        p.accent_red,
-        p.text_primary,
-    )
-}
-
-fn apply_display_temperature(temp_kelvin: u32) {
-    let _ = Command::new("pkill")
-        .args(["-x", "hyprsunset"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    if temp_kelvin < 6500 {
-        let _ = Command::new("setsid")
-            .args(["hyprsunset", "-t", &temp_kelvin.to_string()])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-    }
-}
-
-fn run_theme_hooks(theme: &ThemeConfig) {
-    let home = get_home();
-    let hooks_dir = home.join(".config/inerium/hooks.d");
-    if let Ok(entries) = fs::read_dir(&hooks_dir) {
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by_key(|e| e.path());
-        for entry in entries {
-            let path = entry.path();
-            if path.is_file() {
-                // Ignore backup/disabled files and markdown
-                if let Some(ext) = path.extension().and_then(|x| x.to_str())
-                    && matches!(ext, "bak" | "old" | "disabled" | "md" | "txt")
-                {
-                    continue;
-                }
-                if let Some(name) = path.file_name().and_then(|n| n.to_str())
-                    && (name.starts_with('.') || name.ends_with('~'))
-                {
-                    continue;
-                }
-                // Check executable bit (owner, group, or other)
-                if let Ok(meta) = fs::metadata(&path)
-                    && meta.permissions().mode() & 0o111 == 0
-                {
-                    continue;
-                }
-                let _ = Command::new(&path)
-                    .args([
-                        &theme.theme.variant,
-                        &theme.theme.id,
-                        &theme.theme.name,
-                        &theme.theme.author,
-                    ])
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn();
-            }
-        }
-    }
-}
-
-fn emit_kde_colors(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let bg_canvas = Rgba::parse(&p.bg_canvas).to_kde_rgb();
-    let bg_surface = Rgba::parse(&p.bg_surface).to_kde_rgb();
-    let bg_hover = Rgba::parse(&p.get_surface_hover()).to_kde_rgb();
-    let text = Rgba::parse(&p.text_primary).to_kde_rgb();
-    let text_muted = Rgba::parse(&p.get_text_muted()).to_kde_rgb();
-    let green = Rgba::parse(&p.accent_green).to_kde_rgb();
-    let blue = Rgba::parse(&p.accent_blue).to_kde_rgb();
-    let red = Rgba::parse(&p.accent_red).to_kde_rgb();
-    let amber = Rgba::parse(&p.accent_amber).to_kde_rgb();
-    let purple = Rgba::parse(&p.accent_purple).to_kde_rgb();
-    let primary = Rgba::parse(p.get_primary()).to_kde_rgb();
-
-    format!(
-r#"# Generated by inerium-theme for {} (author: {})
-[ColorEffects:Disabled]
-Color=56,56,56
-ColorAmount=0
-ColorEffect=0
-ContrastAmount=0.65
-ContrastEffect=1
-IntensityAmount=0.1
-IntensityEffect=2
-
-[ColorEffects:Inactive]
-ChangeSelectionColor=true
-Color=112,111,110
-ColorAmount=0.025
-ColorEffect=2
-ContrastAmount=0.1
-ContrastEffect=2
-Enable=false
-IntensityAmount=0
-IntensityEffect=0
-
-[Colors:Button]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:Complementary]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:Header]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:Selection]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:Tooltip]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:View]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[Colors:Window]
-BackgroundAlternate={}
-BackgroundNormal={}
-DecorationFocus={}
-DecorationHover={}
-ForegroundActive={}
-ForegroundInactive={}
-ForegroundLink={}
-ForegroundNegative={}
-ForegroundNeutral={}
-ForegroundNormal={}
-ForegroundPositive={}
-ForegroundVisited={}
-
-[General]
-ColorScheme={}
-Name={}
-"#,
-        theme.theme.name, theme.theme.author,
-        bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_hover, bg_canvas, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_hover, bg_hover, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_canvas, bg_canvas, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        bg_hover, bg_surface, primary, primary, primary, text_muted, blue, red, amber, text, green, purple,
-        theme.theme.name, theme.theme.name,
-    )
-}
-
-fn emit_hyprlock_conf(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let card = Rgba::parse(&p.bg_surface);
-    let border = Rgba::parse(&p.border_subtle);
-    let heading = Rgba::parse(&p.text_heading);
-    let amber = Rgba::parse(&p.accent_amber);
-    let muted = Rgba::parse(&p.get_text_muted());
-    let surface_alt = Rgba::parse(&p.get_surface_alt());
-    let text = Rgba::parse(&p.text_primary);
-    let green = Rgba::parse(&p.accent_green);
-    let red = Rgba::parse(&p.accent_red);
-
-    format!(
-r#"# Generated by inerium-theme for {} (author: {})
-$LOCK_CARD_COLOR = rgba({}, {}, {}, 0.92)
-$LOCK_BORDER_COLOR = rgba({}, {}, {}, 0.10)
-$LOCK_CLOCK_COLOR = rgba({}, {}, {}, 1.0)
-$LOCK_DATE_COLOR = rgba({}, {}, {}, 1.0)
-$LOCK_USER_COLOR = rgba({}, {}, {}, 1.0)
-$LOCK_INPUT_BG = rgba({}, {}, {}, 1.0)
-$LOCK_INPUT_BORDER = rgba({}, {}, {}, 0.12)
-$LOCK_INPUT_FG = rgba({}, {}, {}, 1.0)
-$LOCK_CHECK_COLOR = rgba({}, {}, {}, 0.85)
-$LOCK_FAIL_COLOR = rgba({}, {}, {}, 0.90)
-$LOCK_CAPS_COLOR = rgba({}, {}, {}, 0.90)
-$LOCK_SUBTEXT_COLOR = rgba({}, {}, {}, 1.0)
-$LOCK_PLACEHOLDER_COLOR = #{}
-$LOCK_FAIL_TEXT_COLOR = #{}
-$LOCK_CHECK_TEXT_COLOR = #{}
-"#,
-        theme.theme.name, theme.theme.author,
-        card.0, card.1, card.2,
-        border.0, border.1, border.2,
-        heading.0, heading.1, heading.2,
-        amber.0, amber.1, amber.2,
-        muted.0, muted.1, muted.2,
-        surface_alt.0, surface_alt.1, surface_alt.2,
-        border.0, border.1, border.2,
-        text.0, text.1, text.2,
-        green.0, green.1, green.2,
-        red.0, red.1, red.2,
-        amber.0, amber.1, amber.2,
-        muted.0, muted.1, muted.2,
-        muted.to_hex_rgb(),
-        red.to_hex_rgb(),
-        green.to_hex_rgb(),
-    )
-}
-
-fn emit_greeter_css(theme: &ThemeConfig) -> String {
-    let p = &theme.palette;
-    let card = Rgba::parse(&p.bg_surface);
-    let border = Rgba::parse(&p.border_subtle);
-    let primary = Rgba::parse(p.get_primary());
-    let red = Rgba::parse(&p.accent_red);
-    let canvas = Rgba::parse(&p.bg_canvas);
-    let surface_alt = Rgba::parse(&p.get_surface_alt());
-
-    let bg_card_rgba = format!("rgba({}, {}, {}, 0.92)", card.0, card.1, card.2);
-    let bg_end_rgba = format!("rgba({}, {}, {}, 0.85)", card.0, card.1, card.2);
-    let card_border = format!("rgba({}, {}, {}, 0.10)", border.0, border.1, border.2);
-    let input_border = format!("rgba({}, {}, {}, 0.12)", border.0, border.1, border.2);
-    let btn_border = format!("rgba({}, {}, {}, 0.08)", border.0, border.1, border.2);
-    let btn_border_hover = format!("rgba({}, {}, {}, 0.22)", border.0, border.1, border.2);
-    let focus_border = format!("rgba({}, {}, {}, 0.65)", primary.0, primary.1, primary.2);
-    let error_border = format!("rgba({}, {}, {}, 0.85)", red.0, red.1, red.2);
-    let end_border = format!("rgba({}, {}, {}, 0.35)", red.0, red.1, red.2);
-    let session_menu_bg = format!("rgba({}, {}, {}, 0.98)", canvas.0, canvas.1, canvas.2);
-    let radial_center = format!("rgba({}, {}, {}, 0.85)", surface_alt.0, surface_alt.1, surface_alt.2);
-    let radial_edge = format!("rgba({}, {}, {}, 0.98)", canvas.0, canvas.1, canvas.2);
-
-    format!(
-r#"/* Generated by inerium-theme for {} (author: {}, variant: {}) */
-* {{ font-family: "JetBrainsMono Nerd Font", monospace; color: {}; }}
-window {{
-    background-color: {};
-    background-image: radial-gradient(ellipse at center, {} 0%, {} 100%);
-}}
-
-.clock {{ font-size: 76px; font-weight: 800; color: {}; }}
-.date  {{ font-size: 15px; font-weight: 700; color: {}; }}
-
-.card {{
-    background-color: {};
-    border: 1px solid {};
-    border-radius: 22px;
-    padding: 24px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-}}
-.user {{ font-size: 15px; font-weight: 700; color: {}; }}
-.user-sub {{ font-size: 12px; color: {}; }}
-.avatar {{
-    min-width: 48px; min-height: 48px; border-radius: 14px;
-    background-color: {}; color: {}; font-size: 22px;
-}}
-
-entry.password,
-.password-input,
-passwordentry {{
-    min-height: 48px; padding: 0 16px; border-radius: 12px;
-    background-color: {}; background-image: none; color: {}; font-size: 14px;
-    border: 1px solid {}; box-shadow: none; outline: none;
-}}
-entry.password text,
-.password-input text {{
-    color: {};
-    background-color: transparent;
-    background-image: none;
-}}
-entry.password:focus-within,
-.password-input:focus-within {{ border-color: {}; }}
-entry.password.error,
-.password-input.error {{ border-color: {}; }}
-entry.password placeholder,
-entry.password text placeholder,
-.password-input placeholder {{ color: {}; }}
-entry.password image,
-.password-input image {{ color: {}; }}
-entry.password image:hover,
-.password-input image:hover {{ color: {}; }}
-
-.session-btn {{
-    min-height: 42px; padding: 0 14px; border-radius: 12px;
-    background-color: {}; background-image: none; box-shadow: none;
-    border: 1px solid {};
-}}
-.session-btn label {{ color: {}; }}
-.session-btn:hover {{ border-color: {}; }}
-.session-btn .arrow {{ color: {}; font-size: 14px; }}
-
-.session-menu {{
-    background-color: {};
-    border: 1px solid {};
-    border-radius: 12px; padding: 4px;
-    margin-top: 4px;
-}}
-.session-item {{
-    min-height: 38px; padding: 0 12px; border-radius: 8px;
-    background: transparent; border: none; box-shadow: none;
-}}
-.session-item label {{ color: {}; font-size: 13.5px; }}
-.session-item .check {{ color: {}; font-size: 14px; font-weight: bold; }}
-.session-item:hover {{
-    background-color: {};
-}}
-.session-item:hover label {{ color: {}; }}
-.session-item.selected {{
-    background-color: {};
-}}
-.session-item.selected label {{
-    color: {};
-    font-weight: 700;
-}}
-
-.go {{
-    min-width: 48px; min-height: 48px; padding: 0; border-radius: 12px;
-    background-color: {}; background-image: none; border: none; box-shadow: none;
-    color: {}; font-size: 20px;
-}}
-.go label {{ color: {}; }}
-.go:hover {{ background-color: {}; }}
-.go:disabled {{ opacity: 0.6; }}
-
-.label {{ font-size: 10.5px; font-weight: 700; color: {}; letter-spacing: 1px; }}
-.status {{ font-size: 11.5px; color: {}; }}
-.status.error {{ color: {}; }}
-.status.warn {{ color: {}; }}
-
-.end {{
-    min-height: 34px; padding: 0 14px; border-radius: 12px; box-shadow: none; background-image: none;
-    background-color: {};
-    border: 1px solid {};
-    font-size: 12px; font-weight: 600;
-}}
-.end label {{ color: {}; }}
-.end:hover {{ background-color: {}; }}
-.end:hover label {{ color: {}; }}
-"#,
-        theme.theme.name, theme.theme.author, theme.theme.variant,
-        p.text_primary,
-        p.bg_canvas,
-        radial_center, radial_edge,
-        p.text_heading,
-        p.accent_amber,
-        bg_card_rgba,
-        card_border,
-        p.text_heading,
-        p.get_text_muted(),
-        p.get_green_bg(), p.accent_green,
-        p.get_surface_alt(), p.text_primary,
-        input_border,
-        p.text_primary,
-        focus_border,
-        error_border,
-        p.get_text_muted(),
-        p.get_text_muted(),
-        p.text_primary,
-        p.get_surface_alt(),
-        btn_border,
-        p.text_primary,
-        btn_border_hover,
-        p.get_text_muted(),
-        session_menu_bg,
-        card_border,
-        p.text_primary,
-        p.accent_green,
-        p.get_surface_hover(),
-        p.text_heading,
-        p.get_green_bg(),
-        p.accent_green,
-        p.accent_green,
-        p.get_text_inverted(),
-        p.get_text_inverted(),
-        p.get_green_border(),
-        p.get_text_muted(),
-        p.get_text_muted(),
-        p.accent_red,
-        p.accent_amber,
-        bg_end_rgba,
-        end_border,
-        p.accent_red,
-        p.accent_red,
-        p.get_text_inverted(),
-    )
-}
-
-// ============================================================================
-// ATOMIC APPLICATION OF THEME
-// ============================================================================
-
-pub fn apply_theme(theme: &ThemeConfig) {
-    let home = get_home();
-    let is_dark = theme.theme.variant == "dark";
-    let kde_scheme_name = format!("Inerium-{}", theme.theme.id);
-
-    // 0. Ensure target directories exist
-    let inerium_cfg_dir = home.join(".config/inerium");
-    let _ = fs::create_dir_all(&inerium_cfg_dir);
-    let _ = fs::create_dir_all(inerium_cfg_dir.join("hooks.d"));
-    let _ = fs::create_dir_all(home.join(".config/hypr/config"));
-    let _ = fs::create_dir_all(home.join(".config/waybar"));
-    let _ = fs::create_dir_all(home.join(".config/rofi"));
-    let _ = fs::create_dir_all(home.join(".config/kitty/themes"));
-    let _ = fs::create_dir_all(home.join(".config/mako"));
-    let _ = fs::create_dir_all(home.join(".local/share/color-schemes"));
-
-    // 1. Write metadata current.json & theme-vars.css
-    let current_json = inerium_cfg_dir.join("current.json");
-    if let Ok(json_str) = serde_json::to_string_pretty(&theme.theme) {
-        let _ = atomic_write(&current_json, &(json_str + "\n"));
-    }
-
-    let theme_vars_css = inerium_cfg_dir.join("theme-vars.css");
-    let _ = atomic_write(&theme_vars_css, &emit_gtk_vars(theme));
-
-    // 2. GSettings (Portal, Browsers, VS Code, GTK)
-    let (gsettings_scheme, gtk_theme, icon_theme) = if is_dark {
-        ("prefer-dark", "adw-gtk3-dark", "Papirus-Dark")
-    } else {
-        ("prefer-light", "adw-gtk3", "Papirus-Light")
-    };
-
-    let _ = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.interface", "color-scheme", gsettings_scheme])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let _ = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.interface", "gtk-theme", gtk_theme])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    let _ = Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.interface", "icon-theme", icon_theme])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 2b. Typography (GSettings and GTK settings.ini)
-    if let Some(typo) = &theme.typography {
-        let font_ui_str = format!("{} {}", typo.get_ui_font(), typo.get_size());
-        let font_mono_str = format!("{} {}", typo.get_mono_font(), typo.get_size());
-        let _ = Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.interface", "font-name", &font_ui_str])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let _ = Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.interface", "document-font-name", &font_ui_str])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        let _ = Command::new("gsettings")
-            .args(["set", "org.gnome.desktop.interface", "monospace-font-name", &font_mono_str])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-
-    // 3. GTK 3 & GTK 4 settings.ini and Libadwaita CSS
-    let prefer_dark_str = if is_dark { "1" } else { "0" };
-    let libadwaita_css = emit_libadwaita_css(theme);
-    let font_spec = theme.typography.as_ref().map(|t| format!("{} {}", t.get_ui_font(), t.get_size()));
-    for gtk_ver in &["gtk-3.0", "gtk-4.0"] {
-        let dir = home.join(format!(".config/{}", gtk_ver));
-        let _ = fs::create_dir_all(&dir);
-        let _ = fs::write(dir.join("gtk.css"), &libadwaita_css);
-
-        let path = dir.join("settings.ini");
-        if let Ok(content) = fs::read_to_string(&path) {
-            let mut lines = Vec::new();
-            let mut font_written = false;
-            for line in content.lines() {
-                if line.starts_with("gtk-theme-name=") {
-                    lines.push(format!("gtk-theme-name={}", gtk_theme));
-                } else if line.starts_with("gtk-application-prefer-dark-theme=") {
-                    lines.push(format!("gtk-application-prefer-dark-theme={}", prefer_dark_str));
-                } else if line.starts_with("gtk-icon-theme-name=") {
-                    lines.push(format!("gtk-icon-theme-name={}", icon_theme));
-                } else if line.starts_with("gtk-font-name=") {
-                    if let Some(ref f) = font_spec {
-                        lines.push(format!("gtk-font-name={}", f));
-                        font_written = true;
-                    } else {
-                        lines.push(line.to_string());
-                    }
-                } else {
-                    lines.push(line.to_string());
-                }
-            }
-            if !font_written && let Some(ref f) = font_spec {
-                lines.push(format!("gtk-font-name={}", f));
-            }
-            let _ = fs::write(&path, lines.join("\n") + "\n");
-        }
-    }
-
-    // 3b. XDG Desktop Portal GTK (refresh CSS cache for file/app choosers)
-    let _ = Command::new("systemctl")
-        .args(["--user", "try-restart", "xdg-desktop-portal-gtk"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 4. KDE / Dolphin / Qt
-    let kde_colors_content = emit_kde_colors(theme);
-    let kde_colors_path = home.join(format!(".local/share/color-schemes/{}.colors", kde_scheme_name));
-    let _ = fs::write(&kde_colors_path, &kde_colors_content);
-
-    let kde_icon_theme = if is_dark { "Colloid-Dark" } else { "Colloid-Light" };
-    let kdeglobals_path = home.join(".config/kdeglobals");
-    update_kdeglobals(&kdeglobals_path, &kde_scheme_name, &theme.theme.name, kde_icon_theme, &kde_colors_content);
-
-    let dolphinrc_path = home.join(".config/dolphinrc");
-    if let Ok(content) = fs::read_to_string(&dolphinrc_path) {
-        let mut lines = Vec::new();
-        let mut has_ui = false;
-        let mut in_ui = false;
-        for line in content.lines() {
-            if line.trim() == "[UiSettings]" {
-                in_ui = true;
-                has_ui = true;
-                lines.push(line.to_string());
-                continue;
-            }
-            if in_ui && line.starts_with('[') {
-                in_ui = false;
-            }
-            if in_ui && line.starts_with("ColorScheme=") {
-                lines.push(format!("ColorScheme={}", kde_scheme_name));
-                continue;
-            }
-            lines.push(line.to_string());
-        }
-        if !has_ui {
-            lines.push("[UiSettings]".to_string());
-            lines.push(format!("ColorScheme={}", kde_scheme_name));
-        }
-        let _ = fs::write(&dolphinrc_path, lines.join("\n") + "\n");
-    }
-
-    let _ = Command::new("plasma-apply-colorscheme")
-        .arg(&kde_scheme_name)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 5. Waybar
-    let waybar_colors = home.join(".config/waybar/colors.css");
-    let _ = fs::write(&waybar_colors, emit_waybar_css(theme));
-    let _ = Command::new("pkill")
-        .args(["-SIGUSR2", "waybar"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 6. Rofi
-    let rofi_colors = home.join(".config/rofi/colors.rasi");
-    let _ = fs::write(&rofi_colors, emit_rofi_rasi(theme));
-
-    // 7. Kitty
-    let kitty_theme = home.join(".config/kitty/themes/current-theme.conf");
-    let _ = fs::write(&kitty_theme, emit_kitty_conf(theme));
-    let _ = Command::new("killall")
-        .args(["-SIGUSR1", "kitty"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 8. Mako
-    let mako_cfg = home.join(".config/mako/config");
-    let _ = fs::write(&mako_cfg, emit_mako_config(theme));
-    let _ = Command::new("makoctl")
-        .arg("reload")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 9. Hyprland
-    let hypr_colors = home.join(".config/hypr/config/colors.lua");
-    let _ = fs::write(&hypr_colors, emit_hyprland_lua(theme));
-    let _ = Command::new("hyprctl")
-        .arg("reload")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 10. SwayOSD
-    let _ = Command::new("systemctl")
-        .args(["--user", "try-restart", "swayosd-server.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    // 11. Hyprlock & Greeter
-    let hyprlock_colors = home.join(".config/hypr/hyprlock-colors.conf");
-    let _ = fs::write(&hyprlock_colors, emit_hyprlock_conf(theme));
-
-    let greeter_css = emit_greeter_css(theme);
-    let greeter_targets = [
-        PathBuf::from("/var/cache/inerium/greeter-theme.css"),
-        PathBuf::from("/var/tmp/inerium/greeter-theme.css"),
-    ];
-    for t in &greeter_targets {
-        if let Ok(()) = atomic_write(t, &greeter_css) {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(t, fs::Permissions::from_mode(0o644));
-            }
-        }
-    }
-
-    // 11. Display Color Temperature (Harmonization for paper light themes)
-    let temp = theme
-        .display
-        .as_ref()
-        .and_then(|d| d.temperature)
-        .unwrap_or(6500);
-    apply_display_temperature(temp);
-
-    // 11. Custom User & App Hooks (~/.config/inerium/hooks.d/*)
-    run_theme_hooks(theme);
-
-    // 12. Inerium Shell Daemon Hot-Reload via UNIX domain socket
-    let uid = inerium_tools::sys::posix::posix_getuid();
-    let sock_path = format!("/run/user/{}/inerium-popups.sock", uid);
-    if let Ok(mut stream) = UnixStream::connect(&sock_path) {
-        let msg = format!("theme {}\n", theme.theme.variant);
-        let _ = stream.write_all(msg.as_bytes());
-    }
-}
+use inerium_i18n::tr;
+pub use inerium_theme::{
+    apply_theme, generate_new_theme_template, get_current_theme_id, get_home,
+    install_extra_theme, load_all_themes, load_available_themes, load_theme_by_id,
+    parse_theme_toml, resolve_theme_alias, DisplayConfig, Palette, Rgba, ThemeConfig,
+    ThemeMeta, Typography,
+};
 
 fn simple_time() -> String {
     if let Ok(duration) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        let total_secs = duration.as_secs();
-        let hours = (total_secs / 3600) % 24;
-        let mins = (total_secs / 60) % 60;
-        let secs = total_secs % 60;
-        format!("{:02}:{:02}:{:02}", hours, mins, secs)
+        let secs = duration.as_secs() as i64;
+        let tm = crate::sys::posix::posix_localtime_r(&secs);
+        format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
     } else {
         "00:00:00".to_string()
     }
 }
 
-pub fn generate_new_theme_template(id: &str) -> String {
-    let title_cased = id
-        .split(['-', '_'])
-        .map(|w| {
-            let mut chars = w.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    format!(
-r##"# ==============================================================================
-# Inerium Desktop Theme: {title_cased}
-#
-# ФОРМАТЫ ЦВЕТОВ:
-#   Вы можете указывать цвета в любом удобном формате:
-#     - HEX:      "#1e2029", "1e2029" (без решётки), "#123" (3-значный)
-#     - HEX+Alpha:"#1e2029cc", "#1238"
-#     - RGB:      "rgb(30, 32, 41)"
-#     - RGBA:     "rgba(30, 32, 41, 0.85)"
-#     - CSS-4:    "rgb(30 32 41 / 85%)"
-#
-# СИСТЕМА АВТОВЫЧИСЛЕНИЙ:
-#   Поля с пометкой (опционально) можно опустить. Движок автоматически рассчитает
-#   нужные оттенки (фон кнопок @ 16%, рамки @ 35%, hover @ +8%, active @ +15%).
-# ==============================================================================
-
-[theme]
-id = "{id}"
-name = "{title_cased}"
-author = "User"
-variant = "dark" # "dark" или "light"
-
-# ------------------------------------------------------------------------------
-# Шрифты интерфейса (опционально)
-# Автоматически настраивает GTK, Waybar, Rofi, Kitty, Mako и системные окна.
-# Включает защитный fallback на "JetBrainsMono Nerd Font" для иконок.
-# ------------------------------------------------------------------------------
-[typography]
-font_ui = "Inter"
-font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
-
-# ------------------------------------------------------------------------------
-# Цветовая палитра
-# ------------------------------------------------------------------------------
-[palette]
-# Основные холсты и карточки
-bg_canvas = "#111216"           # Фоновый цвет рабочего стола / подложки
-bg_surface = "#1e2029"          # Цвет карточек, виджетов Waybar, меню
-# bg_surface_alt = "#17181f"    # (опционально) Вторичные поверхности / списки
-# bg_surface_hover = "#262935"  # (опционально) Фон при наведении
-# bg_surface_active = "#2e3241" # (опционально) Фон при клике / нажатии
-
-# Текст и контраст
-text_heading = "#e6e8ee"        # Заголовки, жирный текст
-text_primary = "#cfd2dd"        # Основной текст приложений
-# text_muted = "#72778e"        # (опционально) Второстепенные подписи / плейсхолдеры
-# text_subtle = "#9ba0b4"       # (опционально) Промежуточный текст
-# text_inverted = "#111216"     # (опционально) Текст на контрастных плашках
-
-# Рамки и границы окон Hyprland
-border_subtle = "rgba(147, 138, 169, 0.20)"  # Неактивные окна и разделители
-border_active = "#938aa9"                    # Активное окно Hyprland
-# border_active_secondary = "#938aa9"        # (опционально) 2-й цвет для градиента рамки окна
-
-# Ползунки громкости и яркости в панелях
-# slider_fill = "#938aa9"                    # (опционально, по умолчанию = primary)
-# slider_fill_secondary = "#e6c384"          # (опционально, для внешнего монитора)
-
-# Акцентные цвета
-accent_primary = "#938aa9"      # Главный акцент системы (кнопки, фокус, бейджи)
-accent_green = "#87a987"        # Статус сети, активные тумблеры, успех
-accent_blue = "#7fb4ca"         # Ссылки, информация, Bluetooth
-accent_amber = "#e6c384"        # Предупреждения, зарядка батареи
-accent_red = "#e46876"          # Ошибки, кнопка выключения, опасность
-accent_aqua = "#7aa89f"         # Дополнительный акцент
-accent_purple = "#938aa9"       # Фиолетовый / аметистовый
-"##
-    )
-}
-
 fn cmd_new(id: &str) {
     let clean_id = id.trim().to_lowercase().replace(' ', "-");
     if clean_id.is_empty() {
-        eprintln!("󰅖 Ошибка: ID темы не может быть пустым.");
-        eprintln!("Использование: inerium-theme new <id_темы>");
+        eprintln!(
+            "{}",
+            tr(
+                "󰅖 Error: Theme ID cannot be empty.",
+                "󰅖 Ошибка: ID темы не может быть пустым."
+            )
+        );
+        eprintln!(
+            "{}",
+            tr(
+                "Usage: inerium-theme new <theme_id>",
+                "Использование: inerium-theme new <id_темы>"
+            )
+        );
         std::process::exit(1);
     }
 
@@ -1563,64 +47,135 @@ fn cmd_new(id: &str) {
     let theme_path = theme_dir.join(format!("{}.toml", clean_id));
 
     if theme_path.exists() {
-        eprintln!("󰅖 Файл темы уже существует: {}", theme_path.display());
-        eprintln!("  Отредактируйте его или удалите перед созданием заново.");
+        eprintln!(
+            "{} {}",
+            tr(
+                "󰅖 Theme file already exists:",
+                "󰅖 Файл темы уже существует:"
+            ),
+            theme_path.display()
+        );
+        eprintln!(
+            "{}",
+            tr(
+                "  Edit it or delete it before recreating.",
+                "  Отредактируйте его или удалите перед созданием заново."
+            )
+        );
         std::process::exit(1);
     }
 
     let content = generate_new_theme_template(&clean_id);
     if let Err(e) = fs::write(&theme_path, content) {
-        eprintln!("󰅖 Не удалось создать файл {}: {}", theme_path.display(), e);
+        eprintln!(
+            "{} {}: {}",
+            tr("󰅖 Failed to create file", "󰅖 Не удалось создать файл"),
+            theme_path.display(),
+            e
+        );
         std::process::exit(1);
     }
 
-    println!("󰄬 Новая тема успешно создана: {}", theme_path.display());
-    println!("  Редактируйте её в любом редакторе и запустите live-просмотр:");
+    println!(
+        "{} {}",
+        tr(
+            "󰄬 New theme successfully created:",
+            "󰄬 Новая тема успешно создана:"
+        ),
+        theme_path.display()
+    );
+    println!(
+        "{}",
+        tr(
+            "  Edit it in any editor and launch live preview:",
+            "  Редактируйте её в любом редакторе и запустите live-просмотр:"
+        )
+    );
     println!("   inerium-theme watch {}", clean_id);
 }
 
 fn cmd_watch(id: &str) {
-    let clean_id = id.trim().to_lowercase().replace(' ', "-");
+    let clean_id = if id.trim().eq_ignore_ascii_case("current") {
+        get_current_theme_id()
+    } else {
+        id.trim().to_lowercase().replace(' ', "-")
+    };
     let home = get_home();
 
     let target_path = if clean_id.ends_with(".toml") && Path::new(&clean_id).exists() {
         PathBuf::from(&clean_id)
     } else {
         let user_theme = home.join(format!(".config/inerium/themes/{}.toml", clean_id));
+        let extra_theme = home.join(format!(".local/share/inerium/themes/extra/{}.toml", clean_id));
+        let sys_theme = PathBuf::from(format!("/usr/share/inerium/themes/{}.toml", clean_id));
         if user_theme.exists() {
             user_theme
+        } else if extra_theme.exists() {
+            extra_theme
+        } else if sys_theme.exists() {
+            sys_theme
         } else {
-            let sys_theme = PathBuf::from(format!("/usr/share/inerium/themes/{}.toml", clean_id));
-            if sys_theme.exists() {
-                sys_theme
-            } else {
-                eprintln!("󰅖 Тема '{}' не найдена в ~/.config/inerium/themes/", clean_id);
-                eprintln!("  Создайте её командой: inerium-theme new {}", clean_id);
-                std::process::exit(1);
-            }
+            eprintln!(
+                "{} '{}' {}",
+                tr("󰅖 Theme", "󰅖 Тема"),
+                clean_id,
+                tr("not found in ~/.config/inerium/themes/", "не найдена в ~/.config/inerium/themes/")
+            );
+            eprintln!(
+                "{} inerium-theme new {}",
+                tr("  Create it with:", "  Создайте её командой:"),
+                clean_id
+            );
+            std::process::exit(1);
         }
     };
 
-    println!("󰈈 Запущен режим отслеживания: {}", target_path.display());
-    println!("  Нажмите Ctrl+C для выхода. Изменения применяются сразу при сохранении файла.");
+    println!(
+        "{} {}",
+        tr("󰈈 Live tracking mode started:", "󰈈 Запущен режим отслеживания:"),
+        target_path.display()
+    );
+    println!(
+        "{}",
+        tr(
+            "  Press Ctrl+C to exit. Changes are applied automatically on save.",
+            "  Нажмите Ctrl+C для выхода. Изменения применяются сразу при сохранении файла."
+        )
+    );
 
     let read_and_apply = |path: &Path| -> bool {
         match fs::read_to_string(path) {
-            Ok(content) => match toml::from_str::<ThemeConfig>(&content) {
+            Ok(content) => match parse_theme_toml(&content) {
                 Ok(theme) => {
                     apply_theme(&theme);
                     let now = simple_time();
-                    println!("  [✓ {}] Тема '{}' успешно обновлена и применена!", now, theme.theme.name);
+                    println!(
+                        "  [✓ {}] {} '{}' {}",
+                        now,
+                        tr("Theme", "Тема"),
+                        theme.theme.name,
+                        tr("successfully updated and applied!", "успешно обновлена и применена!")
+                    );
                     true
                 }
                 Err(e) => {
                     let now = simple_time();
-                    eprintln!("  [✗ {}] Ошибка синтаксиса TOML: {}", now, e);
+                    eprintln!(
+                        "  [✗ {}] {}: {}",
+                        now,
+                        tr("TOML syntax error", "Ошибка синтаксиса TOML"),
+                        e
+                    );
                     false
                 }
             },
             Err(e) => {
-                eprintln!("  [✗] Ошибка чтения файла {}: {}", path.display(), e);
+                eprintln!(
+                    "  [✗] {} {}: {}",
+                    tr("Failed to read file", "Ошибка чтения файла"),
+                    path.display(),
+                    e
+                );
                 false
             }
         }
@@ -1643,7 +198,25 @@ fn cmd_watch(id: &str) {
 }
 
 fn print_help() {
-    println!(
+    let help_text = tr(
+        r#"inerium-theme — Theme manager and compiler for Inerium Desktop
+
+USAGE:
+    inerium-theme <COMMAND>
+
+COMMANDS:
+    list [--all] [--json] Show active themes (or all including extra palettes with --all)
+    set <id>              Apply palette by ID (if theme is in extra, installs to persistent)
+    preview <id>          Quick preview palette without copying files
+    install <id>          Install theme from extra into persistent and apply
+    new <id>              Create new theme template in ~/.config/inerium/themes/<id>.toml
+    watch [id]            Watch theme file for live changes (hot reload)
+    reload                Reload and reapply active theme from current configuration
+    toggle                Quick switch between dark and light variants
+    status                Output currently active theme and metadata in JSON format
+    current               Print currently active theme ID
+    help, --help          Show this help message
+"#,
         r#"inerium-theme — Менеджер и компилятор тем оформления Inerium Desktop
 
 ИСПОЛЬЗОВАНИЕ:
@@ -1656,15 +229,22 @@ fn print_help() {
     install <id>          Перенести тему из дополнительных в постоянные и применить
     new <id>              Создать шаблон новой темы в ~/.config/inerium/themes/<id>.toml
     watch [id]            Запустить отслеживание изменений темы (live reload на лету)
+    reload                Перезагрузить и повторно применить активную тему
     toggle                Быстрое переключение (темный <-> светлый вариант)
     status                Вывести текущую активную тему и авторство в формате JSON
+    current               Вывести ID текущей активной темы
     help, --help          Показать эту справку
-"#
+"#,
     );
+    println!("{help_text}");
 }
 
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+pub fn run(args: &[String]) {
+    let args: Vec<String> = if args.len() > 1 {
+        args[1..].to_vec()
+    } else {
+        Vec::new()
+    };
     if args.is_empty() {
         print_help();
         return;
@@ -1708,11 +288,11 @@ fn main() {
                 return;
             }
 
-            println!("Доступные палитры Inerium Desktop:\n");
+            println!("{}", tr("Available Inerium Desktop palettes:\n", "Доступные палитры Inerium Desktop:\n"));
             for (id, t) in &themes_map {
                 let active_mark = if id == &cur_id { "* " } else { "  " };
                 let extra_mark = if !active_themes.contains_key(id) { " (extra)" } else { "" };
-                let author_str = format!("(автор: {}){}", t.theme.author, extra_mark);
+                let author_str = format!("({}: {}){}", tr("author", "автор"), t.theme.author, extra_mark);
                 println!(
                     "{}{:<18} [{:<5}] {:<22} {}",
                     active_mark, id, t.theme.variant, t.theme.name, author_str
@@ -1721,7 +301,7 @@ fn main() {
                     println!("     └─ {}", desc);
                 }
             }
-            println!("\nПрименить: inerium-theme set <id>");
+            println!("\n{}", tr("Apply: inerium-theme set <id>", "Применить: inerium-theme set <id>"));
         }
         "status" => {
             let cur_id = get_current_theme_id();
@@ -1755,17 +335,31 @@ fn main() {
             if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
-                    "Тема переключена: {} (автор: {})",
-                    target.theme.name, target.theme.author
+                    "{} {} ({}: {})",
+                    tr("Theme switched:", "Тема переключена:"),
+                    target.theme.name,
+                    tr("author", "автор"),
+                    target.theme.author
                 );
             } else {
-                eprintln!("Ошибка: целевая палитра '{}' не найдена.", target_id);
+                eprintln!(
+                    "{}: '{}' {}",
+                    tr("Error", "Ошибка"),
+                    target_id,
+                    tr("target palette not found.", "целевая палитра не найдена.")
+                );
                 std::process::exit(1);
             }
         }
         "install" | "add" => {
             if args.len() < 2 {
-                eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list --all'.");
+                eprintln!(
+                    "{}",
+                    tr(
+                        "Error: specify theme ID. Run 'inerium-theme list --all'.",
+                        "Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list --all'."
+                    )
+                );
                 std::process::exit(1);
             }
             let input_id = args[1].to_lowercase();
@@ -1774,19 +368,29 @@ fn main() {
                 Ok(theme) => {
                     apply_theme(&theme);
                     println!(
-                        "Тема '{}' (автор: {}) успешно перенесена в постоянные и применена.",
-                        theme.theme.name, theme.theme.author
+                        "{} '{}' ({}: {}) {}",
+                        tr("Theme", "Тема"),
+                        theme.theme.name,
+                        tr("author", "автор"),
+                        theme.theme.author,
+                        tr("successfully installed to persistent and applied.", "успешно перенесена в постоянные и применена.")
                     );
                 }
                 Err(e) => {
-                    eprintln!("Ошибка: {e}");
+                    eprintln!("{}: {e}", tr("Error", "Ошибка"));
                     std::process::exit(1);
                 }
             }
         }
         "preview" => {
             if args.len() < 2 {
-                eprintln!("Ошибка: укажите идентификатор темы для превью. Выполните 'inerium-theme list --all'.");
+                eprintln!(
+                    "{}",
+                    tr(
+                        "Error: specify theme ID for preview. Run 'inerium-theme list --all'.",
+                        "Ошибка: укажите идентификатор темы для превью. Выполните 'inerium-theme list --all'."
+                    )
+                );
                 std::process::exit(1);
             }
             let input_id = args[1].to_lowercase();
@@ -1795,18 +399,39 @@ fn main() {
             if let Some(target) = all_themes.get(target_id) {
                 apply_theme(target);
                 println!(
-                    "Быстрый показ палитры: {} (автор: {})",
-                    target.theme.name, target.theme.author
+                    "{} {} ({}: {})",
+                    tr("Palette preview:", "Быстрый показ палитры:"),
+                    target.theme.name,
+                    tr("author", "автор"),
+                    target.theme.author
                 );
             } else {
-                eprintln!("Ошибка: тема '{}' не найдена.", target_id);
-                println!("Запустите 'inerium-theme list --all' для просмотра всех доступных палитр.");
+                eprintln!(
+                    "{}: {} '{}' {}",
+                    tr("Error", "Ошибка"),
+                    tr("theme", "тема"),
+                    target_id,
+                    tr("not found.", "не найдена.")
+                );
+                println!(
+                    "{}",
+                    tr(
+                        "Run 'inerium-theme list --all' to see all available palettes.",
+                        "Запустите 'inerium-theme list --all' для просмотра всех доступных палитр."
+                    )
+                );
                 std::process::exit(1);
             }
         }
         "set" => {
             if args.len() < 2 {
-                eprintln!("Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list'.");
+                eprintln!(
+                    "{}",
+                    tr(
+                        "Error: specify theme ID. Run 'inerium-theme list'.",
+                        "Ошибка: укажите идентификатор темы. Выполните 'inerium-theme list'."
+                    )
+                );
                 std::process::exit(1);
             }
 
@@ -1816,30 +441,55 @@ fn main() {
             if let Some(target) = active_themes.get(target_id) {
                 apply_theme(target);
                 println!(
-                    "Установлена палитра: {} (автор: {})",
-                    target.theme.name, target.theme.author
+                    "{} {} ({}: {})",
+                    tr("Palette applied:", "Установлена палитра:"),
+                    target.theme.name,
+                    tr("author", "автор"),
+                    target.theme.author
                 );
                 if let Some(upstream) = &target.theme.upstream {
-                    println!("Оригинальный репозиторий: {}", upstream);
+                    println!("{}: {}", tr("Original upstream repository", "Оригинальный репозиторий"), upstream);
                 }
             } else if let Ok(target) = install_extra_theme(target_id) {
                 apply_theme(&target);
                 println!(
-                    "Палитра '{}' перенесена из дополнительных в постоянные и применена (автор: {}).",
-                    target.theme.name, target.theme.author
+                    "{} '{}' {} ({}: {}).",
+                    tr("Palette", "Палитра"),
+                    target.theme.name,
+                    tr("installed from extra into persistent and applied", "перенесена из дополнительных в постоянные и применена"),
+                    tr("author", "автор"),
+                    target.theme.author
                 );
                 if let Some(upstream) = &target.theme.upstream {
-                    println!("Оригинальный репозиторий: {}", upstream);
+                    println!("{}: {}", tr("Original upstream repository", "Оригинальный репозиторий"), upstream);
                 }
             } else {
-                eprintln!("Ошибка: тема '{}' не найдена.", target_id);
-                println!("Запустите 'inerium-theme list --all' для просмотра всех доступных палитр.");
+                eprintln!(
+                    "{}: {} '{}' {}",
+                    tr("Error", "Ошибка"),
+                    tr("theme", "тема"),
+                    target_id,
+                    tr("not found.", "не найдена.")
+                );
+                println!(
+                    "{}",
+                    tr(
+                        "Run 'inerium-theme list --all' to see all available palettes.",
+                        "Запустите 'inerium-theme list --all' для просмотра всех доступных палитр."
+                    )
+                );
                 std::process::exit(1);
             }
         }
         "new" => {
             if args.len() < 2 {
-                eprintln!("Ошибка: укажите идентификатор новой темы. Пример: inerium-theme new my-theme");
+                eprintln!(
+                    "{}",
+                    tr(
+                        "Error: specify new theme ID. Example: inerium-theme new my-theme",
+                        "Ошибка: укажите идентификатор новой темы. Пример: inerium-theme new my-theme"
+                    )
+                );
                 std::process::exit(1);
             }
             cmd_new(&args[1]);
@@ -1852,157 +502,52 @@ fn main() {
             };
             cmd_watch(&id);
         }
+        "reload" => {
+            let cur_id = get_current_theme_id();
+            let resolved = resolve_theme_alias(&cur_id);
+            if let Some(target) = active_themes.get(resolved) {
+                apply_theme(target);
+                println!(
+                    "{} {} ({}: {})",
+                    tr("Theme reloaded and applied:", "Тема перезагружена и применена:"),
+                    target.theme.name,
+                    tr("author", "автор"),
+                    target.theme.author
+                );
+            } else if let Ok(target) = load_theme_by_id(resolved) {
+                apply_theme(&target);
+                println!(
+                    "{} {} ({}: {})",
+                    tr("Theme reloaded and applied:", "Тема перезагружена и применена:"),
+                    target.theme.name,
+                    tr("author", "автор"),
+                    target.theme.author
+                );
+            } else {
+                eprintln!(
+                    "{}: {} '{}' {}",
+                    tr("Error", "Ошибка"),
+                    tr("current theme", "текущая тема"),
+                    cur_id,
+                    tr("could not be loaded.", "не может быть загружена.")
+                );
+                std::process::exit(1);
+            }
+        }
+        "current" => {
+            println!("{}", get_current_theme_id());
+        }
         "help" | "--help" | "-h" => {
             print_help();
         }
         other => {
-            eprintln!("Неизвестная команда: '{}'. Запустите 'inerium-theme --help'.", other);
+            eprintln!(
+                "{} '{}'. {}",
+                tr("Unknown command:", "Неизвестная команда:"),
+                other,
+                tr("Run 'inerium-theme --help'.", "Запустите 'inerium-theme --help'.")
+            );
             std::process::exit(1);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_rgba_parse_hex3_hex6_hex8_and_bare() {
-        assert_eq!(Rgba::parse("#fff"), Rgba(255, 255, 255, 255));
-        assert_eq!(Rgba::parse("#000"), Rgba(0, 0, 0, 255));
-        assert_eq!(Rgba::parse("#1238"), Rgba(17, 34, 51, 136));
-        assert_eq!(Rgba::parse("#1e2029"), Rgba(30, 32, 41, 255));
-        assert_eq!(Rgba::parse("1e2029"), Rgba(30, 32, 41, 255));
-        assert_eq!(Rgba::parse("#1e202980"), Rgba(30, 32, 41, 128));
-        assert_eq!(Rgba::parse("transparent"), Rgba(0, 0, 0, 0));
-        assert_eq!(Rgba::parse("white"), Rgba(255, 255, 255, 255));
-        assert_eq!(Rgba::parse("black"), Rgba(0, 0, 0, 255));
-    }
-
-    #[test]
-    fn test_rgba_parse_rgb_rgba_and_slash() {
-        assert_eq!(Rgba::parse("rgb(30, 32, 41)"), Rgba(30, 32, 41, 255));
-        assert_eq!(Rgba::parse("rgba(30, 32, 41, 0.5)"), Rgba(30, 32, 41, 128));
-        assert_eq!(Rgba::parse("rgb(30 32 41 / 50%)"), Rgba(30, 32, 41, 128));
-    }
-
-    #[test]
-    fn test_palette_auto_derivation() {
-        let p = Palette {
-            bg_canvas: "#111216".to_string(),
-            bg_surface: "#1e2029".to_string(),
-            bg_surface_alt: None,
-            bg_surface_hover: None,
-            bg_surface_active: None,
-            text_heading: "#e6e8ee".to_string(),
-            text_primary: "#cfd2dd".to_string(),
-            text_muted: None,
-            text_subtle: None,
-            text_inverted: None,
-            border_subtle: "rgba(147, 138, 169, 0.20)".to_string(),
-            border_active: "#938aa9".to_string(),
-            border_active_secondary: None,
-            accent_green: "#87a987".to_string(),
-            accent_green_bg: None,
-            accent_green_border: None,
-            accent_blue: "#7fb4ca".to_string(),
-            accent_blue_bg: None,
-            accent_blue_border: None,
-            accent_amber: "#e6c384".to_string(),
-            accent_amber_bg: None,
-            accent_amber_border: None,
-            accent_red: "#e46876".to_string(),
-            accent_red_bg: None,
-            accent_red_border: None,
-            accent_aqua: "#7aa89f".to_string(),
-            accent_aqua_bg: None,
-            accent_aqua_border: None,
-            accent_purple: "#938aa9".to_string(),
-            accent_purple_bg: None,
-            accent_purple_border: None,
-            accent_primary: None,
-            accent_orange: None,
-            slider_fill: None,
-            slider_fill_secondary: None,
-            slider_trough: None,
-            slider_thumb: None,
-            shadow: None,
-            modal_backdrop: None,
-        };
-
-        assert_eq!(p.get_primary(), "#7fb4ca");
-        assert_eq!(p.get_slider_fill(), "#7fb4ca");
-        assert_eq!(p.get_slider_fill_secondary(), "#e6c384");
-        assert_eq!(p.get_border_active_secondary(), "#938aa9");
-        assert!(p.get_green_bg().contains("rgba(135, 169, 135, 0.16)"));
-        assert!(p.get_green_border().contains("rgba(135, 169, 135, 0.35)"));
-    }
-
-    #[test]
-    fn test_typography_fallbacks() {
-        let typo = Typography {
-            font_ui: Some("Inter".to_string()),
-            font_mono: Some("JetBrainsMono Nerd Font".to_string()),
-            font_size: Some(10.5),
-        };
-        assert_eq!(
-            typo.to_css_font_family(),
-            "\"Inter\", \"JetBrainsMono Nerd Font\", sans-serif, monospace"
-        );
-    }
-
-    #[test]
-    fn test_slider_fill_fallback() {
-        let mut p = Palette {
-            bg_canvas: "#111216".to_string(),
-            bg_surface: "#1e2029".to_string(),
-            bg_surface_alt: None,
-            bg_surface_hover: None,
-            bg_surface_active: None,
-            text_heading: "#e6e8ee".to_string(),
-            text_primary: "#cfd2dd".to_string(),
-            text_muted: None,
-            text_subtle: None,
-            text_inverted: None,
-            border_subtle: "rgba(147, 138, 169, 0.20)".to_string(),
-            border_active: "#938aa9".to_string(),
-            border_active_secondary: None,
-            accent_green: "#87a987".to_string(),
-            accent_green_bg: None,
-            accent_green_border: None,
-            accent_blue: "#7fb4ca".to_string(),
-            accent_blue_bg: None,
-            accent_blue_border: None,
-            accent_amber: "#e6c384".to_string(),
-            accent_amber_bg: None,
-            accent_amber_border: None,
-            accent_red: "#e46876".to_string(),
-            accent_red_bg: None,
-            accent_red_border: None,
-            accent_aqua: "#7aa89f".to_string(),
-            accent_aqua_bg: None,
-            accent_aqua_border: None,
-            accent_purple: "#938aa9".to_string(),
-            accent_purple_bg: None,
-            accent_purple_border: None,
-            accent_primary: Some("#938aa9".to_string()),
-            accent_orange: None,
-            slider_fill: None,
-            slider_fill_secondary: None,
-            slider_trough: None,
-            slider_thumb: None,
-            shadow: None,
-            modal_backdrop: None,
-        };
-
-        // Fallbacks to primary and amber
-        assert_eq!(p.get_slider_fill(), "#938aa9");
-        assert_eq!(p.get_slider_fill_secondary(), "#e6c384");
-
-        // Custom override
-        p.slider_fill = Some("#87a987".to_string());
-        p.slider_fill_secondary = Some("#7fb4ca".to_string());
-        assert_eq!(p.get_slider_fill(), "#87a987");
-        assert_eq!(p.get_slider_fill_secondary(), "#7fb4ca");
     }
 }

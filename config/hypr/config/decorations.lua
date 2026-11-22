@@ -5,7 +5,7 @@ local border_active_2 = INERIUM_BORDER_ACTIVE_SECONDARY or border_active_1
 local border_inactive = INERIUM_BORDER or "rgba(454444cc)"
 local primary = INERIUM_ACCENT_PRIMARY or INERIUM_BLUE or "rgba(7fb4caff)"
 local purple = INERIUM_PURPLE or "rgba(938aa9ff)"
-local shadow_color = INERIUM_SHADOW or "rgba(18, 16, 16, 0.65)"
+local shadow_color = INERIUM_SHADOW or "rgba(121010a6)"
 
 hl.config({
     general = {

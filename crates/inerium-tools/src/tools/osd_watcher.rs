@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use inerium_tools::ipc::hyprland::get_socket2;
 use inerium_tools::sys::posix::*;
+use inerium_i18n::tr;
 
 const WEBCAM_SYSFS: &str = "/sys/devices/platform/msi-ec/webcam";
 
@@ -124,9 +125,9 @@ fn webcam_watcher() {
             if cur != prev {
                 prev = cur;
                 if cur {
-                    osd("Веб-камера включена", "camera-web-symbolic");
+                    osd(tr("Webcam enabled", "Веб-камера включена"), "camera-web-symbolic");
                 } else {
-                    osd("Веб-камера выключена", "camera-disabled-symbolic");
+                    osd(tr("Webcam disabled", "Веб-камера выключена"), "camera-disabled-symbolic");
                 }
             }
         }
@@ -177,7 +178,7 @@ fn layout_watcher() {
     }
 }
 
-fn main() {
+pub fn run(_args: &[String]) {
     posix_signal_ign(SIGCHLD);
 
     thread::spawn(webcam_watcher);

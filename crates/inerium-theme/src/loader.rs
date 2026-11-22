@@ -85,10 +85,13 @@ pub fn get_extra_theme_roots() -> Vec<PathBuf> {
 }
 
 pub fn load_all_themes() -> BTreeMap<String, ThemeConfig> {
-    let mut map = load_available_themes();
+    let mut map = BTreeMap::new();
     for root in get_extra_theme_roots() {
         scan_dir_for_themes(&root, &mut map);
     }
+    // Themes from load_available_themes (system and user's ~/.config/inerium/themes)
+    // take precedence over extra themes with identical IDs.
+    map.extend(load_available_themes());
     map
 }
 
@@ -178,4 +181,122 @@ pub fn get_fallback_theme(dark: bool) -> ThemeConfig {
         let raw = if dark { EMBEDDED_DRAGON } else { EMBEDDED_INERIUM_LIGHT };
         parse_theme_toml(raw).expect("Embedded fallback theme must be valid TOML")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_theme_overrides_extra_theme() {
+        let temp_base = std::env::temp_dir().join(format!("inerium-test-theme-{}", std::process::id()));
+        let extra_dir = temp_base.join("extra");
+        let user_dir = temp_base.join("user");
+        let _ = fs::create_dir_all(&extra_dir);
+        let _ = fs::create_dir_all(&user_dir);
+
+        let mut extra_cfg = parse_theme_toml(EMBEDDED_DRAGON).unwrap();
+        extra_cfg.theme.id = "custom-override".to_string();
+        extra_cfg.theme.name = "Stock Extra Theme".to_string();
+
+        let mut user_cfg = extra_cfg.clone();
+        user_cfg.theme.name = "User Overridden Theme".to_string();
+
+        fs::write(extra_dir.join("custom-override.toml"), toml::to_string(&extra_cfg).unwrap()).unwrap();
+        fs::write(user_dir.join("custom-override.toml"), toml::to_string(&user_cfg).unwrap()).unwrap();
+
+        let mut map = BTreeMap::new();
+        // 1. Scan extra themes first
+        scan_dir_for_themes(&extra_dir, &mut map);
+        assert_eq!(
+            map.get("custom-override").map(|c| c.theme.name.as_str()),
+            Some("Stock Extra Theme")
+        );
+
+        // 2. Scan user themes second (representing load_available_themes extending over extra)
+        scan_dir_for_themes(&user_dir, &mut map);
+        assert_eq!(
+            map.get("custom-override").map(|c| c.theme.name.as_str()),
+            Some("User Overridden Theme")
+        );
+
+        let _ = fs::remove_dir_all(&temp_base);
+    }
+
+    #[test]
+    fn test_all_system_and_extra_themes_validity() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap();
+        let themes_dir = repo_root.join("themes");
+        let extra_dir = themes_dir.join("extra");
+
+        let mut theme_paths = vec![
+            themes_dir.join("kanagawa-dragon.toml"),
+            themes_dir.join("inerium-light.toml"),
+            themes_dir.join("template.toml.example"),
+        ];
+
+        for entry in fs::read_dir(&extra_dir).expect("read extra dir").flatten() {
+            if entry.path().extension().is_some_and(|e| e == "toml") {
+                theme_paths.push(entry.path());
+            }
+        }
+
+        assert!(theme_paths.len() >= 10, "Expected at least 10 themes to validate");
+
+        for path in theme_paths {
+            let filename = path.file_name().unwrap().to_string_lossy();
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("Failed to read theme file {}: {e}", path.display()));
+
+            let theme = parse_theme_toml(&content)
+                .unwrap_or_else(|e| panic!("Failed to parse theme {}: {e}", path.display()));
+
+            // 1. Meta validation
+            assert!(!theme.theme.id.trim().is_empty(), "Empty id in {filename}");
+            assert!(!theme.theme.name.trim().is_empty(), "Empty name in {filename}");
+            assert!(!theme.theme.author.trim().is_empty(), "Empty author in {filename}");
+            assert!(
+                theme.theme.variant == "dark" || theme.theme.variant == "light",
+                "Variant must be dark or light in {filename}, got: {}",
+                theme.theme.variant
+            );
+
+            // 2. Typography validation: standard font size must be 11.0
+            let typo = theme.typography.as_ref().unwrap_or_else(|| panic!("Missing typography in {filename}"));
+            assert_eq!(
+                typo.get_size(),
+                11.0,
+                "Font size in {filename} must be 11.0, got: {}",
+                typo.get_size()
+            );
+            assert!(!typo.get_ui_font().is_empty(), "Empty UI font in {filename}");
+            assert!(!typo.get_mono_font().is_empty(), "Empty Mono font in {filename}");
+
+            // 3. Palette validation: verify required colors are not empty
+            assert!(!theme.palette.bg_canvas.is_empty(), "Empty bg_canvas in {filename}");
+            assert!(!theme.palette.bg_surface.is_empty(), "Empty bg_surface in {filename}");
+            assert!(!theme.palette.border_subtle.is_empty(), "Empty border_subtle in {filename}");
+            assert!(!theme.palette.border_active.is_empty(), "Empty border_active in {filename}");
+            assert!(!theme.palette.text_primary.is_empty(), "Empty text_primary in {filename}");
+            assert!(!theme.palette.text_heading.is_empty(), "Empty text_heading in {filename}");
+            assert!(!theme.palette.accent_green.is_empty(), "Empty accent_green in {filename}");
+            assert!(!theme.palette.accent_blue.is_empty(), "Empty accent_blue in {filename}");
+            assert!(!theme.palette.accent_amber.is_empty(), "Empty accent_amber in {filename}");
+            assert!(!theme.palette.accent_red.is_empty(), "Empty accent_red in {filename}");
+            assert!(!theme.palette.accent_aqua.is_empty(), "Empty accent_aqua in {filename}");
+            assert!(!theme.palette.accent_purple.is_empty(), "Empty accent_purple in {filename}");
+
+            // 4. Emitter validation: make sure emitters do not panic
+            let _adwaita = crate::emit::emit_libadwaita_css(&theme);
+            let _waybar = crate::emit::emit_waybar_css(&theme);
+            let _rofi = crate::emit::emit_rofi_rasi(&theme);
+            let kitty = crate::emit::emit_kitty_conf(&theme);
+            let _mako = crate::emit::emit_mako_config(&theme);
+            let _hypr = crate::emit::emit_hyprland_lua(&theme);
+            let _qtct = crate::emit::emit_qtct_colors(&theme);
+            let _kde = crate::emit::emit_kde_colors(&theme);
+
+            assert!(kitty.contains("font_size 11.0"), "Kitty config for {filename} should emit font_size 11.0");
+        }
+    }
 }

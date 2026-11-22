@@ -10,7 +10,7 @@ description = "Crisp light pastel theme with soothing coffee and milk tones"
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(239, 241, 245, 0.98)"

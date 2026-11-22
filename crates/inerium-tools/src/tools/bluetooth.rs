@@ -3,14 +3,17 @@
 //! - Watch mode: Streams bluetooth status, reacts to SIGUSR1
 //! - Tooltip: Rich Pango markup with adapter status and connected devices
 
-use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::process::{Command, Stdio};
+use std::os::unix::io::IntoRawFd;
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, Stdio};
+use std::time::Duration;
 
 use inerium_i18n::tr;
-use inerium_tools::format::escape_json;
-use inerium_tools::ipc::SelfPipe;
+use inerium_tools::format::{escape_json, escape_pango};
+use inerium_tools::ipc::{PidRegistry, SelfPipe};
+use inerium_tools::sys::posix::{posix_poll, PollFd, POLLERR, POLLHUP, POLLIN};
 
 enum BtState {
     PoweredOff,
@@ -95,8 +98,8 @@ fn format_status() -> String {
     }
 }
 
-fn format_tooltip() -> String {
-    match get_bt_state() {
+fn format_tooltip_for(state: &BtState) -> String {
+    match state {
         BtState::PoweredOff => {
             format!(
                 "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
@@ -130,18 +133,23 @@ fn format_tooltip() -> String {
                 </span>",
                 tr("󰂱 Connected", "󰂱 Подключено"),
                 tr("Device:", "Устройство:"),
-                name,
+                escape_pango(name),
                 tr("LMB: Devices · RMB: Toggle · MMB: Bluetooth Manager", "ЛКМ: Устройства · ПКМ: Вкл/выкл · СКМ: Диспетчер Bluetooth")
             )
         }
     }
 }
 
+fn format_tooltip() -> String {
+    format_tooltip_for(&get_bt_state())
+}
+
 fn format_json() -> String {
-    let (class, text) = match get_bt_state() {
+    let state = get_bt_state();
+    let (class, text) = match &state {
         BtState::PoweredOff => ("off", "󰂲".to_string()),
         BtState::PoweredOnNoDev => ("on", "󰂯".to_string()),
-        BtState::Connected(ref name) => {
+        BtState::Connected(name) => {
             let short_name = if name.chars().count() > 12 {
                 format!("{}…", name.chars().take(11).collect::<String>())
             } else {
@@ -150,7 +158,7 @@ fn format_json() -> String {
             ("connected", format!("󰂱 {}", short_name))
         }
     };
-    let tooltip = format_tooltip();
+    let tooltip = format_tooltip_for(&state);
     format!(
         "{{\"text\":\"{}\",\"tooltip\":\"{}\",\"class\":\"{}\"}}",
         escape_json(&text),
@@ -159,7 +167,60 @@ fn format_json() -> String {
     )
 }
 
+fn spawn_dbus_monitor() -> Option<(Child, i32)> {
+    let mut cmd = Command::new("dbus-monitor");
+    cmd.args([
+        "--system",
+        "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'",
+    ]);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::null());
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        });
+    }
+
+    match cmd.spawn() {
+        Ok(mut child) => {
+            if let Some(stdout) = child.stdout.take() {
+                let fd = stdout.into_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL, 0);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+                Some((child, fd))
+            } else {
+                let _ = child.kill();
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+fn drain_fd(fd: i32) -> bool {
+    let mut buf = [0u8; 1024];
+    loop {
+        let ret = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if ret == 0 {
+            return true;
+        }
+        if ret < 0 {
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            return false;
+        }
+    }
+}
+
 fn watch_mode(waybar: bool) {
+    let reg = PidRegistry::new("bluetooth");
+    let _pid_guard = reg.register();
+
     let self_pipe = match SelfPipe::new() {
         Ok(sp) => sp,
         Err(e) => {
@@ -168,6 +229,7 @@ fn watch_mode(waybar: bool) {
         }
     };
 
+    let mut dbus_proc: Option<(Child, i32)> = spawn_dbus_monitor();
     let mut last_output = String::new();
 
     loop {
@@ -178,14 +240,82 @@ fn watch_mode(waybar: bool) {
             last_output = current;
         }
 
-        if self_pipe.wait_event(3500) {
-            inerium_i18n::Lang::reinit();
+        let mut fds = Vec::with_capacity(2);
+        fds.push(PollFd {
+            fd: self_pipe.read_fd(),
+            events: POLLIN,
+            revents: 0,
+        });
+
+        let dbus_fd_opt = dbus_proc.as_ref().map(|(_, fd)| *fd);
+        if let Some(fd) = dbus_fd_opt {
+            fds.push(PollFd {
+                fd,
+                events: POLLIN,
+                revents: 0,
+            });
+        }
+
+        let timeout_ms = if dbus_proc.is_some() { -1 } else { 5000 };
+        match posix_poll(&mut fds, timeout_ms) {
+            Ok(n) if n > 0 => {
+                // Check self_pipe for SIGUSR1 / Lang reinit
+                if (fds[0].revents & POLLIN) != 0 {
+                    self_pipe.drain();
+                    inerium_i18n::Lang::reinit();
+                }
+
+                // Check dbus-monitor fd
+                if fds.len() > 1 {
+                    let rev = fds[1].revents;
+                    if (rev & (POLLERR | POLLHUP)) != 0 {
+                        // Monitor process exited or closed
+                        if let Some((mut child, fd)) = dbus_proc.take() {
+                            unsafe {
+                                libc::close(fd);
+                            }
+                            let _ = child.wait();
+                        }
+                    } else if (rev & POLLIN) != 0
+                        && let Some((_, fd)) = dbus_proc.as_ref()
+                    {
+                        let fd_val = *fd;
+                        let eof = drain_fd(fd_val) || {
+                            // Debounce 150ms to coalesce burst of DBus signals
+                            std::thread::sleep(Duration::from_millis(150));
+                            drain_fd(fd_val)
+                        };
+                        if eof
+                            && let Some((mut child, fd)) = dbus_proc.take()
+                        {
+                            unsafe {
+                                libc::close(fd);
+                            }
+                            let _ = child.wait();
+                        }
+                    }
+                }
+            }
+            Ok(_) => {
+                // Heartbeat timeout: if dbus_proc died, attempt respawn
+                if dbus_proc.is_none() {
+                    dbus_proc = spawn_dbus_monitor();
+                }
+            }
+            Err(e) if e.raw_os_error() == Some(libc::EINTR) => {
+                if self_pipe.drain_if_ready() {
+                    inerium_i18n::Lang::reinit();
+                }
+                continue;
+            }
+            Err(_) => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--tooltip") {
         println!("{}", format_tooltip());
         return;
@@ -201,4 +331,16 @@ fn main() {
     }
 
     println!("{}", format_status());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_tooltip_escaping() {
+        let state = BtState::Connected("Device <A & B> \"Pro\" 'Special'".to_string());
+        let tt = format_tooltip_for(&state);
+        assert!(tt.contains("&lt;A &amp; B&gt; &quot;Pro&quot; &apos;Special&apos;"));
+    }
 }

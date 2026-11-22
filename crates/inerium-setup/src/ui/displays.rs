@@ -681,6 +681,9 @@ pub fn build_displays_tab(
         let populate = populate.clone();
         let win_c = win.clone();
         Rc::new(move || {
+            if is_managed_monitors_overlay(&paths) {
+                return Ok(());
+            }
             let configs = read_current_configs();
             if configs.is_empty() {
                 return Ok(());

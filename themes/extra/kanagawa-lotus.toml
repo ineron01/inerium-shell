@@ -10,7 +10,7 @@ description = "Light Kanagawa variant inspired by delicate lotus flowers on aged
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(242, 236, 188, 0.98)"

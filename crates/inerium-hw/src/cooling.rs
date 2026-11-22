@@ -255,7 +255,7 @@ pub fn cpu_driver_priority(name: &str) -> Option<usize> {
     }
 }
 
-pub fn read_hwmon_dir_temp(dir: &Path) -> Option<i32> {
+pub fn find_hwmon_dir_temp_path(dir: &Path) -> Option<PathBuf> {
     // Prefer labeled CPU package/die sensors (e.g., "Package id 0", "Tctl", "Tdie")
     for idx in 1..=16 {
         let label_path = dir.join(format!("temp{idx}_label"));
@@ -266,8 +266,8 @@ pub fn read_hwmon_dir_temp(dir: &Path) -> Option<i32> {
                 || l.eq_ignore_ascii_case("Tdie")
             {
                 let input_path = dir.join(format!("temp{idx}_input"));
-                if let Some(val) = read_sysfs_u32(&input_path) {
-                    return Some((val / 1000) as i32);
+                if input_path.exists() {
+                    return Some(input_path);
                 }
             }
         }
@@ -276,17 +276,23 @@ pub fn read_hwmon_dir_temp(dir: &Path) -> Option<i32> {
     // Fallback to temp1_input (or first available tempN_input) within this sensor
     for idx in 1..=16 {
         let input_path = dir.join(format!("temp{idx}_input"));
-        if let Some(val) = read_sysfs_u32(&input_path) {
-            return Some((val / 1000) as i32);
+        if input_path.exists() {
+            return Some(input_path);
         }
     }
     None
 }
 
-pub fn read_cpu_temp_from_base(base: &Path) -> Option<i32> {
+pub fn read_hwmon_dir_temp(dir: &Path) -> Option<i32> {
+    let path = find_hwmon_dir_temp_path(dir)?;
+    let val = read_sysfs_u32(&path)?;
+    Some((val / 1000) as i32)
+}
+
+pub fn find_cpu_temp_path_from_base(base: &Path) -> Option<PathBuf> {
     let entries = fs::read_dir(base).ok()?;
-    let mut best: Option<(usize, i32)> = None;
-    let mut fallback: Option<i32> = None;
+    let mut best: Option<(usize, PathBuf)> = None;
+    let mut fallback: Option<PathBuf> = None;
 
     for entry in entries.flatten() {
         let p = entry.path();
@@ -295,19 +301,39 @@ pub fn read_cpu_temp_from_base(base: &Path) -> Option<i32> {
         }
         let name = read_sysfs_string(&p.join("name")).unwrap_or_default();
         if let Some(prio) = cpu_driver_priority(&name) {
-            if let Some(temp) = read_hwmon_dir_temp(&p)
-                && best.is_none_or(|(best_prio, _)| prio < best_prio)
+            if let Some(path) = find_hwmon_dir_temp_path(&p)
+                && best.as_ref().is_none_or(|(best_prio, _)| prio < *best_prio)
             {
-                best = Some((prio, temp));
+                best = Some((prio, path));
             }
         } else if fallback.is_none() {
-            fallback = read_hwmon_dir_temp(&p);
+            fallback = find_hwmon_dir_temp_path(&p);
         }
     }
 
-    best.map(|(_, t)| t).or(fallback)
+    best.map(|(_, p)| p).or(fallback)
+}
+
+static CACHED_CPU_TEMP_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+pub fn read_cpu_temp_from_base(base: &Path) -> Option<i32> {
+    let path = find_cpu_temp_path_from_base(base)?;
+    let val = read_sysfs_u32(&path)?;
+    Some((val / 1000) as i32)
 }
 
 pub fn read_cpu_temp() -> Option<i32> {
-    read_cpu_temp_from_base(Path::new("/sys/class/hwmon"))
+    {
+        let guard = CACHED_CPU_TEMP_PATH.lock().unwrap();
+        if let Some(ref path) = *guard
+            && let Some(val) = read_sysfs_u32(path)
+        {
+            return Some((val / 1000) as i32);
+        }
+    }
+
+    let found = find_cpu_temp_path_from_base(Path::new("/sys/class/hwmon"))?;
+    let val = read_sysfs_u32(&found)?;
+    *CACHED_CPU_TEMP_PATH.lock().unwrap() = Some(found);
+    Some((val / 1000) as i32)
 }

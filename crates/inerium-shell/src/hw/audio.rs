@@ -11,25 +11,29 @@ pub struct AudioDevice {
 pub type AudioSink = AudioDevice;
 pub type AudioSource = AudioDevice;
 
-pub fn get_volume() -> u32 {
+pub fn get_sink_volume_state() -> (u32, bool) {
     if let Ok(output) = Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SINK@"]).output() {
         let s = String::from_utf8_lossy(&output.stdout);
+        let muted = s.contains("MUTED");
         let parts: Vec<&str> = s.split_whitespace().collect();
         if parts.len() >= 2
             && let Ok(val) = parts[1].parse::<f64>()
         {
-            return (val * 100.0).round() as u32;
+            return ((val * 100.0).round() as u32, muted);
         }
+        return (75, muted);
     }
-    75
+    (75, false)
 }
 
+#[allow(dead_code)]
+pub fn get_volume() -> u32 {
+    get_sink_volume_state().0
+}
+
+#[allow(dead_code)]
 pub fn is_volume_muted() -> bool {
-    if let Ok(output) = Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SINK@"]).output() {
-        let s = String::from_utf8_lossy(&output.stdout);
-        return s.contains("MUTED");
-    }
-    false
+    get_sink_volume_state().1
 }
 
 pub fn set_volume(pct: u32) {
@@ -47,25 +51,28 @@ pub fn toggle_volume_mute() {
     });
 }
 
-pub fn get_mic_volume() -> u32 {
+pub fn get_source_volume_state() -> (u32, bool) {
     if let Ok(output) = Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"]).output() {
         let s = String::from_utf8_lossy(&output.stdout);
+        let muted = s.contains("MUTED");
         let parts: Vec<&str> = s.split_whitespace().collect();
         if parts.len() >= 2
             && let Ok(val) = parts[1].parse::<f64>()
         {
-            return (val * 100.0).round() as u32;
+            return ((val * 100.0).round() as u32, muted);
         }
+        return (100, muted);
     }
-    100
+    (100, false)
+}
+
+#[allow(dead_code)]
+pub fn get_mic_volume() -> u32 {
+    get_source_volume_state().0
 }
 
 pub fn is_mic_muted() -> bool {
-    if let Ok(output) = Command::new("wpctl").args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"]).output() {
-        let s = String::from_utf8_lossy(&output.stdout);
-        return s.contains("MUTED");
-    }
-    false
+    get_source_volume_state().1
 }
 
 pub fn set_mic_volume(pct: u32) {
@@ -83,26 +90,38 @@ pub fn toggle_mic_mute() {
     });
 }
 
-pub fn list_audio_sinks() -> Vec<AudioSink> {
+pub fn list_audio_devices() -> (Vec<AudioSink>, Vec<AudioSource>) {
     let mut sinks = Vec::new();
+    let mut sources = Vec::new();
     if let Ok(output) = Command::new("wpctl").arg("status").output() {
         let text = String::from_utf8_lossy(&output.stdout);
         let mut in_audio = false;
         let mut in_sinks = false;
+        let mut in_sources = false;
         for line in text.lines() {
             if line.contains("Audio") {
                 in_audio = true;
             } else if line.contains("Video") || line.contains("Settings") {
                 in_audio = false;
                 in_sinks = false;
+                in_sources = false;
             }
             if in_audio && line.contains("Sinks:") {
                 in_sinks = true;
+                in_sources = false;
+                continue;
+            }
+            if in_audio && line.contains("Sources:") {
+                in_sources = true;
+                in_sinks = false;
                 continue;
             }
             if in_sinks {
                 if line.contains("Sources:") || line.contains("Filters:") || line.contains("Streams:") {
                     in_sinks = false;
+                    if line.contains("Sources:") {
+                        in_sources = true;
+                    }
                     continue;
                 }
                 let clean_line = line.replace(['│', '├', '└', '─'], "");
@@ -123,36 +142,7 @@ pub fn list_audio_sinks() -> Vec<AudioSink> {
                         is_default,
                     });
                 }
-            }
-        }
-    }
-    sinks
-}
-
-pub fn set_default_sink(id: u32) {
-    thread::spawn(move || {
-        let _ = Command::new("wpctl").args(["set-default", &id.to_string()]).output();
-    });
-}
-
-pub fn list_audio_sources() -> Vec<AudioSource> {
-    let mut sources = Vec::new();
-    if let Ok(output) = Command::new("wpctl").arg("status").output() {
-        let text = String::from_utf8_lossy(&output.stdout);
-        let mut in_audio = false;
-        let mut in_sources = false;
-        for line in text.lines() {
-            if line.contains("Audio") {
-                in_audio = true;
-            } else if line.contains("Video") || line.contains("Settings") {
-                in_audio = false;
-                in_sources = false;
-            }
-            if in_audio && line.contains("Sources:") {
-                in_sources = true;
-                continue;
-            }
-            if in_sources {
+            } else if in_sources {
                 if line.contains("Filters:") || line.contains("Streams:") || line.contains("Sinks:") {
                     in_sources = false;
                     continue;
@@ -178,7 +168,23 @@ pub fn list_audio_sources() -> Vec<AudioSource> {
             }
         }
     }
-    sources
+    (sinks, sources)
+}
+
+#[allow(dead_code)]
+pub fn list_audio_sinks() -> Vec<AudioSink> {
+    list_audio_devices().0
+}
+
+pub fn set_default_sink(id: u32) {
+    thread::spawn(move || {
+        let _ = Command::new("wpctl").args(["set-default", &id.to_string()]).output();
+    });
+}
+
+#[allow(dead_code)]
+pub fn list_audio_sources() -> Vec<AudioSource> {
+    list_audio_devices().1
 }
 
 pub fn set_default_source(id: u32) {

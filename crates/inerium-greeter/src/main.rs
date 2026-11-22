@@ -212,7 +212,7 @@ impl GreeterState {
 
         let is_caps = check_caps_lock();
         if is_caps {
-            self.set_status("󰘲  Включён Caps Lock", StatusKind::Warn);
+            self.set_status(tr("󰘲  Caps Lock is ON", "󰘲  Включён Caps Lock"), StatusKind::Warn);
         } else {
             self.set_status("", StatusKind::Normal);
         }
@@ -234,24 +234,33 @@ fn format_datetime() -> (String, String) {
     let time_str = format!("{:02}:{:02}", now.hour(), now.minute());
 
     let day_idx = match now.day_of_week() {
-        1 => 0, // Понедельник
+        1 => 0, // Monday
         2 => 1,
         3 => 2,
         4 => 3,
         5 => 4,
         6 => 5,
-        7 => 6, // Воскресенье
+        7 => 6, // Sunday
         _ => 0,
     };
     let month_idx = (now.month() - 1).clamp(0, 11) as usize;
 
-    const DAYS: [&str; 7] = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-    const MONTHS: [&str; 12] = [
+    const DAYS_RU: [&str; 7] = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+    const DAYS_EN: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+    const MONTHS_RU: [&str; 12] = [
         "января", "февраля", "марта", "апреля", "мая", "июня",
         "июля", "августа", "сентября", "октября", "ноября", "декабря"
     ];
+    const MONTHS_EN: [&str; 12] = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
 
-    let date_str = format!("{}, {} {}", DAYS[day_idx], now.day_of_month(), MONTHS[month_idx]);
+    let date_str = match inerium_i18n::Lang::get() {
+        inerium_i18n::Lang::Ru => format!("{}, {} {}", DAYS_RU[day_idx], now.day_of_month(), MONTHS_RU[month_idx]),
+        inerium_i18n::Lang::En => format!("{}, {} {}", DAYS_EN[day_idx], MONTHS_EN[month_idx], now.day_of_month()),
+    };
     (time_str, date_str)
 }
 

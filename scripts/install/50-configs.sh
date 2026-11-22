@@ -195,6 +195,19 @@ deploy_desktop_configs() {
         run "touch '$themes_sentinel'"
     else
         log "Preserving user themes (pass --restore-assets to restore standard themes)"
+        local theme_dst
+        for t in "$REPO_DIR"/themes/*.toml; do
+            [[ -f "$t" ]] || continue
+            theme_dst="$HOME/.config/inerium/themes/$(basename "$t")"
+            [[ -e "$theme_dst" || -L "$theme_dst" ]] && manifest_record_config "$theme_dst"
+        done
+        for t in "$REPO_DIR"/themes/extra/*.toml; do
+            [[ -f "$t" ]] || continue
+            theme_dst="$HOME/.local/share/inerium/themes/extra/$(basename "$t")"
+            [[ -e "$theme_dst" || -L "$theme_dst" ]] && manifest_record_config "$theme_dst"
+        done
+        theme_dst="$HOME/.config/inerium/themes/template.toml.example"
+        [[ -e "$theme_dst" || -L "$theme_dst" ]] && manifest_record_config "$theme_dst"
     fi
     # Clean up legacy 'examples' symlink
     [[ -L "$HOME/.config/inerium/themes/examples" ]] && run "rm -f '$HOME/.config/inerium/themes/examples'"
@@ -224,7 +237,7 @@ deploy_desktop_configs() {
 
     local hyprlock_i18n="$HOME/.config/hypr/hyprlock-i18n.conf"
     manifest_record_config "$hyprlock_i18n"
-    if [[ ! -f "$hyprlock_i18n" ]]; then
+    if [[ ! -f "$hyprlock_i18n" || "${EXPLICIT_LANG:-0}" -eq 1 ]]; then
         if [[ "$DRY_RUN" -eq 1 ]]; then
             printf '[DRY-RUN] create %s\n' "$hyprlock_i18n"
         else
@@ -247,7 +260,6 @@ EOF
 
     local locale_conf="$HOME/.config/locale.conf"
     if [[ -n "${INSTALL_LANG:-}" && ( "$INSTALL_LANG" == "ru" || "$INSTALL_LANG" == "en" ) ]]; then
-        manifest_record_config "$locale_conf"
         if [[ ! -f "$locale_conf" || "${IS_UPDATE:-0}" -eq 0 || "${EXPLICIT_LANG:-0}" -eq 1 ]]; then
             local loc_content
             if [[ "$INSTALL_LANG" == "ru" ]]; then

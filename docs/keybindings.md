@@ -22,7 +22,8 @@ The core design principle is **keyboard ergonomics and automatic tiling**: windo
 | **Text Editor** | `Super + T` | Default GUI text editor |
 | **Calculator** | `Super + C` or `XF86Calculator` | Fast calculator with history |
 | **Control Center** | `Super + A` | Inerium quick settings panel (Wi-Fi, Bluetooth, power profiles) |
-| **Clipboard History** | `Super + V` | Copied text and image history (`inerium-clipboard`) |
+| **Clipboard History** | `Super + V` | Copied text and snippet history (`inerium-clipboard`) |
+| **Image Clipboard** | `Super + Shift + V` | Filter clipboard exclusively for copied images & screenshots (`inerium-clipboard --images`) |
 | **Window Switcher** | `Super + Tab` | Search and switch between active windows (Rofi) |
 | **System Monitor** | `Ctrl + Shift + Esc` | Process, CPU, GPU, and RAM monitor (`btop`) |
 | **Area Screenshot** | `Print` | Interactive area capture with annotation editor (`satty`) |
@@ -62,9 +63,9 @@ Workspaces are virtual desktops. When an external monitor is connected, workspac
 
 | Shortcut | Action |
 | :--- | :--- |
-| `Super + 1..6` | **Switch** to workspace 1..6 |
-| `Super + Shift + 1..6` | **Move window** to workspace 1..6 and follow focus |
-| `Super + Alt + 1..6` | **Silent move** — send window to workspace 1..6 without switching active workspace |
+| `Super + 1..9` | **Switch** to workspace 1..9 |
+| `Super + Shift + 1..9` | **Move window** to workspace 1..9 and follow focus |
+| `Super + Alt + 1..9` | **Silent move** — send window to workspace 1..9 without switching active workspace |
 | `Super + Ctrl + ← / →` | Cycle workspace on current monitor (previous / next) |
 | `Super + Ctrl + ↓` | Jump to **first empty** workspace on current monitor |
 | `Super + Ctrl + 1..3` | Focus physical monitor 1, 2, or 3 |
@@ -120,7 +121,7 @@ The top Inerium Waybar status panel is fully interactive. Most modules respond t
   - *Left Click:* Switch to clicked workspace.
   - *Scroll Wheel:* Cycle next / previous workspace on current monitor.
 - **Hardware Monitor (CPU / RAM / Temperature):**
-  - *Left Click:* Toggle display mode (CPU ↔ RAM usage).
+  - *Left Click:* Toggle display mode (Temperature ↔ Temp + CPU + RAM).
   - *Right Click:* Launch detailed interactive system monitor (`btop`).
 - **Media Player Widget (MPRIS track info):**
   - *Left Click:* Open interactive track card with playback controls (`inerium-popup media`).
@@ -130,6 +131,7 @@ The top Inerium Waybar status panel is fully interactive. Most modules respond t
   - *Left / Right Click:* Instantly open **Inerium Control Center** (`inerium-popup control`).
 - **Clock & Calendar (Center):**
   - *Left Click:* Toggle between compact (`HH:MM`) and full (`Day, DD Mon HH:MM`) date format.
+  - *Middle Click:* Toggle seconds display (`inerium-clock --toggle-seconds`).
   - *Right Click:* Reset calendar view to current month.
   - *Scroll Wheel:* Browse calendar months forward and backward.
 - **Keyboard Layout Indicator:**

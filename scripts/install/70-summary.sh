@@ -17,14 +17,14 @@ print_summary() {
     if [[ "$INSTALL_LANG" == "ru" ]]; then
         msg1="Установка Inerium Shell успешно завершена!"
         if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-            msg2="Текущая сессия сохранена. Перезагрузитесь (sudo reboot) или завершите сеанс и выберите 'Hyprland (Waybar)' на экране входа."
+            msg2="Текущая сессия сохранена. Перезагрузитесь (sudo reboot) или завершите сеанс и выберите 'Hyprland (UWSM-Waybar)' на экране входа."
         else
             msg2="Выполните 'sudo reboot' для запуска inerium-greeter и входа в Hyprland."
         fi
     else
         msg1="Inerium Shell installation complete!"
         if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-            msg2="Your current desktop session was kept intact. Reboot (sudo reboot) or log out and select 'Hyprland (Waybar)' at the login screen."
+            msg2="Your current desktop session was kept intact. Reboot (sudo reboot) or log out and select 'Hyprland (UWSM-Waybar)' at the login screen."
         else
             msg2="Run 'sudo reboot' to start inerium-greeter and enter Hyprland."
         fi

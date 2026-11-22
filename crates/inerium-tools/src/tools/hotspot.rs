@@ -12,12 +12,9 @@ use std::time::{Duration, Instant, SystemTime};
 
 use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
-use inerium_tools::sys::posix::posix_getuid;
 
 fn state_file_path() -> PathBuf {
-    let rt = env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| format!("/run/user/{}", posix_getuid()));
-    PathBuf::from(rt).join("inerium-hotspot.state")
+    crate::sys::runtime_dir().join("inerium-hotspot.state")
 }
 
 fn has_ethernet_carrier() -> bool {
@@ -52,7 +49,7 @@ fn find_hotspot_connection() -> Option<String> {
         let text = String::from_utf8_lossy(&out.stdout);
         let mut wifi_names = Vec::new();
         for line in text.lines() {
-            if let Some((name, ctype)) = line.split_once(':')
+            if let Some((name, ctype)) = line.rsplit_once(':')
                 && (ctype == "802-11-wireless" || ctype == "wifi")
             {
                 let clean = name.replace("\\:", ":");
@@ -407,8 +404,7 @@ fn toggle_hotspot() {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("status");
 
     match cmd {

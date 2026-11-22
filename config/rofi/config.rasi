@@ -22,7 +22,7 @@ configuration {
 @theme "~/.config/rofi/inerium.rasi"
 
 /* Лаунчер */
-entry { placeholder: "Поиск приложений…"; }
+entry { placeholder: "Search applications…"; }
 listview {
     lines: 7;
     scrollbar: true;

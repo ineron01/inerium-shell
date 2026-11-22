@@ -9,9 +9,10 @@ pub mod system;
 
 pub use inerium_hw::battery;
 pub use inerium_hw::cooling;
+pub use inerium_hw::gpu::{get_gpu_mode, has_envycontrol, switch_gpu_mode};
 pub use inerium_hw::power;
 pub use inerium_hw::sysfs;
-pub use inerium_hw::open_folder;
+pub use inerium_tools::desktop::open_folder;
 
 // Re-export common structs
 pub use audio::{AudioSink, AudioSource};
@@ -21,7 +22,7 @@ pub use system::{MonitorTarget, SystemUpdates, WallpaperItem};
 pub struct HardwareContext {
     pub cooling: cooling::CoolingSubsystem,
     pub battery: battery::BatteryBackend,
-    pub backlight: backlight::BacklightBackend,
+    pub backlight: inerium_hw::backlight::BacklightBackend,
     pub power: power::PowerBackend,
 }
 
@@ -31,7 +32,7 @@ pub fn ctx() -> &'static HardwareContext {
     HW.get_or_init(|| HardwareContext {
         cooling: cooling::CoolingSubsystem::probe(),
         battery: battery::BatteryBackend::probe(),
-        backlight: backlight::BacklightBackend::probe(),
+        backlight: inerium_hw::backlight::BacklightBackend::probe(),
         power: power::PowerBackend::probe(),
     })
 }
@@ -136,7 +137,7 @@ pub fn set_laptop_brightness(pct: u32) {
 }
 
 pub fn has_external_monitor() -> bool {
-    backlight::has_external_monitor()
+    inerium_hw::backlight::has_external_monitor()
 }
 
 pub fn get_cached_ddc_brightness() -> u32 {
@@ -159,10 +160,16 @@ pub fn set_ddc_brightness_async(val: u32) {
 // ============================================================================
 // 5. AUDIO PIPEWIRE / WIREPLUMBER FACADE
 // ============================================================================
+pub fn get_sink_volume_state() -> (u32, bool) {
+    audio::get_sink_volume_state()
+}
+
+#[allow(dead_code)]
 pub fn get_volume() -> u32 {
     audio::get_volume()
 }
 
+#[allow(dead_code)]
 pub fn is_volume_muted() -> bool {
     audio::is_volume_muted()
 }
@@ -175,6 +182,10 @@ pub fn toggle_volume_mute() {
     audio::toggle_volume_mute();
 }
 
+pub fn get_source_volume_state() -> (u32, bool) {
+    audio::get_source_volume_state()
+}
+
 pub fn is_mic_muted() -> bool {
     audio::is_mic_muted()
 }
@@ -183,6 +194,7 @@ pub fn toggle_mic_mute() {
     audio::toggle_mic_mute();
 }
 
+#[allow(dead_code)]
 pub fn get_mic_volume() -> u32 {
     audio::get_mic_volume()
 }
@@ -191,6 +203,11 @@ pub fn set_mic_volume(pct: u32) {
     audio::set_mic_volume(pct);
 }
 
+pub fn list_audio_devices() -> (Vec<AudioSink>, Vec<AudioSource>) {
+    audio::list_audio_devices()
+}
+
+#[allow(dead_code)]
 pub fn list_audio_sinks() -> Vec<AudioSink> {
     audio::list_audio_sinks()
 }
@@ -199,6 +216,7 @@ pub fn set_default_sink(id: u32) {
     audio::set_default_sink(id);
 }
 
+#[allow(dead_code)]
 pub fn list_audio_sources() -> Vec<AudioSource> {
     audio::list_audio_sources()
 }
@@ -251,6 +269,8 @@ pub fn connect_enterprise_wifi(
 pub fn has_bluetooth() -> bool {
     network::has_bluetooth()
 }
+
+pub use network::{split_nmcli_escaped, ActiveWifiDetails};
 
 pub fn is_bluetooth_enabled() -> bool {
     network::is_bluetooth_enabled()
@@ -338,18 +358,6 @@ pub fn toggle_dnd() {
 
 pub fn get_updates_info() -> SystemUpdates {
     system::get_updates_info()
-}
-
-pub fn has_envycontrol() -> bool {
-    system::has_envycontrol()
-}
-
-pub fn get_gpu_mode() -> String {
-    system::get_gpu_mode()
-}
-
-pub fn switch_gpu_mode(mode: &str) -> bool {
-    system::switch_gpu_mode(mode)
 }
 
 pub fn get_hostname() -> String {

@@ -16,16 +16,33 @@ is_ru() {
 find_repo_dir() {
     if [[ -n "${INERIUM_SHELL_DIR:-}" && -d "$INERIUM_SHELL_DIR" ]]; then
         echo "$INERIUM_SHELL_DIR"
-    elif [[ -n "${INERIUM_DESKTOP_DIR:-}" && -d "$INERIUM_DESKTOP_DIR" ]]; then
+        return 0
+    fi
+    if [[ -n "${INERIUM_DESKTOP_DIR:-}" && -d "$INERIUM_DESKTOP_DIR" ]]; then
         echo "$INERIUM_DESKTOP_DIR"
-    elif [[ -d "$HOME/Repos/inerium-shell" ]]; then
-        echo "$HOME/Repos/inerium-shell"
-    elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell" ]]; then
+        return 0
+    fi
+
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/inerium"
+    local manifest_file="$state_dir/install-manifest"
+    [[ ! -f "$manifest_file" && -f "$state_dir/installed.manifest" ]] && manifest_file="$state_dir/installed.manifest"
+    if [[ -f "$manifest_file" ]]; then
+        local manifest_repo
+        manifest_repo="$(grep -E '^# REPO ' "$manifest_file" 2>/dev/null | head -n 1 | cut -d' ' -f3- || true)"
+        if [[ -n "$manifest_repo" && -d "$manifest_repo" ]]; then
+            echo "$manifest_repo"
+            return 0
+        fi
+    fi
+
+    if [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell" ]]; then
         echo "${XDG_DATA_HOME:-$HOME/.local/share}/inerium/shell"
     elif [[ -d "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell" ]]; then
         echo "${XDG_DATA_HOME:-$HOME/.local/share}/inerium-shell"
     elif [[ -d "$HOME/inerium-shell" ]]; then
         echo "$HOME/inerium-shell"
+    elif [[ -d "$HOME/Repos/inerium-shell" ]]; then
+        echo "$HOME/Repos/inerium-shell"
     else
         echo ""
     fi
@@ -40,6 +57,7 @@ usage() {
   update, up      Обновить Inerium Shell (бинарники, службы, модули)
   setup           Открыть графический интерфейс настроек (inerium-setup)
   theme [ID]      Просмотр или переключение темы оформления
+  distro [ID]     Выбор иконки дистрибутива на панели (cachyos, arch, endeavouros...)
   check           Проверить целостность системных библиотек и бинарников (ABI)
   status          Текущее состояние системы и активных модулей
   help, -h        Показать эту справку
@@ -58,6 +76,7 @@ Commands:
   update, up      Update Inerium Shell (binaries, services, modules)
   setup           Open configuration GUI (inerium-setup)
   theme [ID]      View or change current desktop theme
+  distro [ID]     View or select distro icon on the panel (cachyos, arch, endeavouros...)
   check           Check system libraries and binary integrity (ABI)
   status          Current system status and active modules
   help, -h        Show this help message
@@ -88,10 +107,12 @@ cmd_update() {
     # If running outside a terminal (e.g. launched from GUI button or .desktop),
     # launch inside an interactive terminal emulator so the user sees the TUI!
     if [[ ! -t 0 || ! -t 1 ]]; then
-        if command -v kitty >/dev/null 2>&1; then
-            exec kitty --title "Inerium Update" -e "$0" update "$@"
-        elif command -v xdg-terminal-exec >/dev/null 2>&1; then
-            exec xdg-terminal-exec "$0" update "$@"
+        if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+            if command -v kitty >/dev/null 2>&1; then
+                exec kitty --title "Inerium Update" -e bash -c '"$0" update "$@" || { echo; echo "Update failed / Ошибка обновления. Press Enter to exit / Нажмите Enter..."; read -r; }' "$0" "$@"
+            elif command -v xdg-terminal-exec >/dev/null 2>&1; then
+                exec xdg-terminal-exec bash -c '"$0" update "$@" || { echo; echo "Update failed / Ошибка обновления. Press Enter to exit / Нажмите Enter..."; read -r; }' "$0" "$@"
+            fi
         fi
     fi
 
@@ -109,27 +130,135 @@ cmd_update() {
                 echo "[inerium] Development or modified working tree detected ($repo_dir). Skipping git pull."
             fi
         else
-            git -C "$repo_dir" pull --ff-only 2>/dev/null || {
+            local old_rev new_rev count
+            old_rev="$(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+            if git -C "$repo_dir" pull --ff-only --quiet 2>/dev/null; then
+                new_rev="$(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+                if [[ "$old_rev" != "$new_rev" ]]; then
+                    count="$(git -C "$repo_dir" rev-list --count "$old_rev..$new_rev" 2>/dev/null || echo "0")"
+                    if is_ru; then
+                        echo "[inerium] Обновлено: $old_rev..$new_rev ($count коммитов)"
+                    else
+                        echo "[inerium] Updated: $old_rev..$new_rev ($count commits)"
+                    fi
+                else
+                    if is_ru; then
+                        echo "[inerium] Репозиторий уже актуален ($old_rev)"
+                    else
+                        echo "[inerium] Repository is already up to date ($old_rev)"
+                    fi
+                fi
+            else
                 if is_ru; then
                     echo "[inerium] Предупреждение: Не удалось обновить git репозиторий (продолжаем с текущей копией)."
                 else
                     echo "[inerium] Warning: Failed to fast-forward git repository (continuing with current copy)."
                 fi
-            }
+            fi
         fi
     fi
 
     exec "$repo_dir/install.sh" --update "$@"
 }
 
+cmd_distro() {
+    local target="${1:-}"
+    local cfg="$HOME/.config/waybar/config.jsonc"
+    [[ -f "$cfg" ]] || cfg="$(find_repo_dir)/config/waybar/config.jsonc"
+
+    declare -A icons=(
+        ["cachyos"]="" ["cachy"]=""
+        ["arch"]="󰣇" ["archlinux"]="󰣇"
+        ["arch-classic"]="" ["classic"]=""
+        ["endeavouros"]="" ["endeavour"]="" ["eos"]=""
+        ["manjaro"]=""
+        ["garuda"]=""
+        ["artix"]=""
+        ["archcraft"]=""
+        ["arcolinux"]="" ["arco"]=""
+        ["blackarch"]=""
+        ["tux"]="" ["linux"]=""
+    )
+
+    if [[ -z "$target" || "$target" == "list" || "$target" == "-l" ]]; then
+        if is_ru; then
+            echo "Доступные иконки дистрибутивов для панели Waybar:"
+            echo "  cachyos        CachyOS"
+            echo "  arch         󰣇  Arch Linux"
+            echo "  arch-classic   Arch Linux (Classic)"
+            echo "  endeavouros    EndeavourOS"
+            echo "  manjaro        Manjaro Linux"
+            echo "  garuda         Garuda Linux"
+            echo "  artix          Artix Linux"
+            echo "  archcraft      Archcraft"
+            echo "  arcolinux      ArcoLinux"
+            echo "  blackarch      BlackArch"
+            echo "  tux            Linux (Tux)"
+            echo ""
+            echo "Установить: inerium distro <имя> (или 'auto' для автоопределения)"
+        else
+            echo "Available distro icons for Waybar panel:"
+            echo "  cachyos        CachyOS"
+            echo "  arch         󰣇  Arch Linux"
+            echo "  arch-classic   Arch Linux (Classic)"
+            echo "  endeavouros    EndeavourOS"
+            echo "  manjaro        Manjaro Linux"
+            echo "  garuda         Garuda Linux"
+            echo "  artix          Artix Linux"
+            echo "  archcraft      Archcraft"
+            echo "  arcolinux      ArcoLinux"
+            echo "  blackarch      BlackArch"
+            echo "  tux            Linux (Tux)"
+            echo ""
+            echo "Set with: inerium distro <name> (or 'auto' for auto-detection)"
+        fi
+        return 0
+    fi
+
+    local icon=""
+    if [[ "$target" == "auto" ]]; then
+        local os_id=""
+        [[ -f /etc/os-release ]] && os_id="$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')"
+        icon="${icons[$os_id]:-󰣇}"
+    else
+        icon="${icons[$(echo "$target" | tr '[:upper:]' '[:lower:]')]:-}"
+    fi
+
+    if [[ -z "$icon" ]]; then
+        if is_ru; then
+            echo "[inerium] Ошибка: неизвестный дистрибутив '$target'. Запустите 'inerium distro list'." >&2
+        else
+            echo "[inerium] Error: unknown distro '$target'. Run 'inerium distro list'." >&2
+        fi
+        return 1
+    fi
+
+    if [[ -f "$cfg" ]]; then
+        sed -i --follow-symlinks -E '/"custom\/launcher": \{/,/\}/ s/("format": ")[^"]*(")/\1'"$icon"'\2/' "$cfg"
+        pkill -SIGUSR2 waybar 2>/dev/null || true
+        if is_ru; then
+            echo "[inerium] Иконка дистрибутива на панели обновлена: $icon ($target)"
+        else
+            echo "[inerium] Panel distro icon updated: $icon ($target)"
+        fi
+    else
+        echo "[inerium] Waybar config not found: $cfg" >&2
+        return 1
+    fi
+}
+
 cmd_status() {
-    local repo_dir manifest_file
+    local repo_dir manifest_file state_dir
     repo_dir="$(find_repo_dir)"
-    manifest_file="${XDG_STATE_HOME:-$HOME/.local/state}/inerium/installed.manifest"
+    state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/inerium"
+    manifest_file="$state_dir/install-manifest"
+    if [[ ! -f "$manifest_file" && -f "$state_dir/installed.manifest" ]]; then
+        manifest_file="$state_dir/installed.manifest"
+    fi
 
     if is_ru; then
         echo "=== Inerium Shell — Состояние системы ==="
-        echo "Версия репозитория: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
+        echo "Версия репозитория: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.2")"
         echo "Каталог:            ${repo_dir:-не найден}"
         echo "Сессия Wayland:     ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
         echo ""
@@ -140,10 +269,10 @@ cmd_status() {
         [[ -f "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
         [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
         ([[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] || [[ -f "/etc/modules-load.d/msi-ec.conf" ]]) && echo "  [✓] Охлаждение MSI (msi-ec)" || echo "  [ ] Охлаждение MSI"
-        (command -v gh >/dev/null 2>&1 && [[ -f "$HOME/.config/inerium/first-login.d/10-github" || -n "$(grep -w 'ADDON github' "$manifest_file" 2>/dev/null || true)" ]]) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
+        (command -v gh >/dev/null 2>&1 && ( [[ -f "$HOME/.config/inerium/first-login.d/10-github" ]] || grep -qE '^ADDON[[:space:]]+github' "$manifest_file" 2>/dev/null )) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
     else
         echo "=== Inerium Shell — System Status ==="
-        echo "Repository version: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.0")"
+        echo "Repository version: $(git -C "$repo_dir" describe --tags 2>/dev/null || echo "v0.2.2")"
         echo "Directory:          ${repo_dir:-not found}"
         echo "Wayland session:    ${XDG_CURRENT_DESKTOP:-unknown} (${WAYLAND_DISPLAY:-no socket})"
         echo ""
@@ -154,7 +283,7 @@ cmd_status() {
         [[ -f "$HOME/.local/share/kio/servicemenus/converter-document.desktop" ]] && echo "  [✓] Dolphin Converter" || echo "  [ ] Dolphin Converter"
         [[ -f "$HOME/.config/systemd/user/inerium-camera-bridge.service" ]] && echo "  [✓] Inerium Camera (v4l2loopback)" || echo "  [ ] Inerium Camera"
         ([[ -f "/etc/systemd/system/msi-fan-regulator.service" ]] || [[ -f "/etc/modules-load.d/msi-ec.conf" ]]) && echo "  [✓] MSI Cooling (msi-ec)" || echo "  [ ] MSI Cooling"
-        (command -v gh >/dev/null 2>&1 && [[ -f "$HOME/.config/inerium/first-login.d/10-github" || -n "$(grep -w 'ADDON github' "$manifest_file" 2>/dev/null || true)" ]]) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
+        (command -v gh >/dev/null 2>&1 && ( [[ -f "$HOME/.config/inerium/first-login.d/10-github" ]] || grep -qE '^ADDON[[:space:]]+github' "$manifest_file" 2>/dev/null )) && echo "  [✓] GitHub CLI (gh)" || echo "  [ ] GitHub CLI"
     fi
 }
 
@@ -170,6 +299,9 @@ case "$COMMAND" in
         ;;
     "theme")
         exec inerium-theme "$@"
+        ;;
+    "distro")
+        cmd_distro "$@"
         ;;
     "check"|"abi")
         repo_dir="$(find_repo_dir)"

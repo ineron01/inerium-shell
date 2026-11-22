@@ -1,7 +1,10 @@
-pub use inerium_theme::{detect_theme, ThemeMode, DRAGON_VARS, LOTUS_VARS};
+pub use inerium_theme::{
+    detect_theme, ThemeMode, DRAGON_VARS,
+    LOTUS_VARS,
+};
 
 pub fn get_theme_css(mode: ThemeMode) -> String {
-    let home = crate::hw::home_dir();
+    let home = inerium_theme::get_home();
     let vars_path = home.join(".config/inerium/theme-vars.css");
     let vars = if let Ok(s) = std::fs::read_to_string(&vars_path) {
         if !s.trim().is_empty() {

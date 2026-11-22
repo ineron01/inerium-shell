@@ -2,6 +2,7 @@
 # ============================================================================
 # scripts/install/60-addons.sh — Optional Modules: MSI Cooling, Camera, noVPN, GitHub, Converter
 # ============================================================================
+# shellcheck disable=SC2034 # Variables consumed across installer stages
 
 install_msi_ec_addon() {
     log "Setting up MSI EC kernel module (msi-ec DKMS)..."
@@ -12,14 +13,17 @@ install_msi_ec_addon() {
         for f in /usr/lib/modules/*/pkgbase; do
             [[ -f "$f" ]] && headers+=("$(<"$f")-headers")
         done
-        install_pkgs dkms msi-ec-dkms-git envycontrol "${headers[@]}"
+        install_pkgs dkms msi-ec-dkms-git envycontrol "${headers[@]}" || return 1
         MSI_EC_REBUILT=1
     fi
 
     local sys_dir="$REPO_DIR/system/msi-cooling"
     if [[ -d "$sys_dir" ]]; then
-        install_root_if_changed 644 "$sys_dir/udev/rules.d/99-msi-ec.rules" /etc/udev/rules.d/99-msi-ec.rules
-        install_root_if_changed 644 "$sys_dir/modules-load.d/msi-ec.conf" /etc/modules-load.d/msi-ec.conf
+        install_root_if_changed 644 "$sys_dir/udev/rules.d/99-msi-ec.rules" /etc/udev/rules.d/99-msi-ec.rules || return 1
+        install_root_if_changed 644 "$sys_dir/modules-load.d/msi-ec.conf" /etc/modules-load.d/msi-ec.conf || return 1
+        if [[ -f "$sys_dir/sudoers.d/inerium-msi.template" ]]; then
+            install_sudoers_template "$sys_dir/sudoers.d/inerium-msi.template" /etc/sudoers.d/inerium-msi || return 1
+        fi
     fi
 
     if [[ "$WITH_FAN_REGULATOR" -eq 1 ]]; then
@@ -27,27 +31,28 @@ install_msi_ec_addon() {
         manifest_record_addon "fan-regulator"
         manifest_record_system_unit "msi-fan-regulator.service"
         if [[ -d "$sys_dir" ]]; then
-            install_root_if_changed 644 "$sys_dir/modprobe.d/msi-fan-regulator.conf" /etc/modprobe.d/msi-fan-regulator.conf
-            install_root_if_changed 644 "$sys_dir/modules-load.d/msi-fan-regulator.conf" /etc/modules-load.d/msi-fan-regulator.conf
-            if [[ -f "$sys_dir/sudoers.d/inerium-msi.template" ]]; then
-                install_sudoers_template "$sys_dir/sudoers.d/inerium-msi.template" /etc/sudoers.d/inerium-msi
-            fi
-            install_root_if_changed 644 "$sys_dir/systemd/system/msi-fan-regulator.service" /etc/systemd/system/msi-fan-regulator.service
+            install_root_if_changed 644 "$sys_dir/modprobe.d/msi-fan-regulator.conf" /etc/modprobe.d/msi-fan-regulator.conf || return 1
+            install_root_if_changed 644 "$sys_dir/modules-load.d/msi-fan-regulator.conf" /etc/modules-load.d/msi-fan-regulator.conf || return 1
+            install_root_if_changed 644 "$sys_dir/systemd/system/msi-fan-regulator.service" /etc/systemd/system/msi-fan-regulator.service || return 1
         fi
 
         local fan_bin_src=""
         if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/msi-fan-regulator" ]]; then
             fan_bin_src="${RELEASE_DIST_DIR}/msi-fan-regulator"
+        elif [[ "$INSTALL_MODE" == "source" && "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
+            run_live_step "Compiling msi-fan-regulator (--features msi-ec)..." \
+                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator || return 1
+            fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
         elif [[ -f "$REPO_DIR/target/release/msi-fan-regulator" ]]; then
             fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
         elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
             run_live_step "Compiling msi-fan-regulator (--features msi-ec)..." \
-                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator
+                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-tools --features msi-ec --bin msi-fan-regulator || return 1
             fan_bin_src="$REPO_DIR/target/release/msi-fan-regulator"
         fi
 
         if [[ -n "$fan_bin_src" && -f "$fan_bin_src" ]]; then
-            install_root_if_changed 755 "$fan_bin_src" /usr/local/bin/msi-fan-regulator
+            install_root_if_changed 755 "$fan_bin_src" /usr/local/bin/msi-fan-regulator || return 1
             manifest_record_system_file "/usr/local/bin/msi-fan-regulator"
             if [[ "$DRY_RUN" -eq 0 ]]; then
                 sudo udevadm control --reload-rules || true
@@ -58,6 +63,8 @@ install_msi_ec_addon() {
                     sudo systemctl restart msi-fan-regulator.service || true
                 fi
             fi
+        elif [[ -x "/usr/local/bin/msi-fan-regulator" ]]; then
+            manifest_record_system_file "/usr/local/bin/msi-fan-regulator"
         fi
     fi
 }
@@ -76,29 +83,29 @@ install_camera_addon() {
         for f in /usr/lib/modules/*/pkgbase; do
             [[ -f "$f" ]] && headers+=("$(<"$f")-headers")
         done
-        install_pkgs dkms v4l2loopback-dkms v4l2loopback-utils android-tools scrcpy gstreamer gst-plugins-base-libs gst-plugins-good "${headers[@]}"
+        install_pkgs dkms v4l2loopback-dkms v4l2loopback-utils android-tools scrcpy gstreamer gst-plugins-base-libs gst-plugins-base gst-plugins-bad gst-plugins-good gst-libav v4l-utils "${headers[@]}" || return 1
     fi
 
     local cam_sys="$REPO_DIR/system/camera"
     if [[ -d "$cam_sys" ]]; then
-        install_root_if_changed 644 "$cam_sys/udev/rules.d/99-phone-webcam.rules" /etc/udev/rules.d/99-phone-webcam.rules
-        install_root_if_changed 644 "$cam_sys/modprobe.d/v4l2loopback.conf" /etc/modprobe.d/v4l2loopback.conf
-        install_root_if_changed 644 "$cam_sys/modules-load.d/v4l2loopback.conf" /etc/modules-load.d/v4l2loopback.conf
+        install_root_if_changed 644 "$cam_sys/udev/rules.d/99-phone-webcam.rules" /etc/udev/rules.d/99-phone-webcam.rules || return 1
+        install_root_if_changed 644 "$cam_sys/modprobe.d/v4l2loopback.conf" /etc/modprobe.d/v4l2loopback.conf || return 1
+        install_root_if_changed 644 "$cam_sys/modules-load.d/v4l2loopback.conf" /etc/modules-load.d/v4l2loopback.conf || return 1
     fi
 
     if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/inerium-camera" ]]; then
-        install -m 755 "${RELEASE_DIST_DIR}/inerium-camera" "$HOME/.local/bin/inerium-camera"
+        install -m 755 "${RELEASE_DIST_DIR}/inerium-camera" "$HOME/.local/bin/inerium-camera" || return 1
     elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
         if [[ ! -x "$HOME/.local/bin/inerium-camera" || "$INSTALL_MODE" == "source" ]]; then
             run_live_step "Compiling inerium-camera..." \
-                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-camera
-            install -m 755 "$REPO_DIR/target/release/inerium-camera" "$HOME/.local/bin/inerium-camera"
+                cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p inerium-camera || return 1
+            install -m 755 "$REPO_DIR/target/release/inerium-camera" "$HOME/.local/bin/inerium-camera" || return 1
         fi
     fi
 
-    if [[ -x "$HOME/.local/bin/inerium-camera" || "$DRY_RUN" -eq 1 ]]; then
-        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam"
-        ln -sfn inerium-camera "$HOME/.local/bin/phone-webcam-gui"
+    if [[ -x "$HOME/.local/bin/inerium-camera" ]]; then
+        run "ln -sfn inerium-camera '$HOME/.local/bin/phone-webcam'"
+        run "ln -sfn inerium-camera '$HOME/.local/bin/phone-webcam-gui'"
     fi
 
     if [[ -f "$REPO_DIR/local/share/applications/phone-webcam.desktop.template" ]]; then
@@ -108,14 +115,19 @@ install_camera_addon() {
     local bridge_src="$REPO_DIR/config/systemd/user/inerium-camera-bridge.service"
     local bridge_dst="$HOME/.config/systemd/user/inerium-camera-bridge.service"
     if [[ -f "$bridge_src" ]]; then
-        mkdir -p "$HOME/.config/systemd/user"
+        run "mkdir -p '$HOME/.config/systemd/user'"
         link_item "$bridge_src" "$bridge_dst"
-        if [[ -n "${XDG_RUNTIME_DIR:-}" ]] && systemctl --user list-unit-files >/dev/null 2>&1; then
-            systemctl --user daemon-reload || true
-            systemctl --user enable inerium-camera-bridge.service || true
+        if systemctl --user show-environment >/dev/null 2>&1; then
+            run "systemctl --user daemon-reload"
+            run "systemctl --user enable inerium-camera-bridge.service >/dev/null 2>&1 || true"
             if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
-                systemctl --user restart inerium-camera-bridge.service || true
+                run "systemctl --user restart inerium-camera-bridge.service >/dev/null 2>&1 || true"
             fi
+        else
+            for target in $(sed -n 's/^WantedBy=//p' "$bridge_src"); do
+                run "mkdir -p '$HOME/.config/systemd/user/$target.wants'"
+                run "ln -sfn '$bridge_src' '$HOME/.config/systemd/user/$target.wants/inerium-camera-bridge.service'"
+            done
         fi
     fi
 }
@@ -125,20 +137,20 @@ install_novpn_addon() {
     manifest_record_addon "novpn"
     manifest_record_system_unit "novpn.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
-        install_pkgs iptables iproute2
+        install_pkgs iptables iproute2 || return 1
     fi
 
     local novpn_sys="$REPO_DIR/system/novpn"
     if [[ -d "$novpn_sys" ]]; then
         for script in "$novpn_sys/bin"/novpn*; do
-            [[ -f "$script" ]] && install_root_if_changed 755 "$script" "/usr/local/bin/$(basename "$script")"
+            [[ -f "$script" ]] && { install_root_if_changed 755 "$script" "/usr/local/bin/$(basename "$script")" || return 1; }
         done
-        install_root_if_changed 644 "$novpn_sys/systemd/novpn.service" /etc/systemd/system/novpn.service
+        install_root_if_changed 644 "$novpn_sys/systemd/novpn.service" /etc/systemd/system/novpn.service || return 1
         if [[ -f "$novpn_sys/sudoers.d/inerium-novpn.template" ]]; then
-            install_sudoers_template "$novpn_sys/sudoers.d/inerium-novpn.template" /etc/sudoers.d/inerium-novpn
+            install_sudoers_template "$novpn_sys/sudoers.d/inerium-novpn.template" /etc/sudoers.d/inerium-novpn || return 1
         fi
         if [[ -f "$novpn_sys/dispatcher.d/98-novpn-sync.sh" ]]; then
-            install_root_if_changed 755 "$novpn_sys/dispatcher.d/98-novpn-sync.sh" /etc/NetworkManager/dispatcher.d/98-novpn-sync.sh
+            install_root_if_changed 755 "$novpn_sys/dispatcher.d/98-novpn-sync.sh" /etc/NetworkManager/dispatcher.d/98-novpn-sync.sh || return 1
         fi
         if [[ "$DRY_RUN" -eq 0 ]]; then
             sudo systemctl daemon-reload || true
@@ -148,7 +160,7 @@ install_novpn_addon() {
 
     local novpn_first_login="$REPO_DIR/first-login.d/30-novpn"
     if [[ -f "$novpn_first_login" ]]; then
-        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        run "mkdir -p '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d'"
         link_item "$novpn_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn"
     fi
 }
@@ -158,21 +170,21 @@ install_gdrive_addon() {
     manifest_record_addon "gdrive"
     manifest_record_user_unit "gdrive.service"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
-        install_pkgs rclone
+        install_pkgs rclone || return 1
     fi
 
-    mkdir -p "$HOME/.config/rclone"
+    run "mkdir -p '$HOME/.config/rclone'"
     link_item "$REPO_DIR/config/rclone/filter.txt" "$HOME/.config/rclone/filter.txt"
 
     local gdrive_unit="$REPO_DIR/config/systemd/user/gdrive.service"
     if [[ -f "$gdrive_unit" ]]; then
-        mkdir -p "$HOME/.config/systemd/user"
+        run "mkdir -p '$HOME/.config/systemd/user'"
         link_item "$gdrive_unit" "$HOME/.config/systemd/user/gdrive.service"
     fi
 
     local gdrive_first_login="$REPO_DIR/first-login.d/20-gdrive"
     if [[ -f "$gdrive_first_login" ]]; then
-        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        run "mkdir -p '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d'"
         link_item "$gdrive_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive"
     fi
 }
@@ -183,19 +195,23 @@ install_converter_addon() {
     manifest_record_binary "$HOME/.local/bin/dolphin-convert"
 
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
-        install_pkgs ffmpeg imagemagick poppler pandoc-cli typst libreoffice-fresh onnxruntime-cpu
+        local onnx_pkg="onnxruntime-cpu"
+        if pacman -Si onnxruntime >/dev/null 2>&1; then
+            onnx_pkg="onnxruntime"
+        fi
+        install_pkgs ffmpeg imagemagick poppler pandoc-cli typst libreoffice-fresh "$onnx_pkg" || return 1
     fi
 
     if [[ "$INSTALL_MODE" == "bin" && -n "${RELEASE_DIST_DIR:-}" && -x "${RELEASE_DIST_DIR}/dolphin-convert" ]]; then
-        install -m 755 "${RELEASE_DIST_DIR}/dolphin-convert" "$HOME/.local/bin/dolphin-convert"
+        install -m 755 "${RELEASE_DIST_DIR}/dolphin-convert" "$HOME/.local/bin/dolphin-convert" || return 1
     elif [[ "$SKIP_BUILD" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
         run_live_step "Compiling dolphin-convert..." \
-            cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p dolphin-converter
-        install -m 755 "$REPO_DIR/target/release/dolphin-convert" "$HOME/.local/bin/dolphin-convert"
+            cargo build --manifest-path "$REPO_DIR/Cargo.toml" --release -p dolphin-convert || return 1
+        install -m 755 "$REPO_DIR/target/release/dolphin-convert" "$HOME/.local/bin/dolphin-convert" || return 1
     fi
 
     log "Linking Dolphin KIO servicemenus into ~/.local/share/kio/servicemenus..."
-    mkdir -p "$HOME/.local/share/kio/servicemenus"
+    run "mkdir -p '$HOME/.local/share/kio/servicemenus'"
     for desktop in "$REPO_DIR"/local/share/kio/servicemenus/*.desktop; do
         [[ -f "$desktop" ]] || continue
         local name
@@ -210,12 +226,12 @@ install_github_addon() {
     log "Setting up GitHub CLI addon..."
     manifest_record_addon "github"
     if [[ "$SKIP_PKGS" -eq 0 ]]; then
-        install_pkgs github-cli
+        install_pkgs github-cli || return 1
     fi
 
     local gh_first_login="$REPO_DIR/first-login.d/10-github"
     if [[ -f "$gh_first_login" ]]; then
-        mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"
+        run "mkdir -p '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d'"
         link_item "$gh_first_login" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github"
     fi
 }
@@ -224,7 +240,7 @@ deploy_selected_addons() {
     if [[ "$WITH_GDRIVE" -eq 1 ]]; then
         run_live_step "Configuring Google Drive addon..." install_gdrive_addon
     else
-        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive"
+        run "rm -f '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/20-gdrive'"
     fi
 
     if [[ "$WITH_CONVERTER" -eq 1 ]]; then
@@ -244,12 +260,12 @@ deploy_selected_addons() {
     if [[ "$WITH_NOVPN" -eq 1 ]]; then
         run_live_step "Configuring noVPN addon..." install_novpn_addon
     else
-        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn"
+        run "rm -f '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/30-novpn'"
     fi
 
     if [[ "${WITH_GITHUB:-0}" -eq 1 ]]; then
         run_live_step "Configuring GitHub CLI addon..." install_github_addon
     else
-        rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github"
+        run "rm -f '${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d/10-github'"
     fi
 }

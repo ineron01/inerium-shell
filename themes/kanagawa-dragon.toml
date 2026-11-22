@@ -10,7 +10,7 @@ description = "Dark Kanagawa variant with warm dragon tones, sumi ink, and balan
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(24, 22, 22, 0.98)"

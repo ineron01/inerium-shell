@@ -21,6 +21,8 @@ jobs:
             gtk4 gtk4-layer-shell vte4 \
             pango cairo gdk-pixbuf2 glib2 \
             gstreamer gst-plugins-base-libs
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Cache Cargo dependencies
@@ -35,6 +37,8 @@ jobs:
         run: cargo clippy -p inerium-tools --features msi-ec --bin msi-fan-regulator -- -D warnings
       - name: Cargo test workspace
         run: cargo test --workspace
+      - name: Cargo test msi-fan-regulator
+        run: cargo test -p inerium-tools --features msi-ec
 
   syntax-lint:
     name: Shell, Python & Lua Syntax Lint
@@ -45,11 +49,13 @@ jobs:
     steps:
       - name: Install runtime interpreters
         run: pacman -Syu --noconfirm --needed git bash lua python shellcheck
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Script syntax check
         run: |
-          for f in *.sh scripts/install/*.sh local/bin/* first-login.d/* system/novpn/bin/* system/usr/local/bin/*; do
+          for f in *.sh scripts/install/*.sh local/bin/* first-login.d/* system/novpn/bin/* system/novpn/dispatcher.d/* system/usr/local/bin/*; do
             [[ -f "$f" ]] || continue
             if head -n 1 "$f" | grep -qE "bash|sh" || [[ "$f" == *.sh ]]; then
               bash -n "$f"
@@ -59,9 +65,10 @@ jobs:
           done
       - name: ShellCheck static analysis
         run: |
-          shellcheck -S warning \
+          shellcheck -S warning -e SC2034 \
             *.sh scripts/install/*.sh local/bin/inerium local/bin/hypr-screenshot \
-            local/bin/inerium-askpass local/bin/inerium-toggle-network local/bin/inerium-toggle-bluetooth || true
+            local/bin/inerium-askpass local/bin/inerium-toggle-network local/bin/inerium-toggle-bluetooth \
+            local/bin/inerium-browser first-login.d/* system/novpn/bin/* system/novpn/dispatcher.d/*
       - name: Lua syntax check
         run: |
           luac -p config/hypr/*.lua
@@ -76,13 +83,68 @@ jobs:
     steps:
       - name: Install runtime utilities
         run: pacman -Syu --noconfirm --needed git bash
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Dry-run test (prebuilt mode)
         run: ./install.sh --dry-run
+      - name: Dry-run test (rolling mode)
+        run: ./install.sh --rolling --dry-run
       - name: Dry-run test (from-source mode)
         run: ./install.sh --from-source --dry-run
       - name: Dry-run test (all addons and greeter)
         run: ./install.sh --all-addons --with-greeter --dry-run
       - name: Dry-run test (update mode)
         run: ./install.sh --update --dry-run
+      - name: Dry-run test (update-ui mode)
+        run: ./install.sh --update-ui --dry-run
+      - name: Dry-run test (uninstall mode)
+        run: ./install.sh --uninstall --dry-run
+      - name: Dry-run test (update-configs=all mode)
+        run: ./install.sh --update --update-configs=all --dry-run
+      - name: Verify working tree clean after dry-runs
+        run: test -z "$(git status --porcelain)"
+      - name: Test installation manifest lifecycle
+        run: |
+          bash -c '
+            set -euo pipefail
+            tmp_home="$(mktemp -d)"
+            trap "rm -rf $tmp_home" EXIT
+
+            export HOME="$tmp_home"
+            export XDG_STATE_HOME="$tmp_home/.local/state"
+            export XDG_CONFIG_HOME="$tmp_home/.config"
+
+            mkdir -p "$tmp_home/.local/bin" "$tmp_home/.local/state/inerium"
+            echo "binary clock" > "$tmp_home/.local/bin/inerium-clock"
+            echo "binary obsolete" > "$tmp_home/.local/bin/obsolete-tool"
+
+            printf "BIN\t%s\n" "$tmp_home/.local/bin/inerium-clock" > "$tmp_home/.local/state/inerium/install-manifest"
+            printf "BIN\t%s\n" "$tmp_home/.local/bin/obsolete-tool" >> "$tmp_home/.local/state/inerium/install-manifest"
+
+            echo "inerium-ctl binary" > "$tmp_home/.local/bin/inerium-ctl"
+            ln -sfn inerium-ctl "$tmp_home/.local/bin/inerium-clock"
+
+            printf "LINK\t%s\tinerium-ctl\n" "$tmp_home/.local/bin/inerium-clock" > "$tmp_home/.local/state/inerium/install-manifest.new"
+            printf "BIN\t%s\n" "$tmp_home/.local/bin/inerium-ctl" >> "$tmp_home/.local/state/inerium/install-manifest.new"
+            printf "ADDON\tgithub\n" >> "$tmp_home/.local/state/inerium/install-manifest.new"
+
+            export DRY_RUN=0
+            export INSTALL_MODE=bin
+            export BACKUP_STAMP=ci
+            export REPO_DIR="$(pwd)"
+            export MANIFEST_DIR="$tmp_home/.local/state/inerium"
+            export MANIFEST_FILE="$MANIFEST_DIR/install-manifest"
+            export NEW_MANIFEST_FILE="$MANIFEST_DIR/install-manifest.new"
+
+            source scripts/install/00-helpers.sh
+            source scripts/install/05-manifest.sh
+
+            prune_obsolete_and_save_manifest
+
+            test -L "$tmp_home/.local/bin/inerium-clock"
+            test ! -e "$tmp_home/.local/bin/obsolete-tool"
+            grep -qE "^ADDON[[:space:]]+github" "$MANIFEST_FILE"
+            grep -q "^# REPO " "$MANIFEST_FILE"
+          '

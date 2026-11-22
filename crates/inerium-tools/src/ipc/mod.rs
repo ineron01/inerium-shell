@@ -4,3 +4,4 @@ pub mod hyprland;
 
 pub use self_pipe::SelfPipe;
 pub use pids::PidRegistry;
+pub use hyprland::{get_cursor_and_monitor, get_hypr_socket, query_json};

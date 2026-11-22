@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO_URL="${INERIUM_SHELL_REPO:-${INERIUM_DESKTOP_REPO:-https://github.com/ineron01/inerium-shell.git}}"
-LOG_FILE="/tmp/inerium-install.log"
+LOG_FILE="/tmp/inerium-install-${UID}.log"
 DRY_RUN=0
 SKIP_PKGS=0
 FROM_SOURCE=0
@@ -91,10 +91,22 @@ if [[ "$SKIP_PKGS" -eq 0 ]] && command -v pacman >/dev/null 2>&1; then
     declare -a missing_bootstrap=()
     mapfile -t missing_bootstrap < <(pacman -T git gum 2>/dev/null || true)
     if [[ ${#missing_bootstrap[@]} -gt 0 ]]; then
+        declare -a sync_dbs=(/var/lib/pacman/sync/*.db)
+        if [[ ! -e "${sync_dbs[0]}" ]]; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                echo "[DRY-RUN] sudo pacman -Sy --noconfirm"
+            else
+                echo "[bootstrap] Syncing pacman databases..."
+                # shellcheck disable=SC2024
+                sudo pacman -Sy --noconfirm >> "$LOG_FILE" 2>&1 || true
+            fi
+        fi
+
         if [[ "$DRY_RUN" -eq 1 ]]; then
             echo "[DRY-RUN] sudo pacman -S --needed --noconfirm ${missing_bootstrap[*]}"
         else
             echo "[bootstrap] Installing bootstrap prerequisites (${missing_bootstrap[*]})..."
+            # shellcheck disable=SC2024
             sudo pacman -S --needed --noconfirm "${missing_bootstrap[@]}" >> "$LOG_FILE" 2>&1 || true
         fi
     fi
@@ -108,24 +120,9 @@ fi
 
 print_banner
 
-if [[ "$SKIP_PKGS" -eq 0 ]] && ! command -v paru >/dev/null 2>&1; then
-    install_paru() {
-        if pacman -Si paru >/dev/null 2>&1; then
-            sudo pacman -S --needed --noconfirm paru
-        else
-            sudo pacman -S --needed --noconfirm base-devel git
-            local tmp_dir
-            tmp_dir="$(mktemp -d)"
-            git clone --depth 1 https://aur.archlinux.org/paru-bin.git "$tmp_dir/paru-bin"
-            (cd "$tmp_dir/paru-bin" && makepkg -si --noconfirm)
-            rm -rf "$tmp_dir"
-        fi
-    }
-    export -f install_paru
-    run_quiet_step "Installing AUR helper (paru)..." install_paru
+if [[ "$DRY_RUN" -eq 0 ]]; then
+    mkdir -p "$(dirname "$TARGET_DIR")"
 fi
-
-mkdir -p "$(dirname "$TARGET_DIR")"
 if [[ -d "$TARGET_DIR/.git" ]]; then
     run_quiet_step "Updating repository at $TARGET_DIR..." git -C "$TARGET_DIR" pull --ff-only
 else

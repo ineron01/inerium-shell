@@ -1,7 +1,14 @@
-//! Desktop utilities: Standard folder opening via desktop environment handler.
+//! Desktop utilities: folder opening, wallpapers, and desktop integration.
+
+pub mod wallpaper;
 
 use std::path::Path;
 use std::process::Command;
+
+pub use wallpaper::{
+    apply_wallpaper, get_connected_monitors, get_current_wallpapers, get_hyprpaper_conf_path,
+    parse_hyprpaper_conf, serialize_hyprpaper_conf, write_hyprpaper_conf,
+};
 
 /// Opens a directory in the user's default desktop handler (file manager or terminal).
 pub fn open_folder(path: &Path) -> Result<(), String> {

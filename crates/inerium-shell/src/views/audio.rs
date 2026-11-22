@@ -10,8 +10,8 @@ pub struct AudioViewModel {
     out_muted: bool,
     mic_volume: u32,
     mic_muted: bool,
-    sink_rows: Vec<(u32, Button, Label)>,
-    source_rows: Vec<(u32, Button, Label)>,
+    sink_rows: Vec<(u32, glib::WeakRef<Button>, glib::WeakRef<Label>)>,
+    source_rows: Vec<(u32, glib::WeakRef<Button>, glib::WeakRef<Label>)>,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
 }
@@ -178,10 +178,9 @@ impl SimpleComponent for AudioViewModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let out_volume = hw::get_volume();
-        let out_muted = hw::is_volume_muted();
-        let mic_volume = hw::get_mic_volume();
-        let mic_muted = hw::is_mic_muted();
+        let (out_volume, out_muted) = hw::get_sink_volume_state();
+        let (mic_volume, mic_muted) = hw::get_source_volume_state();
+        let (sinks, sources) = hw::list_audio_devices();
 
         let mut sink_rows = Vec::new();
         let mut source_rows = Vec::new();
@@ -205,7 +204,6 @@ impl SimpleComponent for AudioViewModel {
         out_title.set_xalign(0.0);
         widgets.list_box.append(&out_title);
 
-        let sinks = hw::list_audio_sinks();
         for sink in sinks {
             let row = Button::new();
             row.add_css_class("card-item");
@@ -248,7 +246,7 @@ impl SimpleComponent for AudioViewModel {
             });
 
             widgets.list_box.append(&row);
-            sink_rows.push((s_id, row, badge));
+            sink_rows.push((s_id, row.downgrade(), badge.downgrade()));
         }
 
         // Section: Input Devices
@@ -258,7 +256,6 @@ impl SimpleComponent for AudioViewModel {
         in_title.set_margin_top(8);
         widgets.list_box.append(&in_title);
 
-        let sources = hw::list_audio_sources();
         for source in sources {
             let row = Button::new();
             row.add_css_class("card-item");
@@ -299,7 +296,7 @@ impl SimpleComponent for AudioViewModel {
             });
 
             widgets.list_box.append(&row);
-            source_rows.push((src_id, row, badge));
+            source_rows.push((src_id, row.downgrade(), badge.downgrade()));
         }
 
         let mut model = model;
@@ -312,46 +309,56 @@ impl SimpleComponent for AudioViewModel {
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
             AudioMsg::SetOutputVolume(val) => {
+                if self.out_volume == val {
+                    return;
+                }
                 self.out_volume = val;
                 hw::set_volume(val);
             }
             AudioMsg::ToggleOutputMute => {
+                self.out_muted = !self.out_muted;
                 hw::toggle_volume_mute();
-                self.out_muted = hw::is_volume_muted();
             }
             AudioMsg::SetMicVolume(val) => {
+                if self.mic_volume == val {
+                    return;
+                }
                 self.mic_volume = val;
                 hw::set_mic_volume(val);
             }
             AudioMsg::ToggleMicMute => {
+                self.mic_muted = !self.mic_muted;
                 hw::toggle_mic_mute();
-                self.mic_muted = hw::is_mic_muted();
             }
             AudioMsg::SelectSink(id) => {
                 hw::set_default_sink(id);
                 for (s_id, row, badge) in &self.sink_rows {
-                    if *s_id == id {
-                        row.add_css_class("active");
-                        badge.set_label(tr("󰄬  Active", "󰄬  Активен"));
-                        badge.set_visible(true);
-                    } else {
-                        row.remove_css_class("active");
-                        badge.set_label("");
-                        badge.set_visible(false);
+                    if let (Some(r), Some(b)) = (row.upgrade(), badge.upgrade()) {
+                        if *s_id == id {
+                            r.add_css_class("active");
+                            b.set_label(tr("󰄬  Active", "󰄬  Активен"));
+                            b.set_visible(true);
+                        } else {
+                            r.remove_css_class("active");
+                            b.set_label("");
+                            b.set_visible(false);
+                        }
                     }
                 }
             }
             AudioMsg::SelectSource(id) => {
                 hw::set_default_source(id);
                 for (s_id, row, badge) in &self.source_rows {
-                    if *s_id == id {
-                        row.add_css_class("active");
-                        badge.set_label(tr("󰄬  Active", "󰄬  Активен"));
-                        badge.set_visible(true);
-                    } else {
-                        row.remove_css_class("active");
-                        badge.set_label("");
-                        badge.set_visible(false);
+                    if let (Some(r), Some(b)) = (row.upgrade(), badge.upgrade()) {
+                        if *s_id == id {
+                            r.add_css_class("active");
+                            b.set_label(tr("󰄬  Active", "󰄬  Активен"));
+                            b.set_visible(true);
+                        } else {
+                            r.remove_css_class("active");
+                            b.set_label("");
+                            b.set_visible(false);
+                        }
                     }
                 }
             }
@@ -372,7 +379,7 @@ impl SimpleComponent for AudioViewModel {
 pub fn build_audio_view<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
-) -> (gtk4::Box, i32, i32)
+) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FNav: Fn(&str) + 'static + Clone,
     FClose: Fn() + 'static + Clone,
@@ -382,8 +389,7 @@ where
         close_cb: std::boxed::Box::new(close_cb),
     };
 
-    let mut controller = AudioViewModel::builder().launch(init).detach();
-    controller.detach_runtime();
+    let controller = AudioViewModel::builder().launch(init).detach();
     let root = controller.widget().clone();
-    (root, 380, 420)
+    (root, 380, 420, Box::new(controller))
 }

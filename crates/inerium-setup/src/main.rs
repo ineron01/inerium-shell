@@ -69,15 +69,15 @@ fn main() -> glib::ExitCode {
         }
     }
 
-    let mut start_on_integrations = initial_tab.as_deref() == Some("integrations");
+    let mut start_tab = initial_tab;
 
     if autostart {
         let (should_open, only_integrations) = should_open_autostart(&paths);
         if !should_open {
             return glib::ExitCode::SUCCESS;
         }
-        if only_integrations && initial_tab.is_none() {
-            start_on_integrations = true;
+        if only_integrations && start_tab.is_none() {
+            start_tab = Some("integrations".to_string());
         }
     }
 
@@ -85,6 +85,7 @@ fn main() -> glib::ExitCode {
         .application_id("org.inerium.setup")
         .build();
 
+    let initial_tab = start_tab;
     app.connect_activate(move |app| {
         if let Some(window) = app.active_window() {
             window.present();
@@ -102,7 +103,7 @@ fn main() -> glib::ExitCode {
             );
         }
 
-        let win = ui::build_main_window(app, paths.clone(), autostart, start_on_integrations);
+        let win = ui::build_main_window(app, paths.clone(), autostart, initial_tab.clone());
         win.present();
     });
 

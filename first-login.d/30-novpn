@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Title: Прямой интернет без VPN (noVPN) — профиль браузера
+# Title: Direct Internet without VPN (noVPN) — browser profiles
+# Title[ru]: Прямой интернет без VPN (noVPN) — профили браузера
 set -euo pipefail
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
 
 configured() {
     compgen -G "$HOME/.local/share/applications/*-direct.desktop" >/dev/null 2>&1
@@ -12,9 +22,17 @@ if [[ "${1:-}" == --check ]]; then
 fi
 
 if ! command -v novpn >/dev/null 2>&1; then
-    echo "Служба noVPN не установлена (модуль --with-novpn)."
+    if is_ru; then
+        echo "Служба noVPN не установлена (модуль --with-novpn)." >&2
+    else
+        echo "noVPN service is not installed (--with-novpn module)." >&2
+    fi
     exit 1
 fi
 
-echo "Настройка прямого доступа в интернет в обход VPN (noVPN)..."
-novpn make-desktop "${@:-}"
+if is_ru; then
+    echo "Настройка прямого доступа в интернет в обход VPN (noVPN)..."
+else
+    echo "Configuring direct internet access bypassing VPN (noVPN)..."
+fi
+novpn make-desktop "$@"

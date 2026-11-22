@@ -4,6 +4,7 @@ hypridle
 hyprlock
 hyprpaper
 hyprpicker
+hyprsunset
 uwsm
 xdg-desktop-portal-hyprland
 xdg-desktop-portal-gtk
@@ -24,6 +25,7 @@ satty
 pipewire-pulse
 pipewire-alsa
 wireplumber
+sound-theme-freedesktop
 pavucontrol
 playerctl
 networkmanager
@@ -38,16 +40,18 @@ ddcutil
 brightnessctl
 upower
 
-# Shell, Terminal, File Manager & Python
+# Shell, Terminal, File Manager, Python & Lua
 fish
 kitty
 gum
 btop
+imagemagick
 gnome-text-editor
 gnome-calculator
 gnome-keyring
 dolphin
 python
+lua
 
 # Theming, Fonts & Runtime Libraries
 adw-gtk-theme

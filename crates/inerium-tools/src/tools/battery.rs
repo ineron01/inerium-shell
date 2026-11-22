@@ -5,11 +5,12 @@
 //! - Tooltip: Rich Pango markup with capacity, remaining time, power in W, health %
 //! - Watch mode: Streams battery updates, instant reaction to SIGUSR1 on toggle
 
-use std::env;
+use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-use inerium_hw::battery::{discover_power_supplies, BatteryBackend};
+use inerium_hw::battery::BatteryBackend;
 use inerium_hw::sysfs::{read_sysfs_i64, read_sysfs_i64_opt, read_sysfs_str};
 use inerium_i18n::{Lang, tr, tr_fmt};
 use inerium_tools::format::escape_json;
@@ -31,11 +32,10 @@ fn is_alt_mode() -> bool {
 fn toggle_alt_mode() {
     let reg = battery_registry();
     reg.toggle_state();
-    reg.notify_all(SIGUSR1);
+    let _ = reg.notify(SIGUSR1);
 }
 
-fn read_battery_threshold(bat_dir: &Path) -> i64 {
-    let backend = BatteryBackend::probe();
+fn read_battery_threshold(bat_dir: &Path, backend: &BatteryBackend) -> i64 {
     if backend.has_threshold() {
         backend.get_threshold() as i64
     } else {
@@ -159,8 +159,7 @@ struct BatteryCache {
 }
 
 fn cache_path() -> std::path::PathBuf {
-    let uid = inerium_tools::sys::posix::posix_getuid();
-    std::path::PathBuf::from(format!("/run/user/{}/inerium-battery-rate.json", uid))
+    crate::sys::runtime_dir().join("inerium-battery-rate.json")
 }
 
 fn save_smoothed_cache(rate: f64, power: f64, status: &str) {
@@ -194,25 +193,74 @@ fn load_smoothed_cache(current_status: &str) -> Option<(f64, f64)> {
 }
 
 fn query_battery_raw() -> (BatteryInfo, f64, f64) {
-    let (bats, mut ac_online) = discover_power_supplies();
+    let backend = BatteryBackend::probe();
+    query_battery_raw_with_backend(&backend)
+}
+
+fn scan_power_supplies() -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut bats = Vec::new();
+    let mut fallback_bats = Vec::new();
+    let mut acs = Vec::new();
+    if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
+        let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        dirs.sort();
+        for path in dirs {
+            let ptype = read_sysfs_str(&path.join("type"));
+            if ptype == "Mains" || ptype == "USB" || ptype == "USB_C" || ptype == "USB_PD" {
+                acs.push(path);
+            } else if ptype == "Battery" {
+                let scope = read_sysfs_str(&path.join("scope"));
+                if scope == "Device" {
+                    continue;
+                }
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.starts_with("BAT") || name.starts_with("CMB") {
+                    bats.push(path);
+                } else {
+                    fallback_bats.push(path);
+                }
+            }
+        }
+    }
+    let final_bats = if !bats.is_empty() { bats } else { fallback_bats };
+    (final_bats, acs)
+}
+
+fn empty_battery_info() -> (BatteryInfo, f64, f64) {
+    (
+        BatteryInfo {
+            present: false,
+            capacity: 0,
+            status: String::new(),
+            ac_online: true,
+            power_w: 0.0,
+            health_pct: 100.0,
+            threshold: 100,
+            time_str: String::new(),
+            icon: ICON_PLUGGED,
+            total_now: 0,
+            total_full: 0,
+        },
+        0.0,
+        0.0,
+    )
+}
+
+fn query_battery_from_paths(
+    bats: &[PathBuf],
+    acs: &[PathBuf],
+    backend: &BatteryBackend,
+) -> Option<(BatteryInfo, f64, f64)> {
     if bats.is_empty() {
-        return (
-            BatteryInfo {
-                present: false,
-                capacity: 0,
-                status: String::new(),
-                ac_online: true,
-                power_w: 0.0,
-                health_pct: 100.0,
-                threshold: 100,
-                time_str: String::new(),
-                icon: ICON_PLUGGED,
-                total_now: 0,
-                total_full: 0,
-            },
-            0.0,
-            0.0,
-        );
+        return Some(empty_battery_info());
+    }
+
+    let mut ac_online = false;
+    for ac in acs {
+        if read_sysfs_i64(&ac.join("online")) == 1 {
+            ac_online = true;
+            break;
+        }
     }
 
     let mut total_now = 0i64;
@@ -226,7 +274,10 @@ fn query_battery_raw() -> (BatteryInfo, f64, f64) {
     let mut is_full = true;
     let mut cap_sum = 0i64;
 
-    for bat_dir in &bats {
+    for bat_dir in bats {
+        if !bat_dir.exists() {
+            return None;
+        }
         let cap = read_sysfs_i64(&bat_dir.join("capacity")).clamp(0, 100);
         cap_sum += cap;
         let st = read_sysfs_str(&bat_dir.join("status"));
@@ -244,15 +295,15 @@ fn query_battery_raw() -> (BatteryInfo, f64, f64) {
             let now = read_sysfs_i64(&bat_dir.join("charge_now"));
             let full = read_sysfs_i64(&bat_dir.join("charge_full"));
             let design = read_sysfs_i64(&bat_dir.join("charge_full_design")).max(1);
-            let curr = read_sysfs_i64(&bat_dir.join("current_now"));
-            let volt = read_sysfs_i64(&bat_dir.join("voltage_now"));
+            let curr = read_sysfs_i64(&bat_dir.join("current_now")).abs();
+            let volt = read_sysfs_i64(&bat_dir.join("voltage_now")).abs();
             let pw = (volt as f64 * curr as f64) / 1e12;
             (now, full, design, pw, curr)
         } else {
             let now = read_sysfs_i64(&bat_dir.join("energy_now"));
             let full = read_sysfs_i64(&bat_dir.join("energy_full"));
             let design = read_sysfs_i64(&bat_dir.join("energy_full_design")).max(1);
-            let pnow = read_sysfs_i64(&bat_dir.join("power_now"));
+            let pnow = read_sysfs_i64(&bat_dir.join("power_now")).abs();
             let pw = pnow as f64 / 1e6;
             (now, full, design, pw, pnow)
         };
@@ -263,7 +314,7 @@ fn query_battery_raw() -> (BatteryInfo, f64, f64) {
         total_power_w += pw;
         total_rate += rate;
 
-        let th = read_battery_threshold(bat_dir);
+        let th = read_battery_threshold(bat_dir, backend);
         if th < min_threshold {
             min_threshold = th;
         }
@@ -318,7 +369,7 @@ fn query_battery_raw() -> (BatteryInfo, f64, f64) {
         BATTERY_ICONS[idx]
     };
 
-    (
+    Some((
         BatteryInfo {
             present: true,
             capacity,
@@ -334,7 +385,12 @@ fn query_battery_raw() -> (BatteryInfo, f64, f64) {
         },
         total_rate as f64,
         total_power_w,
-    )
+    ))
+}
+
+fn query_battery_raw_with_backend(backend: &BatteryBackend) -> (BatteryInfo, f64, f64) {
+    let (bats, acs) = scan_power_supplies();
+    query_battery_from_paths(&bats, &acs, backend).unwrap_or_else(empty_battery_info)
 }
 
 fn get_battery_info() -> BatteryInfo {
@@ -485,14 +541,57 @@ fn run_watch(waybar: bool) {
     let mut handle = stdout.lock();
     let mut last_output = String::new();
     let mut filter = EmaFilter::new();
+    let backend = BatteryBackend::probe();
+
+    let mut cached_paths: Option<(Vec<PathBuf>, Vec<PathBuf>)> = None;
+    let mut last_scan = Instant::now() - Duration::from_secs(60);
+    let mut last_saved_rate = -1.0;
+    let mut last_saved_status = String::new();
+    let mut last_saved_time = Instant::now() - Duration::from_secs(60);
 
     loop {
-        let (mut info, raw_rate, raw_power) = query_battery_raw();
+        if cached_paths.is_none() || last_scan.elapsed() >= Duration::from_secs(30) {
+            cached_paths = Some(scan_power_supplies());
+            last_scan = Instant::now();
+        }
+
+        let (mut info, raw_rate, raw_power) = {
+            let (bats, acs) = cached_paths.as_ref().unwrap();
+            match query_battery_from_paths(bats, acs, &backend) {
+                Some(res) => res,
+                None => {
+                    let (new_bats, new_acs) = scan_power_supplies();
+                    let res = query_battery_from_paths(&new_bats, &new_acs, &backend)
+                        .unwrap_or_else(empty_battery_info);
+                    cached_paths = Some((new_bats, new_acs));
+                    last_scan = Instant::now();
+                    res
+                }
+            }
+        };
+
         if info.present {
             let (smoothed_rate, smoothed_power) =
                 filter.update(raw_rate, raw_power, &info.status, info.ac_online);
             info.update_rates(smoothed_rate, smoothed_power);
-            save_smoothed_cache(smoothed_rate, smoothed_power, &info.status);
+
+            let status_changed = info.status != last_saved_status;
+            let rate_diff_pct = if last_saved_rate > 0.0 {
+                ((smoothed_rate - last_saved_rate).abs() / last_saved_rate) * 100.0
+            } else if smoothed_rate > 0.0 {
+                100.0
+            } else {
+                0.0
+            };
+            let rate_changed = rate_diff_pct > 2.0;
+            let time_elapsed = last_saved_time.elapsed() >= Duration::from_secs(10);
+
+            if status_changed || rate_changed || time_elapsed {
+                save_smoothed_cache(smoothed_rate, smoothed_power, &info.status);
+                last_saved_rate = smoothed_rate;
+                last_saved_status = info.status.clone();
+                last_saved_time = Instant::now();
+            }
         }
 
         let current = if waybar { format_json(&info) } else { format_battery(&info) };
@@ -508,8 +607,7 @@ fn run_watch(waybar: bool) {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.len() > 1 {
         match args[1].as_str() {
             "--toggle" => {
@@ -626,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_type_c_pd_and_multi_battery_detection() {
-        let root = env::temp_dir().join(format!("inerium_bat_test_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("inerium_bat_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 

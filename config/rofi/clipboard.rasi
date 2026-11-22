@@ -15,7 +15,7 @@ window {
 }
 
 entry {
-    placeholder: "Поиск в истории буфера…";
+    placeholder: "Search clipboard history…";
 }
 
 listview {

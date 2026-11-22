@@ -21,7 +21,7 @@ get_active_physical_dev() {
 current_t200=$(ip -4 route show table 200 default 2>/dev/null || true)
 active_phys_dev=$(get_active_physical_dev || true)
 
-if [[ -z "$current_t200" ]] || [[ -n "$active_phys_dev" && ! "$current_t200" =~ "dev $active_phys_dev" ]]; then
+if [[ -z "$current_t200" ]] || [[ -n "$active_phys_dev" && ! "$current_t200" =~ dev[[:space:]]+$active_phys_dev ]]; then
     /usr/local/bin/novpn-up >/dev/null 2>&1 || true
 fi
 
@@ -41,7 +41,7 @@ fi
 
 exec ip netns exec novpn sudo -u "$TARGET_USER" \
     env --chdir="$PWD" \
-        PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin" \
+        PATH="$TARGET_HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin" \
         HOME="$TARGET_HOME" \
         USER="$TARGET_USER" \
         LOGNAME="$TARGET_USER" \
@@ -57,4 +57,4 @@ exec ip netns exec novpn sudo -u "$TARGET_USER" \
         XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
         XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$TARGET_HOME/.config}" \
         XDG_CACHE_HOME="${XDG_CACHE_HOME:-$TARGET_HOME/.cache}" \
-        "$@"
+        -- "$@"

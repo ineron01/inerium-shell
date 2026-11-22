@@ -6,6 +6,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 
 use gdk4::prelude::*;
 use gdk4::Key;
@@ -19,104 +20,30 @@ mod hw;
 mod theme;
 mod views;
 
-unsafe fn libc_getuid() -> u32 {
-    unsafe extern "C" {
-        fn getuid() -> u32;
-    }
-    unsafe { getuid() }
+macro_rules! log_debug {
+    ($($arg:tt)*) => {
+        if cfg!(debug_assertions) || std::env::var_os("INERIUM_DEBUG").is_some() {
+            eprintln!($($arg)*);
+        }
+    };
 }
 
 fn get_sock_path() -> PathBuf {
-    let uid = unsafe { libc_getuid() };
-    PathBuf::from(format!("/run/user/{}/inerium-popups.sock", uid))
-}
-
-fn get_hypr_socket() -> Option<PathBuf> {
-    let rt = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc_getuid() }));
-    let hypr_dir = PathBuf::from(&rt).join("hypr");
-
-    let sig = env::var("HYPRLAND_INSTANCE_SIGNATURE")
-        .ok()
-        .filter(|s| hypr_dir.join(s).join(".socket.sock").exists() || hypr_dir.join(s).join(".socket.real.sock").exists())
-        .or_else(|| {
-        if let Ok(entries) = fs::read_dir(&hypr_dir) {
-            let mut subdirs: Vec<_> = entries
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-                .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
-                .collect();
-            subdirs.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
-            subdirs.last().map(|e| e.file_name().to_string_lossy().into_owned())
-        } else {
-            None
-        }
-    })?;
-
-    let base = hypr_dir.join(sig);
-    if base.join(".socket.real.sock").exists() {
-        Some(base.join(".socket.real.sock"))
-    } else {
-        Some(base.join(".socket.sock"))
-    }
+    inerium_tools::sys::runtime_dir().join("inerium-popups.sock")
 }
 
 fn get_cursor_pos() -> (i32, i32) {
-    if let Some(sock_path) = get_hypr_socket()
-        && let Ok(mut stream) = UnixStream::connect(&sock_path) {
-            let _ = stream.write_all(b"j/cursorpos");
-            let mut buf = Vec::new();
-            let _ = stream.read_to_end(&mut buf);
-            if let Ok(v) = serde_json::from_slice::<Value>(&buf)
-                && let (Some(x), Some(y)) = (v["x"].as_i64(), v["y"].as_i64()) {
-                    return (x as i32, y as i32);
-                }
-        }
+    if let Ok(v) = inerium_tools::ipc::hyprland::query_json::<Value>("cursorpos")
+        && let (Some(x), Some(y)) = (v["x"].as_i64(), v["y"].as_i64())
+    {
+        return (x as i32, y as i32);
+    }
     (0, 0)
 }
 
 fn get_cursor_and_monitor() -> (i32, i32, i32, i32, i32, i32, String) {
-    let mut cx = 960;
-    let mut cy = 540;
-    let mut mx = 0;
-    let mut my = 0;
-    let mut mw = 1920;
-    let mut mh = 1080;
-    let mut m_name = String::new();
-
-    if let Some(sock_path) = get_hypr_socket()
-        && let Ok(mut stream) = UnixStream::connect(&sock_path) {
-            let _ = stream.write_all(b"[[BATCH]]j/cursorpos ; j/monitors");
-            let mut buf = Vec::new();
-            let _ = stream.read_to_end(&mut buf);
-            let mut de = serde_json::Deserializer::from_slice(&buf).into_iter::<Value>();
-            if let Some(Ok(c_val)) = de.next()
-                && let (Some(x), Some(y)) = (c_val["x"].as_i64(), c_val["y"].as_i64()) {
-                    cx = x as i32;
-                    cy = y as i32;
-                }
-            if let Some(Ok(m_val)) = de.next()
-                && let Some(list) = m_val.as_array() {
-                    for mon in list {
-                        let x = mon["x"].as_i64().unwrap_or(0) as i32;
-                        let y = mon["y"].as_i64().unwrap_or(0) as i32;
-                        let scale = mon["scale"].as_f64().unwrap_or(1.0);
-                        let w = (mon["width"].as_f64().unwrap_or(1920.0) / scale).round() as i32;
-                        let h = (mon["height"].as_f64().unwrap_or(1080.0) / scale).round() as i32;
-                        let name = mon["name"].as_str().unwrap_or("").to_string();
-
-                        if cx >= x && cx < x + w && cy >= y && cy < y + h {
-                            mx = x;
-                            my = y;
-                            mw = w;
-                            mh = h;
-                            m_name = name;
-                            break;
-                        }
-                    }
-                }
-        }
-
-    (cx, cy, mx, my, mw, mh, m_name)
+    inerium_tools::ipc::hyprland::get_cursor_and_monitor()
+        .unwrap_or((960, 540, 0, 0, 1920, 1080, String::new()))
 }
 
 struct SafeZone {
@@ -137,6 +64,7 @@ struct SafeZone {
 struct AppState {
     app: Option<Application>,
     window: Option<ApplicationWindow>,
+    active_controller: Option<Box<dyn std::any::Any>>,
     current_view: String,
     is_visible: bool,
     safe_zone: Option<SafeZone>,
@@ -149,6 +77,7 @@ thread_local! {
     static STATE: RefCell<AppState> = const { RefCell::new(AppState {
         app: None,
         window: None,
+        active_controller: None,
         current_view: String::new(),
         is_visible: false,
         safe_zone: None,
@@ -173,6 +102,8 @@ fn main() {
     if args.len() > 1 && args[1] != "--daemon" {
         let sock = get_sock_path();
         if let Ok(mut stream) = UnixStream::connect(&sock) {
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+            let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(500)));
             let msg = format!("{}\n", args[1..].join(" "));
             let _ = stream.write_all(msg.as_bytes());
             let mut buf = [0u8; 16];
@@ -238,14 +169,18 @@ fn main() {
                                 | gio::FileMonitorEvent::Changed
                         )
                     {
+                        let old_lang = inerium_i18n::Lang::get();
                         inerium_i18n::Lang::reinit();
-                        STATE.with(|s| {
-                            let mut st = s.borrow_mut();
-                            if st.is_visible && !st.current_view.is_empty() {
-                                let cur = st.current_view.clone();
-                                show_view(&mut st, &cur, true);
+                        let new_lang = inerium_i18n::Lang::get();
+                        if old_lang != new_lang {
+                            let (is_vis, cur) = STATE.with(|s| {
+                                let st = s.borrow();
+                                (st.is_visible && !st.current_view.is_empty(), st.current_view.clone())
+                            });
+                            if is_vis {
+                                show_view_and_cleanup(&cur, true);
                             }
-                        });
+                        }
                     }
                 });
                 Box::leak(Box::new(monitor));
@@ -272,6 +207,9 @@ fn main() {
             };
 
             for mut s in listener.incoming().flatten() {
+                let timeout = Some(Duration::from_secs(2));
+                let _ = s.set_read_timeout(timeout);
+                let _ = s.set_write_timeout(timeout);
                 let mut reader = BufReader::new(&mut s);
                 let mut line = String::new();
                 if reader.read_line(&mut line).is_ok() {
@@ -301,65 +239,86 @@ fn main() {
     app.run_with_args(&["inerium-shell"]);
 }
 
-fn handle_command(cmd: &str) {
-    STATE.with(|s| {
-        let mut state = s.borrow_mut();
-        let is_vis = state.is_visible;
-        let cur_view = state.current_view.clone();
-
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        let target = parts.first().copied().unwrap_or("control").to_lowercase();
-
-        if target == "close" {
-            hide_window(&mut state);
-            return;
-        }
-
-        if target == "theme" && parts.len() > 1 {
-            let mode = if parts.get(1).map(|s| *s == "light").unwrap_or(false) {
-                theme::ThemeMode::Light
-            } else if parts.get(1).map(|s| *s == "dark").unwrap_or(false) {
-                theme::ThemeMode::Dark
-            } else {
-                theme::detect_theme()
-            };
-            if let Some(settings) = gtk4::Settings::default() {
-                settings.set_gtk_application_prefer_dark_theme(mode == theme::ThemeMode::Dark);
-            }
-            if let Some(provider) = &state.css_provider {
-                provider.load_from_data(&theme::get_theme_css(mode));
-            }
-            if is_vis && !cur_view.is_empty() {
-                let cur = cur_view.clone();
-                show_view(&mut state, &cur, true);
-            }
-            return;
-        }
-
-        if is_vis && cur_view == target {
-            hide_window(&mut state);
-            return;
-        }
-
-        state.current_view = target.clone();
-        show_view(&mut state, &target, false);
-    });
+fn cleanup_displaced(win: Option<ApplicationWindow>, ctrl: Option<Box<dyn std::any::Any>>) {
+    if let Some(w) = win {
+        w.close();
+    }
+    drop(ctrl);
 }
 
-fn hide_window(state: &mut AppState) {
-    if let Some(win) = state.window.take() {
-        win.close();
-    }
+fn hide_window(state: &mut AppState) -> (Option<ApplicationWindow>, Option<Box<dyn std::any::Any>>) {
+    let win = state.window.take();
+    let ctrl = state.active_controller.take();
     state.is_visible = false;
     state.current_view.clear();
     state.safe_zone = None;
     state.modal_dialog_active = false;
+    (win, ctrl)
 }
 
-fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
-    if let Some(old_win) = state.window.take() {
-        old_win.close();
+fn hide_window_and_cleanup() {
+    let (w, c) = STATE.with(|s| hide_window(&mut s.borrow_mut()));
+    cleanup_displaced(w, c);
+}
+
+fn show_view_and_cleanup(view_name: &str, preserve_position: bool) {
+    let (w, c) = STATE.with(|s| {
+        let mut st = s.borrow_mut();
+        st.current_view = view_name.to_string();
+        show_view(&mut st, view_name, preserve_position)
+    });
+    cleanup_displaced(w, c);
+}
+
+fn handle_command(cmd: &str) {
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    let target = parts.first().copied().unwrap_or("control").to_lowercase();
+
+    if target == "close" {
+        hide_window_and_cleanup();
+        return;
     }
+
+    if target == "theme" && parts.len() > 1 {
+        let mode = if parts.get(1).map(|s| *s == "light").unwrap_or(false) {
+            theme::ThemeMode::Light
+        } else if parts.get(1).map(|s| *s == "dark").unwrap_or(false) {
+            theme::ThemeMode::Dark
+        } else {
+            theme::detect_theme()
+        };
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_application_prefer_dark_theme(mode == theme::ThemeMode::Dark);
+        }
+        let (is_vis, cur_view) = STATE.with(|s| {
+            let state = s.borrow();
+            if let Some(provider) = &state.css_provider {
+                provider.load_from_data(&theme::get_theme_css(mode));
+            }
+            (state.is_visible, state.current_view.clone())
+        });
+        if is_vis && !cur_view.is_empty() {
+            show_view_and_cleanup(&cur_view, true);
+        }
+        return;
+    }
+
+    let should_hide = STATE.with(|s| {
+        let state = s.borrow();
+        state.is_visible && state.current_view == target
+    });
+
+    if should_hide {
+        hide_window_and_cleanup();
+        return;
+    }
+
+    show_view_and_cleanup(&target, false);
+}
+
+fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) -> (Option<ApplicationWindow>, Option<Box<dyn std::any::Any>>) {
+    let old_win = state.window.take();
+    let old_ctrl = state.active_controller.take();
 
     if !preserve_position {
         state.modal_dialog_active = false;
@@ -367,11 +326,11 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
 
     let app = match state.app.as_ref() {
         Some(a) => a.clone(),
-        None => return,
+        None => return (old_win, old_ctrl),
     };
 
     let (cx, cy, mx, my, mw, mh, m_name) = get_cursor_and_monitor();
-    eprintln!("show_view: view={}, m_name={}, cx={}, cy={}, mx={}, my={}, mw={}, mh={}", view_name, m_name, cx, cy, mx, my, mw, mh);
+    log_debug!("show_view: view={}, m_name={}, cx={}, cy={}, mx={}, my={}, mw={}, mh={}", view_name, m_name, cx, cy, mx, my, mw, mh);
 
     let win = ApplicationWindow::builder()
         .application(&app)
@@ -403,10 +362,7 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
     let key_ctrl = EventControllerKey::new();
     key_ctrl.connect_key_pressed(|_, key, _, _| {
         if key == Key::Escape {
-            STATE.with(|s| {
-                let mut st = s.borrow_mut();
-                hide_window(&mut st);
-            });
+            hide_window_and_cleanup();
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
@@ -415,22 +371,14 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
     win.add_controller(key_ctrl);
 
     let nav_cb = move |next_view: &str| {
-        let n = next_view.to_string();
-        STATE.with(|s| {
-            let mut st = s.borrow_mut();
-            st.current_view = n.clone();
-            show_view(&mut st, &n, true);
-        });
+        show_view_and_cleanup(next_view, true);
     };
 
     let close_cb = move || {
-        STATE.with(|s| {
-            let mut st = s.borrow_mut();
-            hide_window(&mut st);
-        });
+        hide_window_and_cleanup();
     };
 
-    let (child, req_w, req_h) = match view_name {
+    let (child, req_w, req_h, new_ctrl) = match view_name {
         "audio" => views::audio::build_audio_view(nav_cb, close_cb),
         "bluetooth" => views::bluetooth::build_bluetooth_view(nav_cb, close_cb),
         "network" => views::network::build_network_view(nav_cb, close_cb),
@@ -512,15 +460,16 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
 
     win.present();
     state.window = Some(win);
+    state.active_controller = Some(new_ctrl);
     state.is_visible = true;
 
     // Start Safe Zone watcher timer (runs only while is_visible and session matches)
     if view_name != "power" {
         glib::timeout_add_local(std::time::Duration::from_millis(80), move || {
-            STATE.with(|s| {
+            let res = STATE.with(|s| {
                 let mut st = s.borrow_mut();
                 if !st.is_visible || st.session_id != current_session {
-                    return glib::ControlFlow::Break;
+                    return (glib::ControlFlow::Break, None);
                 }
 
                 let (alloc_w, alloc_h) = if let Some(ref w) = st.window {
@@ -544,7 +493,7 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
                     // If cursor moved to a different monitor, allow closing even if modal_dialog_active was set
                     let cursor_on_other_monitor = cx < sz.mx || cx >= sz.mx + sz.mw || cy < sz.my || cy >= sz.my + sz.mh;
                     if is_modal && !cursor_on_other_monitor {
-                        return glib::ControlFlow::Continue;
+                        return (glib::ControlFlow::Continue, None);
                     }
 
                     let x_min = sz.x - sz.pad;
@@ -560,15 +509,22 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) {
                     } else if sz.has_entered && sz.opened_at.elapsed() > std::time::Duration::from_millis(250) {
                         let since = sz.outside_since.get_or_insert_with(std::time::Instant::now);
                         if since.elapsed() > std::time::Duration::from_millis(180) {
-                            eprintln!("SafeZone closed: cx={}, cy={}, bounds=[{}, {}]x[{}, {}]", cx, cy, x_min, x_max, y_min, y_max);
-                            hide_window(&mut st);
-                            return glib::ControlFlow::Break;
+                            log_debug!("SafeZone closed: cx={}, cy={}, bounds=[{}, {}]x[{}, {}]", cx, cy, x_min, x_max, y_min, y_max);
+                            let (w, c) = hide_window(&mut st);
+                            return (glib::ControlFlow::Break, Some((w, c)));
                         }
                     }
                 }
 
-                glib::ControlFlow::Continue
-            })
+                (glib::ControlFlow::Continue, None)
+            });
+
+            if let Some((w, c)) = res.1 {
+                cleanup_displaced(w, c);
+            }
+            res.0
         });
     }
+
+    (old_win, old_ctrl)
 }

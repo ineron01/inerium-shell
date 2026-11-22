@@ -12,23 +12,19 @@ default = []
 msi-ec = []
 
 [[bin]]
+name = "inerium-ctl"
+path = "src/bin/inerium-ctl.rs"
+
+[[bin]]
 name = "msi-fan-regulator"
 path = "src/bin/msi-fan-regulator.rs"
 required-features = ["msi-ec"]
-
-[[bin]]
-name = "inerium-wallpaper"
-path = "src/bin/inerium-wallpaper.rs"
-
-[[bin]]
-name = "inerium-theme"
-path = "src/bin/inerium-theme.rs"
 
 [dependencies]
 inerium-hw = { workspace = true }
 inerium-i18n = { workspace = true }
 inerium-theme = { workspace = true }
+libc = "0.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"
-toml = "1.2.1"

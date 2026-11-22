@@ -42,60 +42,60 @@ pub const DRAGON_VARS: &str = r#"
 @define-color cc_slider_trough    rgba(197, 201, 197, 0.10);
 @define-color cc_slider_thumb     #e6e2cc;
 @define-color cc_orange           #b6927b;
-@define-color cc_primary          #8ba4b0;
-@define-color cc_primary_bg       rgba(139, 164, 176, 0.16);
-@define-color cc_primary_border   rgba(139, 164, 176, 0.35);
+@define-color cc_primary          #87a987;
+@define-color cc_primary_bg       rgba(135, 169, 135, 0.16);
+@define-color cc_primary_border   rgba(135, 169, 135, 0.35);
 @define-color cc_slider_fill      #87a987;
 @define-color cc_slider_fill_secondary #c4b28a;
 "#;
 
 pub const LOTUS_VARS: &str = r#"
-@define-color cc_bg               rgba(242, 236, 188, 0.98);
-@define-color cc_surface          #e5dfc5;
-@define-color cc_surface_hover    #ded7bc;
-@define-color cc_surface_active   #d5cdb0;
-@define-color cc_line             rgba(84, 84, 100, 0.14);
-@define-color cc_line_light       rgba(84, 84, 100, 0.24);
-@define-color cc_fg               #545464;
-@define-color cc_fg_bright        #43436c;
-@define-color cc_fg_muted         #8a8980;
-@define-color cc_fg_subtle        #716e61;
-@define-color cc_fg_on_accent     #f2ecbc;
+@define-color cc_bg               rgba(248, 249, 250, 0.98);
+@define-color cc_surface          #ffffff;
+@define-color cc_surface_hover    #f1f5f9;
+@define-color cc_surface_active   #e2e8f0;
+@define-color cc_line             rgba(15, 23, 42, 0.12);
+@define-color cc_line_light       #2563eb;
+@define-color cc_fg               #1e293b;
+@define-color cc_fg_bright        #0f172a;
+@define-color cc_fg_muted         #475569;
+@define-color cc_fg_subtle        #64748b;
+@define-color cc_fg_on_accent     #f8f9fa;
 
-@define-color cc_green            #6f894e;
-@define-color cc_green_bg         rgba(111, 137, 78, 0.18);
-@define-color cc_green_border     rgba(111, 137, 78, 0.40);
+@define-color cc_green            #16a34a;
+@define-color cc_green_bg         rgba(22, 163, 74, 0.14);
+@define-color cc_green_border     rgba(22, 163, 74, 0.38);
 
-@define-color cc_blue             #4d699b;
-@define-color cc_blue_bg          rgba(77, 105, 155, 0.18);
-@define-color cc_blue_border      rgba(77, 105, 155, 0.40);
+@define-color cc_blue             #2563eb;
+@define-color cc_blue_bg          rgba(37, 99, 235, 0.14);
+@define-color cc_blue_border      rgba(37, 99, 235, 0.38);
 
-@define-color cc_amber            #cc6d00;
-@define-color cc_amber_bg         rgba(204, 109, 0, 0.18);
-@define-color cc_amber_border     rgba(204, 109, 0, 0.40);
+@define-color cc_amber            #d97706;
+@define-color cc_amber_bg         rgba(217, 119, 6, 0.14);
+@define-color cc_amber_border     rgba(217, 119, 6, 0.38);
 
-@define-color cc_red              #c84053;
-@define-color cc_red_bg           rgba(200, 64, 83, 0.18);
-@define-color cc_red_border       rgba(200, 64, 83, 0.40);
+@define-color cc_red              #dc2626;
+@define-color cc_red_bg           rgba(220, 38, 38, 0.14);
+@define-color cc_red_border       rgba(220, 38, 38, 0.38);
 
-@define-color cc_aqua             #597b75;
-@define-color cc_aqua_bg          rgba(89, 123, 117, 0.18);
-@define-color cc_aqua_border      rgba(89, 123, 117, 0.40);
+@define-color cc_aqua             #0891b2;
+@define-color cc_aqua_bg          rgba(8, 145, 178, 0.14);
+@define-color cc_aqua_border      rgba(8, 145, 178, 0.38);
 
-@define-color cc_violet           #8a7ea8;
-@define-color cc_violet_bg        rgba(138, 126, 168, 0.18);
-@define-color cc_violet_border    rgba(138, 126, 168, 0.40);
+@define-color cc_violet           #7c3aed;
+@define-color cc_violet_bg        rgba(124, 58, 237, 0.14);
+@define-color cc_violet_border    rgba(124, 58, 237, 0.38);
 
-@define-color cc_shadow           rgba(84, 84, 100, 0.18);
-@define-color cc_modal_backdrop   rgba(84, 84, 100, 0.35);
-@define-color cc_slider_trough    rgba(84, 84, 100, 0.15);
-@define-color cc_slider_thumb     #43436c;
-@define-color cc_orange           #e98a00;
-@define-color cc_primary          #4d699b;
-@define-color cc_primary_bg       rgba(77, 105, 155, 0.18);
-@define-color cc_primary_border   rgba(77, 105, 155, 0.40);
-@define-color cc_slider_fill      #6f894e;
-@define-color cc_slider_fill_secondary #cc6d00;
+@define-color cc_shadow           rgba(15, 23, 42, 0.12);
+@define-color cc_modal_backdrop   rgba(15, 23, 42, 0.35);
+@define-color cc_slider_trough    rgba(15, 23, 42, 0.10);
+@define-color cc_slider_thumb     #0f172a;
+@define-color cc_orange           #ea580c;
+@define-color cc_primary          #2563eb;
+@define-color cc_primary_bg       rgba(37, 99, 235, 0.14);
+@define-color cc_primary_border   rgba(37, 99, 235, 0.38);
+@define-color cc_slider_fill      #2563eb;
+@define-color cc_slider_fill_secondary #d97706;
 "#;
 
 pub const THEME_ALIASES: &str = r#"

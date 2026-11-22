@@ -23,3 +23,6 @@ safe_require("config.windowrules")
 safe_require("config.workspaces")
 safe_require("config.autostart")
 safe_require("config.keybinds")
+
+-- User custom overrides: ~/.config/hypr/config/user.lua is never modified or overwritten by installer/updater
+pcall(require, "config.user")

@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
-# Title: Google Drive — подключить rclone
+# Title: Google Drive — connect via rclone
+# Title[ru]: Google Drive — подключить rclone
 set -euo pipefail
+
+is_ru() {
+    local loc=""
+    if [[ -f "$HOME/.config/locale.conf" ]]; then
+        loc="$(grep -E '^LANG=' "$HOME/.config/locale.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)"
+    fi
+    [[ -z "$loc" ]] && loc="${LC_ALL:-${LANG:-}}"
+    [[ "$loc" == ru* || "$loc" == RU* ]]
+}
+
 configured() { rclone listremotes 2>/dev/null | grep -qx 'gdrive:'; }
 if [[ "${1:-}" == --check ]]; then
     configured || exit 1
@@ -10,19 +21,37 @@ if [[ "${1:-}" == --check ]]; then
     exit 0
 fi
 
-command -v rclone >/dev/null || { echo "rclone не установлен (пакет rclone)."; exit 1; }
+if ! command -v rclone >/dev/null 2>&1; then
+    if is_ru; then
+        echo "rclone не установлен (пакет rclone)." >&2
+    else
+        echo "rclone is not installed (rclone package)." >&2
+    fi
+    exit 1
+fi
+
 if ! configured; then
     client_id="${CLIENT_ID:-}"
     client_secret="${CLIENT_SECRET:-}"
     if [[ -z "$client_id" && -t 0 ]]; then
-        echo "Свой OAuth-клиент Google (Drive API) работает быстрее общего ключа rclone."
-        echo "Его client_id/client_secret хранятся только локально в ~/.config/rclone/rclone.conf."
-        echo "Оставьте поля пустыми, чтобы использовать общий ключ rclone."
+        if is_ru; then
+            echo "Свой OAuth-клиент Google (Drive API) работает быстрее общего ключа rclone."
+            echo "Его client_id/client_secret хранятся только локально в ~/.config/rclone/rclone.conf."
+            echo "Оставьте поля пустыми, чтобы использовать общий ключ rclone."
+        else
+            echo "A custom Google OAuth client (Drive API) performs faster than the shared rclone key."
+            echo "Its client_id/client_secret are stored locally in ~/.config/rclone/rclone.conf."
+            echo "Leave empty to use the shared public rclone key."
+        fi
         read -rp "client_id: " client_id
         read -rsp "client_secret: " client_secret
         echo
     fi
-    echo "Откроется браузер для входа в Google Drive через rclone..."
+    if is_ru; then
+        echo "Откроется браузер для входа в Google Drive через rclone..."
+    else
+        echo "Opening browser to authenticate Google Drive via rclone..."
+    fi
     rclone config create gdrive drive scope=drive \
         ${client_id:+client_id="$client_id"} ${client_secret:+client_secret="$client_secret"}
 fi

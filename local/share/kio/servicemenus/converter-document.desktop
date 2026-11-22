@@ -9,7 +9,7 @@ X-KDE-Submenu[ru]=Конвертировать в...
 Icon=transform-scale
 
 [Desktop Action ToPdf]
-Name=PDF Документ
+Name=PDF Document
 Name[ru]=PDF Документ
 Icon=application-pdf
 Exec=dolphin-convert --format pdf %F
@@ -27,13 +27,13 @@ Icon=application-vnd.oasis.opendocument.text
 Exec=dolphin-convert --format odt %F
 
 [Desktop Action ToTxt]
-Name=TXT (Простой текст)
+Name=TXT (Plain Text)
 Name[ru]=TXT (Простой текст)
 Icon=text-plain
 Exec=dolphin-convert --format txt %F
 
 [Desktop Action ToHtml]
-Name=HTML (Веб-страница)
+Name=HTML (Web Page)
 Name[ru]=HTML (Веб-страница)
 Icon=text-html
 Exec=dolphin-convert --format html %F
@@ -45,7 +45,7 @@ Icon=text-markdown
 Exec=dolphin-convert --format md %F
 
 [Desktop Action ToEpub]
-Name=EPUB (Электронная книга)
+Name=EPUB (E-book)
 Name[ru]=EPUB (Электронная книга)
 Icon=application-epub+zip
 Exec=dolphin-convert --format epub %F

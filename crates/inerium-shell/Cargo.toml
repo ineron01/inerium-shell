@@ -11,6 +11,7 @@ authors.workspace = true
 inerium-i18n = { workspace = true }
 inerium-hw = { workspace = true }
 inerium-theme = { workspace = true }
+inerium-tools = { workspace = true }
 gtk4 = { workspace = true }
 gdk4 = { workspace = true }
 gio = { workspace = true }

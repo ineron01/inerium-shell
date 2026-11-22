@@ -10,7 +10,7 @@ description = "A clean dark theme celebrating the lights of downtown Tokyo at ni
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(26, 27, 38, 0.98)"

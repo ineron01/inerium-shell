@@ -1,30 +1,59 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+is_ru() {
+    local locale_conf="$HOME/.config/locale.conf"
+    if [[ -f "$locale_conf" ]] && grep -qE '^LANG=ru' "$locale_conf"; then
+        return 0
+    fi
+    [[ "${LANG:-}" =~ ^ru || "${LC_ALL:-}" =~ ^ru ]]
+}
+
 case "${1:-}" in
     "status")
-        echo "=== Статус сетевой изоляции ==="
-        echo -n "Основная система (Хост / VPN): "
-        curl -s --max-time 3 https://ifconfig.me 2>/dev/null || echo "нет связи"
-        echo ""
-        echo -n "Изолированная сеть (novpn / Прямой интернет): "
-        if ip netns list | grep -qw "novpn"; then
-            sudo ip netns exec novpn curl -s --max-time 3 https://ifconfig.me 2>/dev/null || echo "нет связи в novpn"
+        if is_ru; then
+            echo "=== Статус сетевой изоляции ==="
+            echo -n "Основная система (Хост / VPN): "
         else
-            echo "служба novpn остановлена"
+            echo "=== Network Isolation Status ==="
+            echo -n "Host System (VPN / Default): "
+        fi
+        curl -s --max-time 3 https://ifconfig.me 2>/dev/null || { if is_ru; then echo "нет связи"; else echo "no connection"; fi; }
+        echo ""
+        if is_ru; then
+            echo -n "Изолированная сеть (novpn / Прямой интернет): "
+        else
+            echo -n "Isolated Network (novpn / Direct Internet): "
+        fi
+        if ip netns list | grep -qw "novpn"; then
+            sudo ip netns exec novpn curl -s --max-time 3 https://ifconfig.me 2>/dev/null || { if is_ru; then echo "нет связи в novpn"; else echo "no connection in novpn"; fi; }
+        else
+            if is_ru; then echo "служба novpn остановлена"; else echo "novpn service stopped"; fi
         fi
         echo ""
         ;;
     "restart"|"refresh")
-        echo "Обновление маршрутов novpn под текущий физический интерфейс..."
+        if is_ru; then
+            echo "Обновление маршрутов novpn под текущий физический интерфейс..."
+        else
+            echo "Refreshing novpn routes for active physical interface..."
+        fi
         sudo /usr/local/bin/novpn-up
         ;;
     "stop"|"off")
-        echo "Остановка novpn..."
+        if is_ru; then
+            echo "Остановка novpn..."
+        else
+            echo "Stopping novpn..."
+        fi
         sudo systemctl stop novpn.service
         ;;
     "start"|"on")
-        echo "Запуск novpn..."
+        if is_ru; then
+            echo "Запуск novpn..."
+        else
+            echo "Starting novpn..."
+        fi
         sudo systemctl start novpn.service
         ;;
     "make-desktop"|"desktop"|"profile"|"make-profile")
@@ -36,20 +65,36 @@ case "${1:-}" in
         if command -v "$desktop_helper" >/dev/null 2>&1 || [[ -x "$desktop_helper" ]]; then
             exec "$desktop_helper" "$@"
         else
-            echo "Ошибка: утилита novpn-desktop не найдена." >&2
+            if is_ru; then
+                echo "Ошибка: утилита novpn-desktop не найдена." >&2
+            else
+                echo "Error: novpn-desktop utility not found." >&2
+            fi
             exit 1
         fi
         ;;
     "help"|"-h"|"--help"|"")
-        echo "Использование: novpn <команда> [параметры...]"
-        echo "              novpn [status|refresh|on|off]"
-        echo "              novpn make-desktop [браузер]"
-        echo ""
-        echo "Примеры:"
-        echo "  novpn curl https://ifconfig.me"
-        echo "  novpn make-desktop firefox"
-        echo "  novpn make-desktop brave"
-        echo "  novpn status"
+        if is_ru; then
+            echo "Использование: novpn <команда> [параметры...]"
+            echo "              novpn [status|refresh|on|off]"
+            echo "              novpn make-desktop [браузер]"
+            echo ""
+            echo "Примеры:"
+            echo "  novpn curl https://ifconfig.me"
+            echo "  novpn make-desktop firefox"
+            echo "  novpn make-desktop brave"
+            echo "  novpn status"
+        else
+            echo "Usage: novpn <command> [args...]"
+            echo "       novpn [status|refresh|on|off]"
+            echo "       novpn make-desktop [browser]"
+            echo ""
+            echo "Examples:"
+            echo "  novpn curl https://ifconfig.me"
+            echo "  novpn make-desktop firefox"
+            echo "  novpn make-desktop brave"
+            echo "  novpn status"
+        fi
         if [ -z "${1:-}" ]; then
             exit 1
         else

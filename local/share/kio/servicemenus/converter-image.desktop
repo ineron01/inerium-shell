@@ -51,7 +51,7 @@ Icon=image-gif
 Exec=dolphin-convert --format gif %F
 
 [Desktop Action ToIco]
-Name=ICO (Иконка)
+Name=ICO (Icon)
 Name[ru]=ICO (Иконка)
 Icon=image-x-ico
 Exec=dolphin-convert --format ico %F

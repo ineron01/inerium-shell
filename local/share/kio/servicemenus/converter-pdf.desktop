@@ -9,19 +9,19 @@ X-KDE-Submenu[ru]=Конвертировать в...
 Icon=transform-scale
 
 [Desktop Action ToPng]
-Name=PNG (Изображения страниц)
+Name=PNG (Page Images)
 Name[ru]=PNG (Изображения страниц)
 Icon=image-png
 Exec=dolphin-convert --format png %F
 
 [Desktop Action ToJpg]
-Name=JPEG (Изображения страниц)
+Name=JPEG (Page Images)
 Name[ru]=JPEG (Изображения страниц)
 Icon=image-jpeg
 Exec=dolphin-convert --format jpg %F
 
 [Desktop Action ToTxt]
-Name=TXT (Извлечь текст)
+Name=TXT (Extract Text)
 Name[ru]=TXT (Извлечь текст)
 Icon=text-plain
 Exec=dolphin-convert --format txt %F

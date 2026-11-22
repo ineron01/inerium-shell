@@ -187,7 +187,7 @@ def generate_layout_keywords(metadata_strings: list[str], plain_keywords: list[s
             valid.append(k_clean)
     return valid
 
-def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bool = True) -> bool:
+def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bool = True, origin: str = "system") -> bool:
     try:
         with open(src_path, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
@@ -254,18 +254,21 @@ def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bo
                 new_lines.append(f"Keywords={kw_string}\n")
                 new_lines.append(f"Keywords[ru]={kw_string}\n")
                 new_lines.append("X-Inerium-Indexed=true\n")
+                new_lines.append(f"X-Inerium-Indexed-Origin={origin}\n")
                 has_inserted_kw = True
             in_main = False
             new_lines.append(line)
             continue
 
         if in_main:
-            if sline.startswith("Keywords=") or sline.startswith("Keywords[") or sline.startswith("X-Inerium-Indexed="):
+            if (sline.startswith("Keywords=") or sline.startswith("Keywords[") or
+                    sline.startswith("X-Inerium-Indexed=") or sline.startswith("X-Inerium-Indexed-Origin=")):
                 # Replace existing keyword lines with our comprehensive set
                 if not has_inserted_kw:
                     new_lines.append(f"Keywords={kw_string}\n")
                     new_lines.append(f"Keywords[ru]={kw_string}\n")
                     new_lines.append("X-Inerium-Indexed=true\n")
+                    new_lines.append(f"X-Inerium-Indexed-Origin={origin}\n")
                     has_inserted_kw = True
                 continue
 
@@ -275,12 +278,13 @@ def process_desktop_file(src_path: str, dst_path: str, use_existing_keywords: bo
         new_lines.append(f"Keywords={kw_string}\n")
         new_lines.append(f"Keywords[ru]={kw_string}\n")
         new_lines.append("X-Inerium-Indexed=true\n")
+        new_lines.append(f"X-Inerium-Indexed-Origin={origin}\n")
 
     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
     try:
         with open(dst_path, encoding='utf-8') as f:
             if f.read() == "".join(new_lines):
-                return True
+                return False
     except Exception:
         pass
     # Случайное имя + O_EXCL (mkstemp): заранее подложенный симлинк "<файл>.tmp"
@@ -315,26 +319,56 @@ def update_desktop_database(path: str) -> None:
     except OSError:  # не установлен или недоступен в PATH
         pass
 
-def process_user_dir(user_dir: str) -> None:
+def process_user_dir(user_dir: str, skip_fnames: set[str] = None) -> bool:
+    if skip_fnames is None:
+        skip_fnames = set()
+    changed = False
+
+    # Clean up broken symlinks in user_dir as owner (protect against symlink dir traversal)
+    if os.path.isdir(user_dir) and not os.path.islink(user_dir):
+        try:
+            for entry in os.listdir(user_dir):
+                full_path = os.path.join(user_dir, entry)
+                if os.path.islink(full_path) and not os.path.exists(full_path):
+                    try:
+                        os.unlink(full_path)
+                        changed = True
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
     for fpath in glob.glob(os.path.join(user_dir, "*.desktop")):
+        fname = os.path.basename(fpath)
+        if fname in skip_fnames:
+            continue
         if os.path.isfile(fpath) and not os.path.islink(fpath):
             # Файлы обрабатываются на месте, их Keywords уже сгенерированы нами —
             # пересобираем только из имён, иначе старый мусор сохранится навсегда
-            process_desktop_file(fpath, fpath, use_existing_keywords=False)
-    update_desktop_database(user_dir)
+            if process_desktop_file(fpath, fpath, use_existing_keywords=False, origin="user"):
+                changed = True
+    if changed:
+        update_desktop_database(user_dir)
+    return changed
 
-def run_as_owner(user_dir: str, func) -> None:
-    """Выполняет func(user_dir) с правами владельца домашней папки.
+def run_as_owner(user_dir: str, func, *args) -> None:
+    """Выполняет func(user_dir, *args) с правами владельца домашней папки.
     Если скрипт запущен не от root — просто обрабатывает только свою папку."""
-    home = user_dir[: -len("/.local/share/applications")]
+    if os.geteuid() != 0:
+        try:
+            if os.lstat(user_dir).st_uid == os.geteuid():
+                func(user_dir, *args)
+        except OSError:
+            pass
+        return
+
+    suffix = "/.local/share/applications"
+    if not user_dir.endswith(suffix):
+        return
+    home = user_dir.removesuffix(suffix)
     try:
         st = os.lstat(home)
     except OSError:
-        return
-
-    if os.geteuid() != 0:
-        if st.st_uid == os.geteuid():
-            func(user_dir)
         return
 
     if st.st_uid == 0:
@@ -354,7 +388,7 @@ def run_as_owner(user_dir: str, func) -> None:
             os.setuid(st.st_uid)
             # После сброса прав проверки (симлинки, владельцы) выполняет ядро
             if not os.path.islink(user_dir) and os.path.isdir(user_dir):
-                func(user_dir)
+                func(user_dir, *args)
         except Exception as e:
             print(f"inerium-desktop-indexer: {user_dir}: {e}", file=sys.stderr)
             code = 1
@@ -367,6 +401,18 @@ def is_cyrillic_needed() -> bool:
     lc_all = (os.environ.get("LC_ALL") or "").lower()
     if lang.startswith("ru") or lc_all.startswith("ru"):
         return True
+    locale_conf = os.path.expanduser("~/.config/locale.conf")
+    if os.path.isfile(locale_conf):
+        try:
+            with open(locale_conf, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    sline = line.strip().lower()
+                    if sline.startswith("lang=") or sline.startswith("lc_all="):
+                        val = sline.split("=", 1)[1].strip("'\"")
+                        if val.startswith("ru"):
+                            return True
+        except Exception:
+            pass
     try:
         res = subprocess.run(["hyprctl", "getoption", "input:kb_layout", "-j"],
                              capture_output=True, text=True, check=False)
@@ -387,6 +433,8 @@ def index_all():
 
     os.makedirs(TARGET_DIR, exist_ok=True)
     count = 0
+    target_changed = False
+    system_fnames = set()
 
     # 1. Process all system desktop files
     for src_dir in SOURCE_DIRS:
@@ -394,29 +442,34 @@ def index_all():
             continue
         for fpath in glob.glob(os.path.join(src_dir, "*.desktop")):
             fname = os.path.basename(fpath)
+            system_fnames.add(fname)
             dst_path = os.path.join(TARGET_DIR, fname)
-            if process_desktop_file(fpath, dst_path):
-                count += 1
+            if process_desktop_file(fpath, dst_path, origin="system"):
+                target_changed = True
+            count += 1
 
     # 2. Also process any user-specific desktop files in ~/.local/share/applications/ in-place.
     # Каждая пользовательская папка обрабатывается с правами её владельца, а не root:
     # иначе любой локальный пользователь мог заставить root писать в чужие файлы.
     for USER_DIR in USER_DIRS:
-        run_as_owner(USER_DIR, process_user_dir)
+        # При запуске от обычного пользователя (TARGET_DIR == USER_DIRS[0])
+        # пропускаем файлы из system_fnames, чтобы не затирать системные Keywords и не ставить Origin=user
+        skip = system_fnames if TARGET_DIR == USER_DIR else set()
+        run_as_owner(USER_DIR, process_user_dir, skip)
 
-    # 3. Clean up broken symlinks and deleted applications
-    dirs_to_clean = set([TARGET_DIR] + USER_DIRS)
-    for d in dirs_to_clean:
-        if not os.path.isdir(d):
-            continue
-        for entry in os.listdir(d):
-            full_path = os.path.join(d, entry)
-            # Remove broken symlinks
-            if os.path.islink(full_path) and not os.path.exists(full_path):
-                try:
-                    os.unlink(full_path)
-                except Exception:
-                    pass
+    # 3. Clean up broken symlinks and deleted applications in TARGET_DIR
+    if os.path.isdir(TARGET_DIR) and not os.path.islink(TARGET_DIR):
+        try:
+            for entry in os.listdir(TARGET_DIR):
+                full_path = os.path.join(TARGET_DIR, entry)
+                if os.path.islink(full_path) and not os.path.exists(full_path):
+                    try:
+                        os.unlink(full_path)
+                        target_changed = True
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
     # Clean up deleted application files in TARGET_DIR
     for dst_file in glob.glob(os.path.join(TARGET_DIR, "*.desktop")):
@@ -427,18 +480,20 @@ def index_all():
             if not should_remove:
                 try:
                     with open(dst_file, "r", encoding="utf-8", errors="ignore") as f:
-                        if "X-Inerium-Indexed=true" in f.read():
+                        if "X-Inerium-Indexed-Origin=system" in f.read():
                             should_remove = True
                 except Exception:
                     pass
             if should_remove:
                 try:
                     os.remove(dst_file)
+                    target_changed = True
                 except Exception:
                     pass
 
-    # 4. Update desktop databases
-    update_desktop_database(TARGET_DIR)
+    # 4. Update desktop databases only if TARGET_DIR was modified
+    if target_changed:
+        update_desktop_database(TARGET_DIR)
 
     print(f"inerium-desktop-indexer: Successfully indexed {count} applications.")
 

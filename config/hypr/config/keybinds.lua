@@ -1,7 +1,6 @@
 -- Keybindings configurationwiki https://wiki.hypr.land/Configuring/Binds/
 
 local mainMod = "SUPER"
-local home = os.getenv("HOME") or ""
 local launchPrefix = "uwsm app -- "
 
 local function digitCode(d)
@@ -19,16 +18,16 @@ hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd(launchPrefix .. "rofi -show drun"
 hl.bind(mainMod .. " + Tab", hl.dsp.exec_cmd(launchPrefix .. "rofi -show window"))
 
 -- Control Center
-hl.bind(mainMod .. " + A", hl.dsp.exec_cmd(home .. "/.local/bin/inerium-popup control"))
+hl.bind(mainMod .. " + A", hl.dsp.exec_cmd("inerium-popup control"))
 
 -- Clipboard manager
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/inerium-clipboard"))
-hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/inerium-clipboard --images"))
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd(launchPrefix .. "inerium-clipboard"))
+hl.bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd(launchPrefix .. "inerium-clipboard --images"))
 
 -- Session lock & power menu
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("hyprlock || loginctl lock-session"))
-hl.bind(mainMod .. " + ALT + C", hl.dsp.exec_cmd(home .. "/.local/bin/inerium-popup power"))
-hl.bind("XF86PowerOff", hl.dsp.exec_cmd(home .. "/.local/bin/inerium-popup power"))
+hl.bind(mainMod .. " + ALT + C", hl.dsp.exec_cmd("inerium-popup power"))
+hl.bind("XF86PowerOff", hl.dsp.exec_cmd("inerium-popup power"))
 
 -------------------------------
 ---- 2. WINDOW MANAGEMENT ----
@@ -135,8 +134,8 @@ hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness lo
 hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("hyprpicker -a -n"))
 
 -- Screenshots (hypr-screenshot)
-hl.bind("Print",         hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/hypr-screenshot area"))
-hl.bind("SHIFT + Print", hl.dsp.exec_cmd(launchPrefix .. home .. "/.local/bin/hypr-screenshot fullscreen"))
+hl.bind("Print",         hl.dsp.exec_cmd(launchPrefix .. "hypr-screenshot area"))
+hl.bind("SHIFT + Print", hl.dsp.exec_cmd(launchPrefix .. "hypr-screenshot fullscreen"))
 
 -- Zoom
 local function zoomfunction(value)

@@ -27,25 +27,25 @@ Icon=video-x-matroska
 Exec=dolphin-convert --format mkv %F
 
 [Desktop Action ToGif]
-Name=GIF (Анимация 15fps)
+Name=GIF (Animation 15fps)
 Name[ru]=GIF (Анимация 15fps)
 Icon=image-gif
 Exec=dolphin-convert --format gif %F
 
 [Desktop Action ToMp3]
-Name=MP3 (Извлечь аудио)
+Name=MP3 (Extract Audio)
 Name[ru]=MP3 (Извлечь аудио)
 Icon=audio-mp3
 Exec=dolphin-convert --format mp3 %F
 
 [Desktop Action ToWav]
-Name=WAV (Извлечь аудио)
+Name=WAV (Extract Audio)
 Name[ru]=WAV (Извлечь аудио)
 Icon=audio-x-wav
 Exec=dolphin-convert --format wav %F
 
 [Desktop Action ToFlac]
-Name=FLAC (Извлечь аудио)
+Name=FLAC (Extract Audio)
 Name[ru]=FLAC (Извлечь аудио)
 Icon=audio-x-flac
 Exec=dolphin-convert --format flac %F

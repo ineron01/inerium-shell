@@ -5,7 +5,6 @@
 //! - Interactive month navigation: wheel scroll shifts month, right-click resets to current
 //! - Watch mode: Streams time updates, instant reaction to SIGUSR1 on toggle
 
-use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -25,8 +24,7 @@ fn seconds_registry() -> PidRegistry {
 }
 
 fn month_offset_path() -> PathBuf {
-    let uid = posix_getuid();
-    PathBuf::from(format!("/run/user/{}/inerium-clock-offset", uid))
+    crate::sys::runtime_dir().join("inerium-clock-offset")
 }
 
 fn get_month_offset() -> i32 {
@@ -45,7 +43,7 @@ fn set_month_offset(offset: i32) {
     } else {
         let _ = fs::write(p, offset.to_string());
     }
-    PidRegistry::new("clock-detailed").notify_all(SIGUSR1);
+    let _ = PidRegistry::notify_all("clock-detailed", SIGUSR1);
 }
 
 fn is_detailed() -> bool {
@@ -55,7 +53,7 @@ fn is_detailed() -> bool {
 fn toggle_detailed() {
     let reg = clock_registry();
     reg.toggle_state();
-    reg.notify_all(SIGUSR1);
+    let _ = reg.notify(SIGUSR1);
 }
 
 fn is_seconds_active() -> bool {
@@ -65,7 +63,7 @@ fn is_seconds_active() -> bool {
 fn toggle_seconds() {
     let reg = seconds_registry();
     reg.toggle_state();
-    clock_registry().notify_all(SIGUSR1);
+    let _ = clock_registry().notify(SIGUSR1);
 }
 
 const WEEKDAY_SHORT_RU: [&str; 7] = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
@@ -357,8 +355,7 @@ fn run_watch(waybar: bool) {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.len() > 1 {
         match args[1].as_str() {
             "--toggle" => {

@@ -4,14 +4,13 @@
 //! - Watch mode: Streams network updates, reacts to SIGUSR1
 //! - Tooltip: Rich Pango markup with interface name, IP address, state
 
-use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
 use inerium_i18n::tr;
 use inerium_tools::format::escape_json;
-use inerium_tools::ipc::SelfPipe;
+use inerium_tools::ipc::{PidRegistry, SelfPipe};
 use inerium_tools::sys::posix::get_interface_ipv4;
 
 fn read_trimmed(path: &Path) -> Option<String> {
@@ -56,22 +55,26 @@ fn detect_network() -> NetState {
     NetState::Disconnected
 }
 
-fn format_status() -> &'static str {
-    match detect_network() {
+fn format_status_for(state: &NetState) -> &'static str {
+    match state {
         NetState::Ethernet(_) => "󰈀 Eth",
         NetState::Wifi(_) => "󰤨 WiFi",
         NetState::Disconnected => "󰤭",
     }
 }
 
+fn format_status() -> &'static str {
+    format_status_for(&detect_network())
+}
+
 fn get_ip_address(iface: &str) -> Option<String> {
     get_interface_ipv4(iface)
 }
 
-fn format_tooltip() -> String {
-    match detect_network() {
+fn format_tooltip_for(state: &NetState) -> String {
+    match state {
         NetState::Ethernet(iface) => {
-            let ip = get_ip_address(&iface).unwrap_or_else(|| tr("Acquiring...", "Получение...").to_string());
+            let ip = get_ip_address(iface).unwrap_or_else(|| tr("Acquiring...", "Получение...").to_string());
             format!(
                 "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
                 <span color='#87a987' weight='bold'>{}</span>\n\
@@ -91,7 +94,7 @@ fn format_tooltip() -> String {
             )
         }
         NetState::Wifi(iface) => {
-            let ip = get_ip_address(&iface).unwrap_or_else(|| tr("Acquiring...", "Получение...").to_string());
+            let ip = get_ip_address(iface).unwrap_or_else(|| tr("Acquiring...", "Получение...").to_string());
             format!(
                 "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
                 <span color='#7fb4ca' weight='bold'>{}</span>\n\
@@ -125,10 +128,15 @@ fn format_tooltip() -> String {
     }
 }
 
+fn format_tooltip() -> String {
+    format_tooltip_for(&detect_network())
+}
+
 fn format_json() -> String {
-    let text = format_status();
-    let tooltip = format_tooltip();
-    let class = match detect_network() {
+    let state = detect_network();
+    let text = format_status_for(&state);
+    let tooltip = format_tooltip_for(&state);
+    let class = match &state {
         NetState::Ethernet(_) => "ethernet",
         NetState::Wifi(_) => "wifi",
         NetState::Disconnected => "disconnected",
@@ -142,6 +150,9 @@ fn format_json() -> String {
 }
 
 fn watch_mode(waybar: bool) {
+    let reg = PidRegistry::new("network");
+    let _pid_guard = reg.register();
+
     let self_pipe = match SelfPipe::new() {
         Ok(sp) => sp,
         Err(e) => {
@@ -166,8 +177,7 @@ fn watch_mode(waybar: bool) {
     }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--tooltip") {
         println!("{}", format_tooltip());
         return;

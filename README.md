@@ -37,7 +37,7 @@ Universal CachyOS / Arch Linux desktop environment built around **Hyprland (Lua 
 ```
 inerium-shell/
 ├── assets/                  # Default wallpapers, preview showcases, and greeter background
-├── config/                  # Symlinkable desktop configurations (~/.config/*)
+├── config/                  # Deployed desktop configurations managed via manifest (~/.config/*)
 ├── crates/                  # Unified Rust workspace suite
 │   ├── dolphin-converter/   # Fast document/media converter CLI with ONNX background removal
 │   ├── inerium-camera/      # High-performance virtual webcam manager (Android to /dev/video0)
@@ -47,9 +47,10 @@ inerium-shell/
 │   ├── inerium-polkit/      # Native GTK4/Relm4 Polkit authentication agent
 │   ├── inerium-setup/       # GTK4 onboarding wizard, display calibration & sign-ins
 │   ├── inerium-shell/       # GTK4 / Layer Shell control center and Relm4 popups
+│   ├── inerium-theme/       # Centralized theming engine, palette generator & token compiler
 │   └── inerium-tools/       # Waybar telemetry daemons, IPC bridges & cooling regulator
 ├── docs/                    # Illustrated guides, keybindings, and module runbooks
-├── first-login.d/           # Onboarding sign-in steps (GitHub CLI, Google Drive rclone)
+├── first-login.d/           # Onboarding sign-in steps (GitHub CLI, Google Drive rclone, No-VPN routing)
 ├── local/                   # User executables (~/.local/bin/) and Dolphin KIO servicemenus
 ├── scripts/install/         # Modular installation phases (00-helpers through 70-summary)
 ├── system/                  # System-wide udev rules, greetd configs, and systemd units
@@ -129,7 +130,8 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--with-gdrive`: **Google Drive Integration** — Background `rclone` user service mount for cloud storage access in Dolphin.
 - `--with-converter`: **Dolphin Converter** — Context menu audio, video, document, and PDF converter with optional AI background removal (`silueta.onnx`).
 - `--with-camera`: **Inerium Camera** — Turns an Android phone into a high-definition webcam (`/dev/video0`) with GTK4 GUI, dynamic switching (back/front/laptop), and portrait/landscape support.
-- `--with-msi-ec`: **MSI Cooling & Fan Regulator** — Upstream `msi-ec-dkms-git` kernel driver + dynamic CPU/GPU thermal curve regulator daemon (`msi-fan-regulator`).
+- `--with-msi-ec`: **MSI Kernel Module** — Patched `msi-ec-dkms-git` kernel driver for battery threshold and hardware platform nodes on MSI laptops.
+- `--with-fan-regulator`: **MSI Fan Regulator** — Thermal management daemon (`msi-fan-regulator`) applying custom acoustic/cooling fan curves (requires MSI hardware).
 - `--with-novpn`: **noVPN Split-Tunneling** — Run specific applications directly through physical network interfaces bypassing any active VPN.
 - `--with-github`: **GitHub CLI Integration** — Install GitHub CLI (`gh`) and register first-login authentication step for git push and commit signing.
 - `--all-addons`: Installs all optional add-ons together.
@@ -138,18 +140,20 @@ Inerium Shell provides optional system extensions that can be selected in the in
 - `--update`: Update an existing installation (preserves installed add-on modules and configuration without repeating initial setup questions).
 - `--sysupgrade`, `-Syu`: Perform a full rolling OS upgrade (`pacman -Syu`) alongside the Inerium Shell update (default update mode is targeted and fast, updating only Inerium and missing dependencies).
 - `--bin`: Install prebuilt binaries from GitHub Releases (default).
+- `--rolling`: Install bleeding-edge rolling-release binary builds (with automatic fallback to `rolling` if Arch Linux dynamic library ABI changes).
 - `--from-source`: Compile Rust workspace locally via Cargo.
 - `--with-greeter`: Install and configure `greetd` + `inerium-greeter` display manager.
 - `--lang [en|ru]`: Set installer and system language preference.
 - `--workspaces N`: Workspaces per monitor (1-9, default: 3).
 - `--fetch-model`: Download `silueta.onnx` background removal AI model (~43 MB) if missing.
-- `--update-configs`: Update configuration files while preserving modified user files as `.bak.<timestamp>`.
+- `--update-ui`: Update UI & shell components only (Waybar, Rofi, themes, animations; preserves user keybinds & window rules).
+- `--update-configs[=all|ui]`: Update configuration files (`ui`: UI/shell only; `all`: full update while preserving modified user files as `.bak.<timestamp>`).
 - `--restore-assets`, `--restore-defaults`: Restore missing standard wallpapers and themes (on update; by default, user-deleted wallpapers and themes are kept deleted).
 - `--check-abi`: Validate runtime dynamic library dependencies (`ldd`) for all installed binaries.
 - `--prune`: Prune obsolete files against previous install manifest.
 - `--dry-run`: Print planned actions without modifying the system.
 - `--non-interactive`, `-y`: Run unattended without interactive TUI prompts.
-- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium-shell` (leaving any custom developer paths untouched).
+- `--uninstall`: **Clean Uninstaller** — Disables registered user/system services, removes all deployed symlinks, binaries, and templates based on the installation manifest (`~/.local/state/inerium/install-manifest`), and removes `~/.local/share/inerium/shell` (and legacy `~/.local/share/inerium-shell`, leaving user configurations in `~/.config/` intact to preserve a functional Hyprland session, and keeping custom developer paths untouched).
 
 ---
 
@@ -174,8 +178,7 @@ Inerium Desktop includes a declarative, Single Source of Truth theme compiler an
 - **Kanagawa Dragon (`kanagawa-dragon`)**: Deep sumi-ink dark theme with warm dragon tones and subdued accents.
 
 ### Adaptive Control Center
-- **2 Themes (Default Out-of-the-Box)**: Clicking the **Theme** tile in the Control Center instantly toggles between dark and light modes.
-- **>2 Themes (Custom User Themes)**: As soon as you add custom themes to `~/.config/inerium/themes/`, clicking the tile opens the interactive **Theme Gallery** with theme cards, author attribution, color swatches, and active badges. Right-clicking the tile always performs a quick dark ↔ light toggle.
+- **Appearance Button (`󰏘`) in Header**: Left-clicking opens the comprehensive **Themes & Wallpapers** view. Right-clicking the icon instantly performs a quick dark ↔ light mode toggle.
 
 ### Adding Custom Themes
 Save your custom theme as a TOML file in `~/.config/inerium/themes/<id>.toml`. You can generate a pristine commented template with:
@@ -263,7 +266,8 @@ A template for crafting your own theme is available at `~/.config/inerium/themes
 - `inerium-theme set <id>` — Apply a theme by ID (automatically installs from extra pool if needed).
 - `inerium-theme install <id>` — Move an extra theme into permanent user themes (`~/.config/inerium/themes/`) and apply it.
 - `inerium-theme toggle` — Toggle between primary dark and light themes.
-- `inerium-theme cycle` — Cycle forward through all available user themes.
+- `inerium-theme reload` — Reload and reapply active theme from current configuration.
+- `inerium-theme current` — Print currently active theme ID.
 - `inerium-theme status` — Output active theme metadata in JSON.
 
 ### User Hooks (`~/.config/inerium/hooks.d/`)
@@ -275,5 +279,5 @@ Any executable placed in `~/.config/inerium/hooks.d/` runs automatically after a
 
 Inerium Shell is distributed under the [GNU General Public License v3.0 or later](LICENSE) (GPL-3.0-or-later).
 
-- `crates/inerium-polkit` includes code derived from `hyprpolkitagent` (licensed under Apache-2.0, see `crates/inerium-polkit/LICENSE` and `NOTICE`).
+- `crates/inerium-polkit` includes code derived from `soteria` (licensed under Apache-2.0, see `crates/inerium-polkit/LICENSE` and `NOTICE`).
 

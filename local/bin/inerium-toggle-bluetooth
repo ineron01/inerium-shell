@@ -35,5 +35,5 @@ else
     fi
 fi
 
-# Linux TASK_COMM_LEN is 15 chars: inerium-bluetooth comm is truncated to inerium-bluetoo
-pkill -SIGUSR1 -x inerium-bluetoo 2>/dev/null || true
+# Notify bluetooth module via inerium-ctl with fallback to pkill
+inerium-ctl notify bluetooth 2>/dev/null || pkill -SIGUSR1 inerium-bluetooth 2>/dev/null || pkill -SIGUSR1 -x inerium-bluetoo 2>/dev/null || true

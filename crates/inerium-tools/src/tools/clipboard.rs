@@ -66,9 +66,14 @@ fn load_metadata() -> BTreeMap<String, ImageMetaItem> {
 fn save_metadata(mut meta: BTreeMap<String, ImageMetaItem>) {
     let p = meta_file_path();
     if meta.len() > MAX_HISTORY_ITEMS {
+        let mut entries: Vec<(String, String)> = meta
+            .iter()
+            .map(|(k, v)| (k.clone(), v.datetime.clone()))
+            .collect();
+        // Sort by datetime ascending so oldest items come first
+        entries.sort_by(|a, b| a.1.cmp(&b.1));
         let keys_to_remove = meta.len() - MAX_HISTORY_ITEMS;
-        let keys: Vec<String> = meta.keys().take(keys_to_remove).cloned().collect();
-        for k in keys {
+        for (k, _) in entries.into_iter().take(keys_to_remove) {
             meta.remove(&k);
         }
     }
@@ -290,8 +295,7 @@ fn process_text_item(content: &str) -> (String, &'static str) {
     (label, "text-x-generic")
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+pub fn run(args: &[String]) {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("inerium-clipboard — Native Rust Clipboard Manager for Rofi & cliphist\n\nUsage: inerium-clipboard [--images|-i]");
         return;
@@ -343,18 +347,21 @@ fn main() {
         save_metadata(meta_registry);
     }
 
-    let (prompt, theme_name) = if images_only {
+    let (prompt, theme_name, placeholder) = if images_only {
         (
             format!("󰋩  {}", tr("Screenshots & Media", "Галерея скриншотов")),
             "clipboard-grid.rasi",
+            tr("Search screenshot gallery…", "Поиск в галерее скриншотов…"),
         )
     } else {
         (
             format!("󰅍  {}", tr("Clipboard", "Буфер обмена")),
             "clipboard.rasi",
+            tr("Search clipboard history…", "Поиск в истории буфера…"),
         )
     };
     let theme_file = home_dir().join(".config/rofi").join(theme_name);
+    let theme_str = format!("entry {{ placeholder: \"{}\"; }}", placeholder);
 
     let mut rofi_cmd = Command::new("rofi");
     rofi_cmd.args([
@@ -366,6 +373,8 @@ fn main() {
         "i",
         "-theme",
         theme_file.to_str().unwrap_or(""),
+        "-theme-str",
+        &theme_str,
         "-show-icons",
     ]);
 

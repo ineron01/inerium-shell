@@ -2,6 +2,7 @@
 # ============================================================================
 # scripts/install/20-tui.sh — Interactive Bilingual TUI (gum) & prompts
 # ============================================================================
+# shellcheck disable=SC2034 # State variables consumed across installer stages
 
 ensure_console_cyrillic_font() {
     # If running in a Linux virtual terminal (TTY), ensure a font with Cyrillic glyphs is loaded
@@ -41,6 +42,7 @@ gum_choose_multiselect() {
 ensure_gum_installed() {
     if [[ "$DRY_RUN" -eq 0 && "$NON_INTERACTIVE" -eq 0 && -t 0 && -t 1 ]] && ! command -v gum >/dev/null 2>&1; then
         if [[ "$SKIP_PKGS" -eq 0 ]]; then
+            # shellcheck disable=SC2024
             sudo pacman -S --needed --noconfirm gum >> "$LOG_FILE" 2>&1 || true
         fi
     fi
@@ -214,15 +216,25 @@ run_tui_prompts() {
                 log "Сохранение текущего набора модулей. Запуск быстрого обновления..."
             fi
 
-            local cfg_act_update="Обновить конфигурации (изменённые файлы будут забэкаплены в .bak)"
-            local cfg_act_keep="Оставить мои текущие конфигурации без изменений"
+            local cfg_act_keep="Не трогать конфиги (оставить текущие без изменений)"
+            local cfg_act_ui="Обновить только оформление и оболочку (Waybar, Rofi, темы, анимации — бинды и правила не трогать)"
+            local cfg_act_all="Обновить все конфигурации (существующие сохранятся в .bak)"
             local default_cfg="$cfg_act_keep"
-            [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]] && default_cfg="$cfg_act_update"
+            if [[ "${UPDATE_CONFIGS_MODE:-none}" == "ui" ]]; then
+                default_cfg="$cfg_act_ui"
+            elif [[ "${UPDATE_CONFIGS_MODE:-none}" == "all" || "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
+                default_cfg="$cfg_act_all"
+            fi
             local chosen_cfg
-            chosen_cfg="$(gum choose --header "Конфигурационные файлы (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_update")"
-            if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
+            chosen_cfg="$(gum choose --header "Конфигурационные файлы (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_ui" "$cfg_act_all")"
+            if [[ "$chosen_cfg" == "$cfg_act_ui" ]]; then
+                UPDATE_CONFIGS_MODE="ui"
+                UPDATE_CONFIGS=1
+            elif [[ "$chosen_cfg" == "$cfg_act_all" ]]; then
+                UPDATE_CONFIGS_MODE="all"
                 UPDATE_CONFIGS=1
             else
+                UPDATE_CONFIGS_MODE="none"
                 UPDATE_CONFIGS=0
             fi
 
@@ -306,15 +318,25 @@ run_tui_prompts() {
                 log "Keeping installed modules untouched. Proceeding with fast update..."
             fi
 
-            local cfg_act_update="Update configurations (modified files backed up to .bak)"
-            local cfg_act_keep="Keep existing user configurations untouched"
+            local cfg_act_keep="Do not touch configs (keep current untouched)"
+            local cfg_act_ui="Update UI and shell only (Waybar, Rofi, themes, animations; keep keybinds & rules)"
+            local cfg_act_all="Update all configurations (existing preserved in .bak)"
             local default_cfg="$cfg_act_keep"
-            [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]] && default_cfg="$cfg_act_update"
+            if [[ "${UPDATE_CONFIGS_MODE:-none}" == "ui" ]]; then
+                default_cfg="$cfg_act_ui"
+            elif [[ "${UPDATE_CONFIGS_MODE:-none}" == "all" || "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
+                default_cfg="$cfg_act_all"
+            fi
             local chosen_cfg
-            chosen_cfg="$(gum choose --header "Configuration files (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_update")"
-            if [[ "$chosen_cfg" == "$cfg_act_update" ]]; then
+            chosen_cfg="$(gum choose --header "Configuration files (~/.config):" --selected "$default_cfg" "$cfg_act_keep" "$cfg_act_ui" "$cfg_act_all")"
+            if [[ "$chosen_cfg" == "$cfg_act_ui" ]]; then
+                UPDATE_CONFIGS_MODE="ui"
+                UPDATE_CONFIGS=1
+            elif [[ "$chosen_cfg" == "$cfg_act_all" ]]; then
+                UPDATE_CONFIGS_MODE="all"
                 UPDATE_CONFIGS=1
             else
+                UPDATE_CONFIGS_MODE="none"
                 UPDATE_CONFIGS=0
             fi
 
@@ -409,15 +431,25 @@ run_tui_prompts() {
         apply_chosen_addons "$chosen_addons"
 
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
-            local cfg_inst_fresh="Перезаписать на стандартные Inerium (существующие сохранятся в .bak)"
-            local cfg_inst_keep="Сохранить существующие файлы (установить только отсутствующие)"
+            local cfg_inst_keep="Сохранить существующие файлы (не трогать текущие настройки)"
+            local cfg_inst_ui="Обновить только оформление и оболочку (Waybar, Rofi, темы — правила и бинды оставить)"
+            local cfg_inst_fresh="Перезаписать все конфигурации на стандартные (существующие сохранятся в .bak)"
             local default_inst_cfg="$cfg_inst_fresh"
-            [[ "$UPDATE_CONFIGS" -eq 0 ]] && default_inst_cfg="$cfg_inst_keep"
+            if [[ "${UPDATE_CONFIGS_MODE:-none}" == "none" || "$UPDATE_CONFIGS" -eq 0 ]]; then
+                default_inst_cfg="$cfg_inst_keep"
+            elif [[ "${UPDATE_CONFIGS_MODE:-none}" == "ui" ]]; then
+                default_inst_cfg="$cfg_inst_ui"
+            fi
             local chosen_inst_cfg
-            chosen_inst_cfg="$(gum choose --header "Обнаружены существующие конфигурации (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_fresh" "$cfg_inst_keep")"
-            if [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+            chosen_inst_cfg="$(gum choose --header "Обнаружены существующие конфигурации (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_keep" "$cfg_inst_ui" "$cfg_inst_fresh")"
+            if [[ "$chosen_inst_cfg" == "$cfg_inst_ui" ]]; then
+                UPDATE_CONFIGS_MODE="ui"
+                UPDATE_CONFIGS=1
+            elif [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+                UPDATE_CONFIGS_MODE="all"
                 UPDATE_CONFIGS=1
             else
+                UPDATE_CONFIGS_MODE="none"
                 UPDATE_CONFIGS=0
             fi
         fi
@@ -475,15 +507,25 @@ run_tui_prompts() {
         apply_chosen_addons "$chosen_addons"
 
         if [[ -d "$HOME/.config/hypr" || -d "$HOME/.config/waybar" ]]; then
-            local cfg_inst_fresh="Overwrite with standard Inerium configs (existing backed up to .bak)"
-            local cfg_inst_keep="Preserve existing files (only install missing configs)"
+            local cfg_inst_keep="Preserve existing files (do not touch current user configs)"
+            local cfg_inst_ui="Update UI and shell only (Waybar, Rofi, themes, animations; keep keybinds & rules)"
+            local cfg_inst_fresh="Overwrite all configurations with standard Inerium (existing backed up to .bak)"
             local default_inst_cfg="$cfg_inst_fresh"
-            [[ "$UPDATE_CONFIGS" -eq 0 ]] && default_inst_cfg="$cfg_inst_keep"
+            if [[ "${UPDATE_CONFIGS_MODE:-none}" == "none" || "$UPDATE_CONFIGS" -eq 0 ]]; then
+                default_inst_cfg="$cfg_inst_keep"
+            elif [[ "${UPDATE_CONFIGS_MODE:-none}" == "ui" ]]; then
+                default_inst_cfg="$cfg_inst_ui"
+            fi
             local chosen_inst_cfg
-            chosen_inst_cfg="$(gum choose --header "Existing configurations detected (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_fresh" "$cfg_inst_keep")"
-            if [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+            chosen_inst_cfg="$(gum choose --header "Existing configurations detected (~/.config):" --selected "$default_inst_cfg" "$cfg_inst_keep" "$cfg_inst_ui" "$cfg_inst_fresh")"
+            if [[ "$chosen_inst_cfg" == "$cfg_inst_ui" ]]; then
+                UPDATE_CONFIGS_MODE="ui"
+                UPDATE_CONFIGS=1
+            elif [[ "$chosen_inst_cfg" == "$cfg_inst_fresh" ]]; then
+                UPDATE_CONFIGS_MODE="all"
                 UPDATE_CONFIGS=1
             else
+                UPDATE_CONFIGS_MODE="none"
                 UPDATE_CONFIGS=0
             fi
         fi

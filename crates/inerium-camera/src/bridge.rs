@@ -8,7 +8,7 @@ use std::io::Read;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::time::sleep;
@@ -65,6 +65,11 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
     gst::init().map_err(|e| format!("Failed to init GStreamer: {}", e))?;
     let v4l2_dev = resolve_v4l2_device(v4l2_opt).await?;
 
+    // Enable in-kernel frame repetition so consumers never starve when bridge is idle
+    let _ = std::process::Command::new("v4l2-ctl")
+        .args(["-d", &v4l2_dev, "--set-ctrl", "sustain_framerate=1"])
+        .output();
+
     let ingest_sock = ingest_sock_path();
     let preview_sock = preview_shm_socket();
 
@@ -73,7 +78,7 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
 
     let pipe_str = format!(
         "appsrc name=src is-live=true do-timestamp=true format=time stream-type=stream block=false max-bytes=6220800 ! \
-         videoconvert ! queue leaky=downstream max-size-buffers=2 ! tee name=t ! \
+         queue leaky=downstream max-size-buffers=2 ! tee name=t ! \
          queue leaky=downstream max-size-buffers=2 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=\"{}\" sync=false \
          t. ! queue leaky=downstream max-size-buffers=2 ! shmsink socket-path=\"{}\" wait-for-connection=false sync=false shm-size=33554432",
         v4l2_dev, preview_sock.display()
@@ -109,17 +114,21 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
 
     let black = build_black_i420();
     let running = Arc::new(AtomicBool::new(true));
-    let shared = Arc::new(Mutex::new(BridgeSharedState {
-        black_frame: black.clone(),
-        last_frame: black,
-        last_rx_at: None,
-        active_gen: 0,
-        active_readers: 0,
-    }));
+    let shared = Arc::new((
+        Mutex::new(BridgeSharedState {
+            black_frame: black.clone(),
+            last_frame: black,
+            last_rx_at: None,
+            active_gen: 0,
+            active_readers: 0,
+        }),
+        Condvar::new(),
+    ));
 
     // Push initial black frame so exclusive_caps=1 activates Video Capture immediately
     {
-        let initial = { shared.lock().unwrap().black_frame.clone() };
+        let (lock, _) = &*shared;
+        let initial = { lock.lock().unwrap().black_frame.clone() };
         push_frame_to_appsrc(&appsrc, &initial);
     }
 
@@ -137,9 +146,11 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
             };
 
             let my_gen = {
-                let mut guard = shared_accept.lock().unwrap();
+                let (lock, cvar) = &*shared_accept;
+                let mut guard = lock.lock().unwrap();
                 guard.active_gen += 1;
                 guard.active_readers += 1;
+                cvar.notify_all();
                 guard.active_gen
             };
 
@@ -154,12 +165,17 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
                         break;
                     }
                     let is_current = {
-                        let mut guard = shared_rd.lock().unwrap();
+                        let (lock, cvar) = &*shared_rd;
+                        let mut guard = lock.lock().unwrap();
                         if guard.active_gen != my_gen {
                             false
                         } else {
+                            let was_idle = guard.last_rx_at.is_none();
                             guard.last_frame.copy_from_slice(&buf);
                             guard.last_rx_at = Some(Instant::now());
+                            if was_idle {
+                                cvar.notify_all();
+                            }
                             true
                         }
                     };
@@ -169,8 +185,10 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
                     push_frame_to_appsrc(&appsrc_rd, &buf);
                 }
 
-                let mut guard = shared_rd.lock().unwrap();
+                let (lock, cvar) = &*shared_rd;
+                let mut guard = lock.lock().unwrap();
                 guard.active_readers = guard.active_readers.saturating_sub(1);
+                cvar.notify_all();
             });
         }
     });
@@ -180,66 +198,74 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
     let shared_ka = shared.clone();
     let appsrc_ka = appsrc.clone();
     std::thread::spawn(move || {
-        let interval = Duration::from_millis(33);
+        let (lock, cvar) = &*shared_ka;
         let stale_threshold = Duration::from_millis(45);
         let max_frozen_duration = Duration::from_millis(1000);
+
+        let mut guard = lock.lock().unwrap();
         while running_ka.load(Ordering::Relaxed) {
-            std::thread::sleep(interval);
-            if !running_ka.load(Ordering::Relaxed) {
-                break;
-            }
-            let fallback_frame = {
-                let mut guard = shared_ka.lock().unwrap();
-                let elapsed = guard.last_rx_at.map(|t| t.elapsed()).unwrap_or(Duration::ZERO);
-
-                // Automatically revert to black if:
-                // 1) No active readers and session file missing (normal stopped state)
-                // 2) No active readers for > 1s even if session file exists (producer died unexpectedly / phone discharged)
-                // 3) Readers connected but no data received for > 2.5s (producer hung/stalled)
-                let should_revert_to_black = if guard.active_readers == 0 {
-                    !session_state_file().exists() || elapsed >= max_frozen_duration
-                } else {
-                    elapsed >= Duration::from_millis(2500)
-                };
-
-                if should_revert_to_black && guard.last_rx_at.is_some() {
-                    let black = guard.black_frame.clone();
-                    guard.last_frame = black;
-                    guard.last_rx_at = None;
+            // If idle (no active stream and no readers), wait on Condvar (0 wakeups/sec, 0.00% CPU)
+            if guard.last_rx_at.is_none() && guard.active_readers == 0 {
+                guard = cvar.wait(guard).unwrap();
+                if !running_ka.load(Ordering::Relaxed) {
+                    break;
                 }
+            } else {
+                let (g, _) = cvar.wait_timeout(guard, Duration::from_millis(33)).unwrap();
+                guard = g;
+                if !running_ka.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
 
-                let need_keepalive = match guard.last_rx_at {
-                    None => true,
-                    Some(t) => t.elapsed() >= stale_threshold,
-                };
-                if need_keepalive {
+            let elapsed = guard.last_rx_at.map(|t| t.elapsed()).unwrap_or(Duration::ZERO);
+
+            // Automatically revert to black if:
+            // 1) No active readers and session file missing (normal stopped state)
+            // 2) No active readers for > 1s even if session file exists (producer died unexpectedly / phone discharged)
+            // 3) Readers connected but no data received for > 2.5s (producer hung/stalled)
+            let should_revert_to_black = if guard.active_readers == 0 {
+                !session_state_file().exists() || elapsed >= max_frozen_duration
+            } else {
+                elapsed >= Duration::from_millis(2500)
+            };
+
+            let fallback_frame = if should_revert_to_black && guard.last_rx_at.is_some() {
+                let black = guard.black_frame.clone();
+                guard.last_frame = black.clone();
+                guard.last_rx_at = None; // Transition to idle (next loop waits on cvar.wait)
+                Some(black)
+            } else if let Some(last_rx) = guard.last_rx_at {
+                if last_rx.elapsed() >= stale_threshold && last_rx.elapsed() < max_frozen_duration {
                     Some(guard.last_frame.clone())
                 } else {
                     None
                 }
+            } else {
+                None
             };
+
             if let Some(frame) = fallback_frame {
+                drop(guard);
                 push_frame_to_appsrc(&appsrc_ka, &frame);
+                guard = lock.lock().unwrap();
             }
         }
     });
 
     // Wait for SIGTERM, SIGINT, or fatal GStreamer bus error
-    let bus = pipeline.bus();
-    let running_bus = running.clone();
+    let bus_opt = pipeline.bus();
     let (err_tx, mut err_rx) = tokio::sync::mpsc::channel::<String>(1);
-    if let Some(bus) = bus {
+    if let Some(bus) = bus_opt.as_ref().cloned() {
         std::thread::spawn(move || {
-            while running_bus.load(Ordering::Relaxed) {
-                if let Some(msg) = bus.timed_pop(gst::ClockTime::from_mseconds(200)) {
-                    if let gst::MessageView::Error(err) = msg.view() {
-                        let _ = err_tx.try_send(format!(
-                            "GStreamer bridge error ({}): {}",
-                            err.error(),
-                            err.debug().unwrap_or_default()
-                        ));
-                        break;
-                    }
+            while let Some(msg) = bus.timed_pop(gst::ClockTime::NONE) {
+                if let gst::MessageView::Error(err) = msg.view() {
+                    let _ = err_tx.try_send(format!(
+                        "GStreamer bridge error ({}): {}",
+                        err.error(),
+                        err.debug().unwrap_or_default()
+                    ));
+                    break;
                 }
             }
         });
@@ -260,7 +286,14 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
         }
     }
 
+    if let Some(bus) = bus_opt {
+        bus.set_flushing(true);
+    }
     running.store(false, Ordering::SeqCst);
+    {
+        let (_, cvar) = &*shared;
+        cvar.notify_all();
+    }
     let _ = pipeline.set_state(gst::State::Null);
     let _ = fs::remove_file(ingest_sock_path());
     let _ = fs::remove_file(preview_shm_socket());

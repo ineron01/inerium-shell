@@ -2,7 +2,6 @@
 
 -- Generic floating position
 hl.window_rule({ match = { float = true }, persistent_size = true })
-hl.window_rule({ match = { class = "^(inerium-first-login)$" }, float = true, center = true })
 hl.window_rule({ match = { class = "^(org\\.inerium\\.setup|inerium-setup)$" }, float = true, center = true, size = { "900", "640" } })
 
 -- Picture-in-Picture

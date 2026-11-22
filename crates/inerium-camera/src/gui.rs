@@ -15,8 +15,8 @@ use tokio::sync::mpsc;
 
 pub const INERIUM_CSS: &str = r#"
 window {
-    background-color: #1F1F28;
-    color: #DCD7BA;
+    background-color: @cc_bg;
+    color: @cc_fg;
     font-family: -apple-system, BlinkMacSystemFont, "Cantarell", "Inter", sans-serif;
 }
 
@@ -27,19 +27,19 @@ window {
 .header-title {
     font-size: 15px;
     font-weight: 700;
-    color: #DCD7BA;
+    color: @cc_fg;
     margin-bottom: 2px;
 }
 
 .header-subtitle {
     font-size: 11px;
-    color: #727169;
+    color: @cc_fg_muted;
     margin-bottom: 6px;
 }
 
 .card-box {
-    background-color: #16161D;
-    border: 1px solid #2A2A37;
+    background-color: @cc_surface;
+    border: 1px solid @cc_line;
     border-radius: 6px;
     padding: 6px 10px;
     margin-bottom: 6px;
@@ -48,31 +48,35 @@ window {
 .section-label {
     font-size: 10px;
     font-weight: 600;
-    color: #938AA9;
+    color: @cc_fg_subtle;
     margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .segmented-btn {
-    background-color: #223249;
-    color: #DCD7BA;
-    border: 1px solid #2D4F67;
+    background-color: @cc_surface;
+    color: @cc_fg;
+    border: 1px solid @cc_line;
     border-radius: 5px;
     padding: 4px 8px;
     font-size: 11px;
     font-weight: 500;
 }
 
+.segmented-btn:hover {
+    background-color: @cc_surface_hover;
+}
+
 .segmented-btn:checked {
-    background-color: #7E9CD8;
-    color: #16161D;
+    background-color: @cc_primary;
+    color: @cc_fg_on_accent;
     font-weight: 600;
 }
 
 .btn-primary-start {
-    background-color: #76946A;
-    color: #16161D;
+    background-color: @cc_green;
+    color: @cc_fg_on_accent;
     font-size: 13px;
     font-weight: 700;
     padding: 7px 18px;
@@ -81,12 +85,13 @@ window {
 }
 
 .btn-primary-start:hover {
-    background-color: #87A987;
+    background-color: @cc_green;
+    opacity: 0.9;
 }
 
 .btn-primary-stop {
-    background-color: #C34043;
-    color: #DCD7BA;
+    background-color: @cc_red;
+    color: @cc_fg_on_accent;
     font-size: 13px;
     font-weight: 700;
     padding: 7px 18px;
@@ -95,60 +100,61 @@ window {
 }
 
 .btn-primary-stop:hover {
-    background-color: #E82424;
+    background-color: @cc_red;
+    opacity: 0.9;
 }
 
 .btn-reset {
-    background-color: #2A2A37;
-    color: #E82424;
+    background-color: @cc_red_bg;
+    color: @cc_red;
     font-size: 12px;
     font-weight: 600;
     padding: 7px 14px;
     border-radius: 6px;
-    border: 1px solid #7E2A2A;
+    border: 1px solid @cc_red_border;
 }
 
 .btn-reset:hover {
-    background-color: #7E2A2A;
-    color: #DCD7BA;
+    background-color: @cc_red;
+    color: @cc_fg_on_accent;
 }
 
 .btn-reset:active {
-    background-color: #C34043;
+    background-color: @cc_surface_active;
 }
 
 .btn-secondary {
-    background-color: #2A2A37;
-    color: #DCD7BA;
+    background-color: @cc_surface;
+    color: @cc_fg;
     font-size: 10px;
     font-weight: 500;
     padding: 4px 8px;
     border-radius: 5px;
-    border: 1px solid #363646;
+    border: 1px solid @cc_line;
 }
 
 .btn-secondary:hover {
-    background-color: #363646;
+    background-color: @cc_surface_hover;
 }
 
 .preview-container {
-    background-color: #0d0c0c;
-    border: 1px solid #2A2A37;
+    background-color: @cc_surface;
+    border: 1px solid @cc_line;
     border-radius: 6px;
     margin-bottom: 6px;
 }
 
 .status-bar-text {
     font-size: 12px;
-    color: #7E9CD8;
+    color: @cc_primary;
 }
 
 .status-warning {
-    color: #E6C384;
+    color: @cc_amber;
 }
 
 .status-danger {
-    color: #E82424;
+    color: @cc_red;
 }
 "#;
 
@@ -206,19 +212,27 @@ pub fn run_gui() {
         .build();
 
     app.connect_startup(|_| {
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_application_prefer_dark_theme(inerium_theme::is_dark_theme());
+        }
         if let Some(display) = gdk4::Display::default() {
-            if let Some(home) = std::env::var_os("HOME") {
-                let vars_path = std::path::PathBuf::from(home).join(".config/inerium/theme-vars.css");
-                if let Ok(vars) = std::fs::read_to_string(&vars_path) {
-                    let vars_provider = gtk4::CssProvider::new();
-                    vars_provider.load_from_data(&vars);
-                    gtk4::style_context_add_provider_for_display(
-                        &display,
-                        &vars_provider,
-                        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                    );
-                }
-            }
+            let vars = if let Some(home) = std::env::var_os("HOME")
+                && let Ok(v) = std::fs::read_to_string(std::path::PathBuf::from(home).join(".config/inerium/theme-vars.css"))
+            {
+                v
+            } else if inerium_theme::is_dark_theme() {
+                inerium_theme::DRAGON_VARS.to_string()
+            } else {
+                inerium_theme::LOTUS_VARS.to_string()
+            };
+            let vars_provider = gtk4::CssProvider::new();
+            vars_provider.load_from_data(&vars);
+            gtk4::style_context_add_provider_for_display(
+                &display,
+                &vars_provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+
             let provider = gtk4::CssProvider::new();
             provider.load_from_data(INERIUM_CSS);
             gtk4::style_context_add_provider_for_display(
@@ -230,7 +244,7 @@ pub fn run_gui() {
     });
 
     app.connect_activate(build_ui);
-    app.run();
+    app.run_with_args(&Vec::<String>::new());
 }
 
 fn build_ui(app: &Application) {

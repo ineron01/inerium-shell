@@ -15,7 +15,7 @@ Icon=audio-mp3
 Exec=dolphin-convert --format mp3 %F
 
 [Desktop Action ToFlac]
-Name=FLAC (Без потерь)
+Name=FLAC (Lossless)
 Name[ru]=FLAC (Без потерь)
 Icon=audio-x-flac
 Exec=dolphin-convert --format flac %F

@@ -1,0 +1,609 @@
+use std::rc::Rc;
+
+use gtk4::prelude::*;
+use gtk4::{
+    Align, Box, Button, DropDown, Entry, Label, Orientation, Scale, StringList, Switch,
+};
+
+use crate::i18n::{Lang, tr};
+use crate::model::{
+    IdleConfig, InputOverrides, SetupPaths, detect_battery_charge_threshold,
+    parse_hypridle_conf, parse_inputs_lua_with_fallback, parse_launcher_bind,
+    set_battery_charge_threshold,
+};
+use crate::system::{
+    apply_hypridle, query_live_inputs, reset_interface_overrides, save_inputs_and_reload,
+};
+use crate::ui::StatusCallback;
+
+pub const KB_TOGGLE_OPTIONS: &[(&str, &str, &str)] = &[
+    ("grp:alt_shift_toggle", "Alt + Shift (Default)", "Alt + Shift (По умолчанию)"),
+    ("grp:caps_toggle", "Caps Lock", "Caps Lock"),
+    ("grp:ctrl_shift_toggle", "Ctrl + Shift", "Ctrl + Shift"),
+    ("grp:win_space_toggle", "Super + Space", "Super + Space"),
+];
+
+pub const LAUNCHER_BIND_OPTIONS: &[(&str, &str, &str)] = &[
+    ("SUPER + R", "Super + R (Run style)", "Super + R (в стиле Run диалога)"),
+    ("ALT + Space", "Alt + Space (Spotlight style)", "Alt + Space (как в macOS / Spotlight)"),
+    ("SUPER + slash", "Super + / (Search style)", "Super + / (быстрый поиск)"),
+    ("SUPER + grave", "Super + ` (Quick access)", "Super + ` (тильда над Tab)"),
+    ("ALT + F2", "Alt + F2 (Classic Linux)", "Alt + F2 (классический диалог Linux)"),
+    ("SUPER + Z", "Super + Z (Ergonomic)", "Super + Z (быстрая клавиша левой руки)"),
+];
+
+pub const IDLE_PRESETS: &[(&str, &str, u32, u32, u32)] = &[
+    ("5 min (3m dim / 5m lock / 8m off)", "5 мин (3м экран / 5м блок / 8м выкл)", 180, 300, 480),
+    ("10 min (5m dim / 10m lock / 15m off)", "10 мин (5м экран / 10м блок / 15м выкл)", 300, 600, 900),
+    ("15 min (10m dim / 15m lock / 20m off)", "15 мин (10м экран / 15м блок / 20м выкл)", 600, 900, 1200),
+    ("Never (disabled)", "Никогда (отключить автоблокировку)", 0, 0, 0),
+];
+
+pub fn build_input_overrides_card(
+    paths: &SetupPaths,
+    status_cb: &StatusCallback,
+    lang: Lang,
+) -> (Box, Rc<dyn Fn() -> Result<(), String>>) {
+    // 3. Keyboard, Mouse, Touchpad & Power Overrides Card
+    let ovr_card = Box::new(Orientation::Vertical, 10);
+    ovr_card.add_css_class("setup-card");
+
+    let ovr_head = Box::new(Orientation::Horizontal, 8);
+    let ovr_title_box = Box::new(Orientation::Vertical, 2);
+    ovr_title_box.set_hexpand(true);
+
+    let ovr_title = Label::new(Some(tr(
+        lang,
+        "Input, keyboard & power settings",
+        "Настройки клавиатуры, ввода и питания",
+    )));
+    ovr_title.add_css_class("card-title");
+    ovr_title.set_xalign(0.0);
+    ovr_title_box.append(&ovr_title);
+
+    let ovr_sub = Label::new(Some(tr(
+        lang,
+        "Saved to ~/.config/hypr/config/{input,keybinds}.lua & hypridle_local.conf",
+        "Сохраняется в ~/.config/hypr/config/{input,keybinds}.lua и hypridle_local.conf",
+    )));
+    ovr_sub.add_css_class("card-muted");
+    ovr_sub.set_xalign(0.0);
+    ovr_title_box.append(&ovr_sub);
+    ovr_head.append(&ovr_title_box);
+
+    let open_binds_btn = Button::builder()
+        .label(tr(lang, "󰌌 Keybinds", "󰌌 Хоткеи"))
+        .build();
+    open_binds_btn.add_css_class("flat-btn");
+    open_binds_btn.set_tooltip_text(Some(tr(
+        lang,
+        "Open ~/.config/hypr/config/keybinds.lua in default editor",
+        "Открыть ~/.config/hypr/config/keybinds.lua в редакторе",
+    )));
+    {
+        let paths_clone = paths.clone();
+        open_binds_btn.connect_clicked(move |_| {
+            let p = paths_clone.keybinds_lua_path();
+            if p.exists() {
+                let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
+            }
+        });
+    }
+    ovr_head.append(&open_binds_btn);
+    ovr_card.append(&ovr_head);
+
+    let live_inputs = query_live_inputs();
+    let saved_inputs = std::fs::read_to_string(paths.input_lua_path())
+        .or_else(|_| std::fs::read_to_string(paths.inputs_local_path()))
+        .map(|s| parse_inputs_lua_with_fallback(&s, live_inputs.clone()))
+        .unwrap_or(live_inputs);
+    let saved_binds_launcher = std::fs::read_to_string(paths.keybinds_lua_path())
+        .ok()
+        .and_then(|s| parse_launcher_bind(&s))
+        .or_else(|| {
+            std::fs::read_to_string(paths.binds_local_path())
+                .ok()
+                .and_then(|s| parse_launcher_bind(&s))
+        });
+    let saved_idle = std::fs::read_to_string(paths.hypridle_local_conf_path())
+        .map(|s| parse_hypridle_conf(&s))
+        .unwrap_or_default();
+
+    // --- Section: Keyboard ---
+    let kb_section = Box::new(Orientation::Vertical, 6);
+    kb_section.add_css_class("setup-subcard");
+
+    let kb_sec_title = Label::new(Some(tr(lang, "Keyboard layout & shortcuts", "Раскладка клавиатуры и хоткеи")));
+    kb_sec_title.add_css_class("card-meta");
+    kb_sec_title.set_xalign(0.0);
+    kb_section.append(&kb_sec_title);
+
+    let kb_row = Box::new(Orientation::Horizontal, 10);
+    let kb_layout_box = Box::new(Orientation::Vertical, 4);
+    kb_layout_box.set_hexpand(true);
+    let kb_lbl = Label::new(Some(tr(
+        lang,
+        "Layouts (kb_layout)",
+        "Раскладки (kb_layout)",
+    )));
+    kb_lbl.add_css_class("card-muted");
+    kb_lbl.set_xalign(0.0);
+    kb_layout_box.append(&kb_lbl);
+
+    let kb_entry_row = Box::new(Orientation::Horizontal, 6);
+    let kb_entry = Entry::new();
+    kb_entry.add_css_class("setup-entry");
+    kb_entry.set_hexpand(true);
+    kb_entry.set_text(&saved_inputs.kb_layout);
+    kb_entry_row.append(&kb_entry);
+
+    for preset in ["us,ru", "us", "us,ru,ua"] {
+        let pbtn = Button::with_label(preset);
+        pbtn.add_css_class("btn-secondary");
+        let e_clone = kb_entry.clone();
+        pbtn.connect_clicked(move |_| e_clone.set_text(preset));
+        kb_entry_row.append(&pbtn);
+    }
+    kb_layout_box.append(&kb_entry_row);
+    kb_row.append(&kb_layout_box);
+
+    // Layout switch shortcut dropdown
+    let opt_box = Box::new(Orientation::Vertical, 4);
+    let opt_lbl = Label::new(Some(tr(
+        lang,
+        "Layout switch shortcut",
+        "Переключение раскладки",
+    )));
+    opt_lbl.add_css_class("card-muted");
+    opt_lbl.set_xalign(0.0);
+    opt_box.append(&opt_lbl);
+
+    let opt_labels: Vec<&str> = KB_TOGGLE_OPTIONS
+        .iter()
+        .map(|(_, en, ru)| tr(lang, en, ru))
+        .collect();
+    let opt_dd = DropDown::new(Some(StringList::new(&opt_labels)), gtk4::Expression::NONE);
+    opt_dd.add_css_class("setup-dropdown");
+    let opt_idx = KB_TOGGLE_OPTIONS
+        .iter()
+        .position(|(val, _, _)| *val == saved_inputs.kb_options)
+        .unwrap_or(0);
+    opt_dd.set_selected(opt_idx as u32);
+    opt_box.append(&opt_dd);
+    kb_row.append(&opt_box);
+    kb_section.append(&kb_row);
+
+    // Dynamic conflict warning & launcher shortcut selector
+    let conflict_box = Box::new(Orientation::Vertical, 4);
+    conflict_box.add_css_class("setup-subcard");
+    conflict_box.set_margin_top(4);
+
+    let conflict_warn_lbl = Label::new(Some(tr(
+        lang,
+        "󰀦 Super + Space is bound to layout toggle. Choose a new shortcut for Application Launcher:",
+        "󰀦 Super + Space занят сменой языка. Выберите новую клавишу для Лаунчера приложений:",
+    )));
+    conflict_warn_lbl.add_css_class("card-title");
+    conflict_warn_lbl.set_xalign(0.0);
+    conflict_warn_lbl.set_wrap(true);
+    conflict_box.append(&conflict_warn_lbl);
+
+    let launcher_row = Box::new(Orientation::Horizontal, 8);
+    let launcher_lbl = Label::new(Some(tr(lang, "Launcher Shortcut:", "Клавиша лаунчера:")));
+    launcher_lbl.add_css_class("card-meta");
+    launcher_row.append(&launcher_lbl);
+
+    let launcher_labels: Vec<&str> = LAUNCHER_BIND_OPTIONS
+        .iter()
+        .map(|(_, en, ru)| tr(lang, en, ru))
+        .collect();
+    let launcher_dd = DropDown::new(Some(StringList::new(&launcher_labels)), gtk4::Expression::NONE);
+    launcher_dd.add_css_class("setup-dropdown");
+    launcher_dd.set_hexpand(true);
+
+    let cur_launcher = saved_binds_launcher.as_deref().unwrap_or("SUPER + R");
+    let launcher_idx = LAUNCHER_BIND_OPTIONS
+        .iter()
+        .position(|(val, _, _)| *val == cur_launcher)
+        .unwrap_or(0);
+    launcher_dd.set_selected(launcher_idx as u32);
+    launcher_row.append(&launcher_dd);
+    conflict_box.append(&launcher_row);
+
+    conflict_box.set_visible(saved_inputs.kb_options == "grp:win_space_toggle");
+
+    {
+        let conflict_box_c = conflict_box.clone();
+        opt_dd.connect_selected_notify(move |dd| {
+            let idx = dd.selected() as usize;
+            let opt = KB_TOGGLE_OPTIONS.get(idx).map(|(v, _, _)| *v).unwrap_or("");
+            conflict_box_c.set_visible(opt == "grp:win_space_toggle");
+        });
+    }
+
+    kb_section.append(&conflict_box);
+    ovr_card.append(&kb_section);
+
+    // --- Section: Mouse ---
+    let mouse_section = Box::new(Orientation::Vertical, 6);
+    mouse_section.add_css_class("setup-subcard");
+
+    let mouse_sec_title = Label::new(Some(tr(lang, "Mouse settings", "Настройки мыши")));
+    mouse_sec_title.add_css_class("card-meta");
+    mouse_sec_title.set_xalign(0.0);
+    mouse_section.append(&mouse_sec_title);
+
+    // Sensitivity slider [-1.0 .. 1.0]
+    let sens_row = Box::new(Orientation::Horizontal, 10);
+    let sens_lbl = Label::new(Some(tr(
+        lang,
+        "Sensitivity [-1.0 .. 1.0]:",
+        "Чувствительность [-1.0 .. 1.0]:",
+    )));
+    sens_lbl.add_css_class("card-meta");
+    sens_row.append(&sens_lbl);
+
+    let sens_scale = Scale::with_range(Orientation::Horizontal, -1.0, 1.0, 0.05);
+    sens_scale.set_hexpand(true);
+    sens_scale.set_value(saved_inputs.sensitivity);
+    sens_row.append(&sens_scale);
+
+    let sens_val_lbl = Label::new(Some(&format!("{:.2}", saved_inputs.sensitivity)));
+    sens_val_lbl.add_css_class("card-meta");
+    sens_val_lbl.set_width_chars(5);
+    sens_row.append(&sens_val_lbl);
+
+    let sens_reset_btn = Button::with_label("⟲ 0.0");
+    sens_reset_btn.add_css_class("btn-secondary");
+    sens_reset_btn.set_tooltip_text(Some(tr(lang, "Reset to default (0.0)", "Сбросить на 0.0")));
+    {
+        let sens_scale_c = sens_scale.clone();
+        sens_reset_btn.connect_clicked(move |_| {
+            sens_scale_c.set_value(0.0);
+        });
+    }
+    sens_row.append(&sens_reset_btn);
+
+    {
+        let sens_val_lbl_c = sens_val_lbl.clone();
+        sens_scale.connect_value_changed(move |sc| {
+            sens_val_lbl_c.set_text(&format!("{:.2}", sc.value()));
+        });
+    }
+    mouse_section.append(&sens_row);
+
+    // Mouse Accel profile switch
+    let sw_flat = make_switch_row(
+        &mouse_section,
+        tr(
+            lang,
+            "Flat profile (No acceleration — recommended for gaming)",
+            "Без ускорения (Flat profile — идеально для игр)",
+        ),
+        saved_inputs.accel_profile == "flat",
+    );
+
+    // Scroll speed slider [0.2 .. 3.0]
+    let scroll_row = Box::new(Orientation::Horizontal, 10);
+    let scroll_lbl = Label::new(Some(tr(
+        lang,
+        "Scroll speed [0.2 .. 3.0]:",
+        "Скорость прокрутки [0.2 .. 3.0]:",
+    )));
+    scroll_lbl.add_css_class("card-meta");
+    scroll_row.append(&scroll_lbl);
+
+    let scroll_scale = Scale::with_range(Orientation::Horizontal, 0.2, 3.0, 0.1);
+    scroll_scale.set_hexpand(true);
+    scroll_scale.set_value(saved_inputs.scroll_factor);
+    scroll_row.append(&scroll_scale);
+
+    let scroll_val_lbl = Label::new(Some(&format!("{:.1}", saved_inputs.scroll_factor)));
+    scroll_val_lbl.add_css_class("card-meta");
+    scroll_val_lbl.set_width_chars(5);
+    scroll_row.append(&scroll_val_lbl);
+
+    let scroll_reset_btn = Button::with_label("⟲ 1.0");
+    scroll_reset_btn.add_css_class("btn-secondary");
+    scroll_reset_btn.set_tooltip_text(Some(tr(lang, "Reset to default (1.0)", "Сбросить на 1.0")));
+    {
+        let scroll_scale_c = scroll_scale.clone();
+        scroll_reset_btn.connect_clicked(move |_| {
+            scroll_scale_c.set_value(1.0);
+        });
+    }
+    scroll_row.append(&scroll_reset_btn);
+
+    {
+        let scroll_val_lbl_c = scroll_val_lbl.clone();
+        scroll_scale.connect_value_changed(move |sc| {
+            scroll_val_lbl_c.set_text(&format!("{:.1}", sc.value()));
+        });
+    }
+    mouse_section.append(&scroll_row);
+
+    ovr_card.append(&mouse_section);
+
+    // --- Section: Touchpad ---
+    let tp_section = Box::new(Orientation::Vertical, 6);
+    tp_section.add_css_class("setup-subcard");
+
+    let tp_sec_title = Label::new(Some(tr(lang, "Touchpad settings", "Настройки тачпада")));
+    tp_sec_title.add_css_class("card-meta");
+    tp_sec_title.set_xalign(0.0);
+    tp_section.append(&tp_sec_title);
+
+    let sw_natural = make_switch_row(
+        &tp_section,
+        tr(
+            lang,
+            "Natural scrolling (content follows fingers, smartphone-like)",
+            "Естественная прокрутка (инверсия как на смартфоне)",
+        ),
+        saved_inputs.natural_scroll,
+    );
+    let sw_tap = make_switch_row(
+        &tp_section,
+        tr(lang, "Tap to click", "Касание для клика (Tap-to-click)"),
+        saved_inputs.tap_to_click,
+    );
+    let sw_dwt = make_switch_row(
+        &tp_section,
+        tr(lang, "Disable while typing", "Отключать при наборе текста (Disable while typing)"),
+        saved_inputs.disable_while_typing,
+    );
+    ovr_card.append(&tp_section);
+
+    // --- Section: Screen & Power ---
+    let pwr_section = Box::new(Orientation::Vertical, 6);
+    pwr_section.add_css_class("setup-subcard");
+
+    let pwr_sec_title = Label::new(Some(tr(lang, "Screen & Power", "Экран и электропитание")));
+    pwr_sec_title.add_css_class("card-meta");
+    pwr_sec_title.set_xalign(0.0);
+    pwr_section.append(&pwr_sec_title);
+
+    // Autolock row
+    let idle_row = Box::new(Orientation::Horizontal, 12);
+    let idle_lbl = Label::new(Some(tr(
+        lang,
+        "Screen lock timeout (hypridle):",
+        "Тайм-аут автоблокировки экрана:",
+    )));
+    idle_lbl.add_css_class("card-meta");
+    idle_row.append(&idle_lbl);
+
+    let idle_dirty = Rc::new(std::cell::Cell::new(false));
+
+    let mut idle_options: Vec<(String, IdleConfig)> = Vec::new();
+    let is_custom = saved_idle.enabled
+        && !IDLE_PRESETS[..3].iter().any(|&(_, _, d, l, dp)| {
+            d == saved_idle.dim_secs && l == saved_idle.lock_secs && dp == saved_idle.dpms_secs
+        });
+
+    if is_custom {
+        let label = format!(
+            "{} ({}s / {}s / {}s)",
+            tr(lang, "Current", "Текущий"),
+            saved_idle.dim_secs,
+            saved_idle.lock_secs,
+            saved_idle.dpms_secs
+        );
+        idle_options.push((label, saved_idle.clone()));
+    }
+
+    for &(en, ru, d, l, dp) in IDLE_PRESETS {
+        let label = tr(lang, en, ru).to_string();
+        let cfg = IdleConfig {
+            enabled: d > 0 || l > 0 || dp > 0,
+            dim_secs: d,
+            lock_secs: l,
+            dpms_secs: dp,
+        };
+        idle_options.push((label, cfg));
+    }
+
+    let idle_labels: Vec<&str> = idle_options.iter().map(|(l, _)| l.as_str()).collect();
+    let idle_dd = DropDown::new(Some(StringList::new(&idle_labels)), gtk4::Expression::NONE);
+    idle_dd.add_css_class("setup-dropdown");
+    idle_dd.set_hexpand(true);
+
+    let idle_idx = if is_custom {
+        0
+    } else if !saved_idle.enabled {
+        idle_options.len().saturating_sub(1)
+    } else {
+        idle_options
+            .iter()
+            .position(|(_, c)| {
+                c.enabled
+                    && c.dim_secs == saved_idle.dim_secs
+                    && c.lock_secs == saved_idle.lock_secs
+                    && c.dpms_secs == saved_idle.dpms_secs
+            })
+            .unwrap_or(1)
+    };
+    idle_dd.set_selected(idle_idx as u32);
+
+    {
+        let idle_dirty = idle_dirty.clone();
+        idle_dd.connect_selected_notify(move |_| {
+            idle_dirty.set(true);
+        });
+    }
+
+    let idle_options = Rc::new(idle_options);
+
+    idle_row.append(&idle_dd);
+    pwr_section.append(&idle_row);
+
+    // Battery threshold row (if supported)
+    let bat_supported = detect_battery_charge_threshold();
+    let sw_bat_limit: Option<Switch> = if let Some((_, current_th)) = bat_supported {
+        let sw = make_switch_row(
+            &pwr_section,
+            tr(
+                lang,
+                "Battery charge limit 80% (Preserves battery lifespan on AC)",
+                "Лимит заряда батареи 80% (Продлевает срок службы аккумулятора)",
+            ),
+            current_th <= 85,
+        );
+        Some(sw)
+    } else {
+        None
+    };
+
+    ovr_card.append(&pwr_section);
+
+    // Action buttons for settings
+    let ovr_actions = Box::new(Orientation::Horizontal, 8);
+    let ovr_reset_btn = Button::with_label(tr(lang, "Reset settings", "Сбросить настройки"));
+    ovr_reset_btn.add_css_class("btn-danger");
+    ovr_actions.append(&ovr_reset_btn);
+    ovr_card.append(&ovr_actions);
+
+    let save_fn: Rc<dyn Fn() -> Result<(), String>> = {
+        let paths = paths.clone();
+        let kb_entry = kb_entry.clone();
+        let opt_dd = opt_dd.clone();
+        let launcher_dd = launcher_dd.clone();
+        let sens_scale = sens_scale.clone();
+        let sw_flat = sw_flat.clone();
+        let scroll_scale = scroll_scale.clone();
+        let sw_natural = sw_natural.clone();
+        let sw_tap = sw_tap.clone();
+        let sw_dwt = sw_dwt.clone();
+        let idle_dd = idle_dd.clone();
+        let idle_dirty = idle_dirty.clone();
+        let idle_options_save = idle_options.clone();
+        let sw_bat_limit = sw_bat_limit.clone();
+
+        Rc::new(move || {
+            let layout = kb_entry.text().trim().to_string();
+            if layout.is_empty() {
+                return Err(match lang {
+                    Lang::En => "kb_layout cannot be empty".to_string(),
+                    Lang::Ru => "Поле kb_layout не может быть пустым".to_string(),
+                });
+            }
+            let opt_idx = opt_dd.selected() as usize;
+            let kb_options = KB_TOGGLE_OPTIONS
+                .get(opt_idx)
+                .map(|(v, _, _)| *v)
+                .unwrap_or("grp:alt_shift_toggle")
+                .to_string();
+
+            let launcher_bind = if kb_options == "grp:win_space_toggle" {
+                let l_idx = launcher_dd.selected() as usize;
+                LAUNCHER_BIND_OPTIONS
+                    .get(l_idx)
+                    .map(|(v, _, _)| v.to_string())
+            } else {
+                None
+            };
+
+            let input_cfg = InputOverrides {
+                kb_layout: layout,
+                kb_options,
+                natural_scroll: sw_natural.is_active(),
+                tap_to_click: sw_tap.is_active(),
+                disable_while_typing: sw_dwt.is_active(),
+                sensitivity: sens_scale.value(),
+                accel_profile: if sw_flat.is_active() {
+                    "flat".to_string()
+                } else {
+                    "adaptive".to_string()
+                },
+                scroll_factor: scroll_scale.value(),
+                launcher_bind,
+            };
+
+            if let Some(ref sw_bat) = sw_bat_limit {
+                let target_th = if sw_bat.is_active() { 80 } else { 100 };
+                let _ = set_battery_charge_threshold(target_th);
+            }
+
+            save_inputs_and_reload(&paths, &input_cfg)?;
+            if idle_dirty.get() {
+                let idle_idx = idle_dd.selected() as usize;
+                if let Some((_, idle_cfg)) = idle_options_save.get(idle_idx) {
+                    apply_hypridle(&paths, idle_cfg)?;
+                }
+            }
+            Ok(())
+        })
+    };
+
+    // Wire Reset Overrides
+    {
+        let paths = paths.clone();
+        let status_cb = status_cb.clone();
+        let kb_entry = kb_entry.clone();
+        let opt_dd = opt_dd.clone();
+        let sens_scale = sens_scale.clone();
+        let sw_flat = sw_flat.clone();
+        let scroll_scale = scroll_scale.clone();
+        let sw_natural = sw_natural.clone();
+        let sw_tap = sw_tap.clone();
+        let sw_dwt = sw_dwt.clone();
+        let idle_dd = idle_dd.clone();
+        let idle_dirty = idle_dirty.clone();
+        let idle_options_reset = idle_options.clone();
+        let sw_bat_limit = sw_bat_limit.clone();
+
+        ovr_reset_btn.connect_clicked(move |_| match reset_interface_overrides(&paths) {
+            Ok(()) => {
+                let def_in = query_live_inputs();
+                kb_entry.set_text(&def_in.kb_layout);
+                let opt_idx = KB_TOGGLE_OPTIONS
+                    .iter()
+                    .position(|(val, _, _)| *val == def_in.kb_options)
+                    .unwrap_or(0);
+                opt_dd.set_selected(opt_idx as u32);
+                sens_scale.set_value(def_in.sensitivity);
+                sw_flat.set_active(def_in.accel_profile == "flat");
+                scroll_scale.set_value(def_in.scroll_factor);
+                sw_natural.set_active(def_in.natural_scroll);
+                sw_tap.set_active(def_in.tap_to_click);
+                sw_dwt.set_active(def_in.disable_while_typing);
+                let def_idle_idx = idle_options_reset
+                    .iter()
+                    .position(|(_, c)| c.enabled && c.dim_secs == 300 && c.lock_secs == 600)
+                    .unwrap_or(1);
+                idle_dd.set_selected(def_idle_idx as u32);
+                idle_dirty.set(false);
+                if let Some(ref sw_bat) = sw_bat_limit {
+                    sw_bat.set_active(true);
+                    let _ = set_battery_charge_threshold(80);
+                }
+                status_cb.ok(tr(
+                    lang,
+                    "Local overrides reset to base config",
+                    "Локальные overrides сброшены на базовый конфиг",
+                ));
+            }
+            Err(e) => status_cb.error(&e),
+        });
+    }
+
+    (ovr_card, save_fn)
+}
+
+pub fn make_switch_row(parent: &Box, label: &str, active: bool) -> Switch {
+    let row = Box::new(Orientation::Horizontal, 8);
+    row.set_hexpand(true);
+    let lbl = Label::new(Some(label));
+    lbl.add_css_class("card-meta");
+    lbl.set_xalign(0.0);
+    lbl.set_hexpand(true);
+    row.append(&lbl);
+
+    let sw = Switch::new();
+    sw.add_css_class("setup-switch");
+    sw.set_active(active);
+    sw.set_valign(Align::Center);
+    row.append(&sw);
+    parent.append(&row);
+    sw
+}

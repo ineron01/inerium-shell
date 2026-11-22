@@ -35,6 +35,33 @@ fn restore_sockets() {
     }
 }
 
+pub fn escape_lua_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\r' | '\n' | '\0' => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn strip_cmd<'a>(s: &'a str, cmd: &str) -> Option<&'a str> {
+    if s == cmd {
+        Some("")
+    } else if let Some(rest) = s.strip_prefix(cmd) {
+        if rest.starts_with(char::is_whitespace) {
+            Some(rest.trim_start())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 pub fn translate(cmd: &str) -> Option<String> {
     let s = cmd.trim_matches(|c| c == '\0' || c == '\r' || c == '\n' || c == ' ');
     let s = s.strip_prefix('/').unwrap_or(s);
@@ -42,36 +69,44 @@ pub fn translate(cmd: &str) -> Option<String> {
     let rest = s.trim_start();
 
     // 1. Toggle special workspace
-    if let Some(arg) = rest.strip_prefix("togglespecialworkspace") {
+    if let Some(arg) = strip_cmd(rest, "togglespecialworkspace") {
         let name = arg.trim();
         if name.is_empty() {
             return Some("dispatch hl.dsp.workspace.toggle_special({})".to_string());
         } else {
-            return Some(format!("dispatch hl.dsp.workspace.toggle_special({{ name = \"{}\" }})", name));
+            return Some(format!(
+                "dispatch hl.dsp.workspace.toggle_special({{ name = \"{}\" }})",
+                escape_lua_str(name)
+            ));
         }
     }
 
     // 2. Move cursor
-    if let Some(coords) = rest.strip_prefix("movecursor").map(|c| c.trim_start()) {
+    if let Some(coords) = strip_cmd(rest, "movecursor") {
         let mut parts = coords.split_whitespace();
         if let (Some(x), Some(y)) = (parts.next(), parts.next())
-            && x.parse::<i32>().is_ok() && y.parse::<i32>().is_ok() {
-                return Some(format!("dispatch hl.dsp.cursor.move({{ x = {}, y = {} }})", x, y));
-            }
+            && x.parse::<i32>().is_ok()
+            && y.parse::<i32>().is_ok()
+        {
+            return Some(format!("dispatch hl.dsp.cursor.move({{ x = {}, y = {} }})", x, y));
+        }
     }
 
     // 2b. Focus monitor
-    if let Some(arg) = rest.strip_prefix("focusmonitor").map(|c| c.trim_start()) {
+    if let Some(arg) = strip_cmd(rest, "focusmonitor") {
         let first_word = arg.split_whitespace().next().unwrap_or("");
         if !first_word.is_empty() {
-            return Some(format!("dispatch hl.dsp.focus({{ monitor = \"{}\" }})", first_word));
+            return Some(format!(
+                "dispatch hl.dsp.focus({{ monitor = \"{}\" }})",
+                escape_lua_str(first_word)
+            ));
         }
     }
 
     // 3. Focus workspace (regular, relative, special or on current monitor)
-    let (ws_arg, on_current_monitor) = if let Some(arg) = rest.strip_prefix("focusworkspaceoncurrentmonitor").map(|c| c.trim_start()) {
+    let (ws_arg, on_current_monitor) = if let Some(arg) = strip_cmd(rest, "focusworkspaceoncurrentmonitor") {
         (Some(arg), true)
-    } else if let Some(arg) = rest.strip_prefix("workspace").map(|c| c.trim_start()) {
+    } else if let Some(arg) = strip_cmd(rest, "workspace") {
         (Some(arg), false)
     } else {
         (None, false)
@@ -80,7 +115,11 @@ pub fn translate(cmd: &str) -> Option<String> {
     if let Some(arg) = ws_arg {
         let first_word = arg.split_whitespace().next().unwrap_or("");
         if !first_word.is_empty() {
-            let monitor_opt = if on_current_monitor { ", on_current_monitor = true" } else { "" };
+            let monitor_opt = if on_current_monitor {
+                ", on_current_monitor = true"
+            } else {
+                ""
+            };
 
             // Relative prefixes: e+N, e-N, r+N, r-N, m+N, m-N
             if first_word.starts_with("e+")
@@ -90,27 +129,53 @@ pub fn translate(cmd: &str) -> Option<String> {
                 || first_word.starts_with("r-")
                 || first_word.starts_with("m-")
             {
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})", first_word, monitor_opt));
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})",
+                    escape_lua_str(first_word),
+                    monitor_opt
+                ));
             }
 
             // Direct relative offsets: +N, -N
             if first_word.starts_with('+') || first_word.starts_with('-') {
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})", first_word, monitor_opt));
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})",
+                    escape_lua_str(first_word),
+                    monitor_opt
+                ));
             }
 
             // Named special targets: previous, empty, etc.
-            if matches!(first_word, "previous" | "previous_per_monitor" | "empty" | "empty_per_monitor" | "current") {
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})", first_word, monitor_opt));
+            if matches!(
+                first_word,
+                "previous" | "previous_per_monitor" | "empty" | "empty_per_monitor" | "current"
+            ) {
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})",
+                    escape_lua_str(first_word),
+                    monitor_opt
+                ));
             }
 
             // Absolute numbered workspace
             if first_word.chars().all(|c| c.is_ascii_digit()) {
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = {}{} }})", first_word, monitor_opt));
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = {}{} }})",
+                    first_word, monitor_opt
+                ));
             } else if first_word.starts_with("name:") {
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})", first_word, monitor_opt));
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = \"{}\"{} }})",
+                    escape_lua_str(first_word),
+                    monitor_opt
+                ));
             } else {
                 // Named workspace without explicit name: prefix
-                return Some(format!("dispatch hl.dsp.focus({{ workspace = \"name:{}\"{} }})", first_word, monitor_opt));
+                return Some(format!(
+                    "dispatch hl.dsp.focus({{ workspace = \"name:{}\"{} }})",
+                    escape_lua_str(first_word),
+                    monitor_opt
+                ));
             }
         }
     }
@@ -124,16 +189,32 @@ fn handle_client(mut client: UnixStream, real_sock: &Path) {
 
     let mut buf = [0u8; 8192];
     let mut request_data = Vec::new();
-    loop {
-        match client.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                request_data.extend_from_slice(&buf[..n]);
-                if request_data.ends_with(b"\n") || request_data.ends_with(b"\0") {
-                    break;
+
+    match client.read(&mut buf) {
+        Ok(0) | Err(_) => return,
+        Ok(n) => {
+            request_data.extend_from_slice(&buf[..n]);
+            if n == buf.len() {
+                let _ = client.set_read_timeout(Some(Duration::from_millis(10)));
+                loop {
+                    match client.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(m) => {
+                            request_data.extend_from_slice(&buf[..m]);
+                            if m < buf.len() {
+                                break;
+                            }
+                        }
+                        Err(ref e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                || e.kind() == std::io::ErrorKind::TimedOut =>
+                        {
+                            break;
+                        }
+                        Err(_) => break,
+                    }
                 }
             }
-            Err(_) => break,
         }
     }
 
@@ -177,22 +258,37 @@ fn handle_client(mut client: UnixStream, real_sock: &Path) {
 }
 
 fn watch_hyprland_lifecycle(s2_path: PathBuf) {
-    if let Ok(stream) = UnixStream::connect(&s2_path) {
-        let reader = BufReader::new(stream);
-        for line in reader.lines() {
-            if line.is_err() {
-                break;
-            }
+    let mut stream = None;
+    for _ in 0..10 {
+        if let Ok(s) = UnixStream::connect(&s2_path) {
+            stream = Some(s);
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    let Some(stream) = stream else {
+        eprintln!("[hypr-ipc-bridge] Failed to connect to Hyprland socket2 at {}", s2_path.display());
+        RUNNING.store(false, Ordering::SeqCst);
+        restore_sockets();
+        std::process::exit(1);
+    };
+
+    let reader = BufReader::new(stream);
+    for line in reader.lines() {
+        if line.is_err() {
+            break;
         }
     }
-    // Socket2 closed = Hyprland terminated
+
+    // Socket2 closed = Hyprland terminated (clean EOF)
     eprintln!("[hypr-ipc-bridge] Hyprland socket2 closed, exiting");
     RUNNING.store(false, Ordering::SeqCst);
     restore_sockets();
     std::process::exit(0);
 }
 
-fn main() {
+pub fn run(_args: &[String]) {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         restore_sockets();
@@ -362,5 +458,80 @@ mod tests {
         );
         assert_eq!(translate("monitors"), None);
         assert_eq!(translate("dispatch exec kitty"), None);
+
+        // Lua escaping & command boundary tests
+        assert_eq!(
+            translate(r#"dispatch workspace name:test"foo\bar"#),
+            Some(r#"dispatch hl.dsp.focus({ workspace = "name:test\"foo\\bar" })"#.to_string())
+        );
+        assert_eq!(
+            translate(r#"dispatch togglespecialworkspace special:"magic\"#),
+            Some(r#"dispatch hl.dsp.workspace.toggle_special({ name = "special:\"magic\\" })"#.to_string())
+        );
+        assert_eq!(translate("dispatch workspaceextra 1"), None);
+        assert_eq!(translate("dispatch movecursorfast 10 20"), None);
+        assert_eq!(translate("dispatch togglespecialworkspacefast"), None);
+        assert_eq!(translate("dispatch focusmonitorfast HDMI-1"), None);
+    }
+
+    #[test]
+    fn test_handle_client_no_newline_no_shutdown_fast() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let mock_hypr_sock = std::env::temp_dir().join(format!(
+            "mock-hypr-{}-{}.sock",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_file(&mock_hypr_sock);
+        let mock_listener = UnixListener::bind(&mock_hypr_sock).expect("bind mock listener");
+
+        let mock_thread = thread::spawn(move || {
+            if let Ok((mut upstream_conn, _)) = mock_listener.accept() {
+                let mut req = Vec::new();
+                let mut b = [0u8; 1024];
+                if let Ok(n) = upstream_conn.read(&mut b) {
+                    req.extend_from_slice(&b[..n]);
+                }
+                let _ = upstream_conn.write_all(b"ok\n");
+                let _ = upstream_conn.flush();
+                req
+            } else {
+                Vec::new()
+            }
+        });
+
+        let (mut client_end, server_end) = UnixStream::pair().expect("unix stream pair");
+        let mock_sock_path = mock_hypr_sock.clone();
+        let bridge_thread = thread::spawn(move || {
+            handle_client(server_end, &mock_sock_path);
+        });
+
+        let start = std::time::Instant::now();
+        // Send command without trailing newline and without shutdown(Write)
+        client_end
+            .write_all(b"dispatch workspace 2")
+            .expect("write to bridge");
+
+        let mut resp_buf = [0u8; 128];
+        let n = client_end.read(&mut resp_buf).expect("read response");
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "Request took {:?}, expected < 500ms",
+            elapsed
+        );
+        assert_eq!(&resp_buf[..n], b"ok\n");
+
+        bridge_thread.join().expect("bridge thread join");
+        let received_upstream = mock_thread.join().expect("mock thread join");
+        assert_eq!(
+            std::str::from_utf8(&received_upstream).unwrap(),
+            "dispatch hl.dsp.focus({ workspace = 2 })"
+        );
+        let _ = std::fs::remove_file(&mock_hypr_sock);
     }
 }

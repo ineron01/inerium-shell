@@ -2,13 +2,28 @@
 # ============================================================================
 # scripts/install/05-manifest.sh — Pure Bash Installation State & Uninstaller
 # ============================================================================
+# shellcheck disable=SC2034 # Variables exported and consumed across installer modules
 
-MANIFEST_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/inerium"
-MANIFEST_FILE="$MANIFEST_DIR/install-manifest"
-NEW_MANIFEST_FILE=""
+MANIFEST_DIR="${MANIFEST_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/inerium}"
+MANIFEST_FILE="${MANIFEST_FILE:-$MANIFEST_DIR/install-manifest}"
+NEW_MANIFEST_FILE="${NEW_MANIFEST_FILE:-}"
+
+# Migrate legacy installed.manifest to install-manifest if needed
+if [[ "${DRY_RUN:-0}" -eq 0 && ! -f "$MANIFEST_FILE" && -f "$MANIFEST_DIR/installed.manifest" ]]; then
+    mkdir -p "$MANIFEST_DIR"
+    mv -f "$MANIFEST_DIR/installed.manifest" "$MANIFEST_FILE" 2>/dev/null || true
+fi
 
 init_manifest() {
-    NEW_MANIFEST_FILE="$(mktemp /tmp/inerium-manifest-XXXXXX)"
+    if [[ "${DRY_RUN:-0}" -eq 0 ]]; then
+        if [[ ! -f "$MANIFEST_FILE" && -f "$MANIFEST_DIR/installed.manifest" ]]; then
+            mkdir -p "$MANIFEST_DIR"
+            mv -f "$MANIFEST_DIR/installed.manifest" "$MANIFEST_FILE" 2>/dev/null || true
+        fi
+        NEW_MANIFEST_FILE="$(mktemp /tmp/inerium-manifest-XXXXXX)"
+    else
+        NEW_MANIFEST_FILE=""
+    fi
 }
 
 cleanup_manifest_tmp() {
@@ -74,17 +89,23 @@ manifest_clean_orphans() {
     for dir in "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/color-schemes" "$HOME/.local/share/kio/servicemenus" "$HOME/.config" "$HOME/.config/hypr" "$HOME/.config/hypr/config" "$HOME/.config/systemd/user" "${XDG_CONFIG_HOME:-$HOME/.config}/inerium/first-login.d"; do
         [[ -d "$dir" ]] || continue
         while IFS= read -r -d '' link; do
+            case "$(basename "$link")" in
+                *_local.*|*_backup.*|*.bak*)
+                    continue
+                    ;;
+            esac
             local raw
             raw="$(readlink "$link" 2>/dev/null || true)"
             if [[ "$raw" == *inerium* || "$raw" == *kanagawa* ]]; then
                 log "Removing broken inerium symlink: $link"
-                rm -f "$link"
+                if [[ "$DRY_RUN" -eq 0 ]]; then
+                    rm -f "$link"
+                else
+                    printf '[DRY-RUN] rm -f %s\n' "$link"
+                fi
             fi
         done < <(find "$dir" -maxdepth 1 -xtype l -print0 2>/dev/null)
     done
-
-    # Migrate legacy directory symlinks from earlier releases to real directories
-    migrate_legacy_dir_symlinks
 
     # Known legacy obsolete paths from v0.1.0 and Kanagawa
     local legacy
@@ -92,8 +113,6 @@ manifest_clean_orphans() {
         "$HOME/.config/hypr/AGENTS.md" \
         "$HOME/.config/hypr/hyprtoolkit.conf" \
         "$HOME/.config/hypr/profile" \
-        "$HOME/.config/hypr/config/autostart_backup.lua" \
-        "$HOME/.config/hypr/config/binds_backup.lua" \
         "$HOME/.config/hypr/config/inputs.lua" \
         "$HOME/.config/hypr/config/autostart_waybar.lua" \
         "$HOME/.config/hypr/config/binds_waybar.lua" \
@@ -101,13 +120,10 @@ manifest_clean_orphans() {
         "$HOME/.config/hypr/config/theme_settings.json" \
         "$HOME/.local/bin/hypr-profile" \
         "$HOME/.local/bin/inerium-hotspot.sh" \
-        "$HOME/.local/bin/inerium-popup-backup" \
         "$HOME/.local/bin/inerium-switch-bar" \
-        "$HOME/.local/bin/inerium-switch-bar-backup" \
         "$HOME/.local/bin/rofi-audio-sink" \
         "$HOME/.local/bin/rofi-bluetooth" \
         "$HOME/.local/bin/rofi-power-menu" \
-        "$HOME/.local/bin/rofi-power-menu-backup" \
         "$HOME/.local/bin/rofi-wifi-menu" \
         "$HOME/.local/bin/inerium-toggle-bluetooth.sh" \
         "$HOME/.local/bin/inerium-toggle-network.sh" \
@@ -118,11 +134,76 @@ manifest_clean_orphans() {
         "$HOME/.config/fish/functions/hybrid.fish" \
         "$HOME/.config/fish/functions/integrated.fish"
     do
+        case "$(basename "$legacy")" in
+            *_local.*|*_backup.*|*.bak*)
+                continue
+                ;;
+        esac
+        if [[ "$legacy" == "$HOME/.config/fish/functions/"* || "$legacy" == "$HOME/.local/share/applications/google-chrome-direct.desktop" ]]; then
+            if [[ -L "$legacy" ]]; then
+                local raw_link
+                raw_link="$(readlink "$legacy" 2>/dev/null || true)"
+                if [[ "$raw_link" == *inerium* || "$raw_link" == *kanagawa* ]]; then
+                    log "Removing legacy symlink: $legacy"
+                    if [[ "$DRY_RUN" -eq 0 ]]; then
+                        rm -f "$legacy"
+                    else
+                        printf '[DRY-RUN] rm -f %s\n' "$legacy"
+                    fi
+                fi
+            fi
+            continue
+        fi
+
         if [[ -e "$legacy" || -L "$legacy" ]]; then
             log "Removing legacy file/link: $legacy"
-            rm -rf "$legacy"
+            if [[ "$DRY_RUN" -eq 0 ]]; then
+                rm -rf "$legacy"
+            else
+                printf '[DRY-RUN] rm -rf %s\n' "$legacy"
+            fi
         fi
     done
+}
+
+disable_greetd_safely() {
+    log "Disabling display manager autostart (greetd, keeping active session)..."
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[DRY-RUN] sudo systemctl disable greetd.service\n'
+    else
+        sudo systemctl disable greetd.service 2>/dev/null || true
+    fi
+
+    # Restore /etc/greetd/config.toml from newest .bak.* if available
+    local newest_cfg_bak
+    newest_cfg_bak="$(ls -1t /etc/greetd/config.toml.bak.* 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$newest_cfg_bak" && -f "$newest_cfg_bak" ]]; then
+        log "Restoring original greetd config from $newest_cfg_bak"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] sudo cp -a %s /etc/greetd/config.toml\n' "$newest_cfg_bak"
+        else
+            sudo cp -a "$newest_cfg_bak" /etc/greetd/config.toml 2>/dev/null || true
+        fi
+    fi
+
+    # Restore /etc/pam.d/greetd from newest .bak.* if available
+    local newest_pam_bak
+    newest_pam_bak="$(ls -1t /etc/pam.d/greetd.bak.* 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$newest_pam_bak" && -f "$newest_pam_bak" ]]; then
+        log "Restoring original greetd PAM config from $newest_pam_bak"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] sudo cp -a %s /etc/pam.d/greetd\n' "$newest_pam_bak"
+        else
+            sudo cp -a "$newest_pam_bak" /etc/pam.d/greetd 2>/dev/null || true
+        fi
+    fi
+
+    # Remove inerium-greeter configs and binaries
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '[DRY-RUN] sudo rm -f /etc/greetd/inerium-greeter.json /usr/local/bin/inerium-greeter\n'
+    else
+        sudo rm -f /etc/greetd/inerium-greeter.json /usr/local/bin/inerium-greeter 2>/dev/null || true
+    fi
 }
 
 prune_obsolete_and_save_manifest() {
@@ -137,13 +218,65 @@ prune_obsolete_and_save_manifest() {
     # Prune obsolete items if old manifest exists
     if [[ -f "$MANIFEST_FILE" && -s "$NEW_MANIFEST_FILE" ]]; then
         declare -A new_items=()
+        declare -A new_targets=()
         while IFS=$'\t' read -r type target extra; do
             [[ -z "$type" || "$type" =~ ^# ]] && continue
             new_items["$type:$target"]=1
+            new_targets["$target"]=1
         done < "$NEW_MANIFEST_FILE"
 
+        # Pass 1: Stop and disable obsolete units (before removing files/scripts)
         while IFS=$'\t' read -r type target extra; do
             [[ -z "$type" || "$type" =~ ^# ]] && continue
+            case "$(basename "$target")" in
+                *_local.*|*_backup.*|*.bak*)
+                    continue
+                    ;;
+            esac
+
+            if [[ -n "${new_targets["$target"]:-}" ]]; then
+                continue
+            fi
+
+            if [[ -z "${new_items["$type:$target"]:-}" ]]; then
+                case "$type" in
+                    SYS_UNIT)
+                        if [[ "$target" == "greetd.service" ]]; then
+                            disable_greetd_safely
+                        else
+                            log "Disabling obsolete system unit: $target"
+                            sudo systemctl disable --now "$target" 2>/dev/null || true
+                            sudo rm -f "/etc/systemd/system/$target"
+                        fi
+                        ;;
+                    USER_UNIT)
+                        log "Disabling obsolete user unit: $target"
+                        systemctl --user disable --now "$target" 2>/dev/null || true
+                        rm -f "$HOME/.config/systemd/user/$target"
+                        ;;
+                esac
+            fi
+        done < "$MANIFEST_FILE"
+
+        # Pass 2: Remove obsolete tracked files (LINK, BIN, RENDER, CONFIG, SYS_FILE)
+        while IFS=$'\t' read -r type target extra; do
+            [[ -z "$type" || "$type" =~ ^# ]] && continue
+            case "$(basename "$target")" in
+                *_local.*|*_backup.*|*.bak*)
+                    continue
+                    ;;
+            esac
+
+            if [[ "$target" == "$HOME/.config/locale.conf" || "$target" == "${XDG_CONFIG_HOME:-$HOME/.config}/locale.conf" ]]; then
+                continue
+            fi
+
+            # Migration guard: if target path exists in new manifest under ANY type (e.g. BIN -> LINK),
+            # never prune or delete it!
+            if [[ -n "${new_targets["$target"]:-}" ]]; then
+                continue
+            fi
+
             if [[ -z "${new_items["$type:$target"]:-}" ]]; then
                 case "$type" in
                     LINK)
@@ -157,39 +290,34 @@ prune_obsolete_and_save_manifest() {
                         fi
                         ;;
                     BIN)
-                        if [[ -f "$target" ]]; then
+                        if [[ -f "$target" && ! -L "$target" ]]; then
                             log "Pruning obsolete binary: $target"
                             rm -f "$target"
                         fi
                         ;;
                     RENDER)
-                        if [[ -f "$target" ]]; then
+                        if [[ -f "$target" && ! -L "$target" ]]; then
                             log "Pruning obsolete rendered config: $target"
                             rm -f "$target"
                         fi
                         ;;
                     CONFIG)
-                        if [[ -f "$target" ]]; then
+                        if [[ -f "$target" && ! -L "$target" ]]; then
                             local bak="${target}.bak.${BACKUP_STAMP}"
                             log "Backing up obsolete installed config: $target -> $bak"
                             mv -f "$target" "$bak" 2>/dev/null || rm -f "$target"
                         fi
                         ;;
-                    USER_UNIT)
-                        log "Disabling obsolete user unit: $target"
-                        systemctl --user disable --now "$target" 2>/dev/null || true
-                        rm -f "$HOME/.config/systemd/user/$target"
-                        ;;
                     SYS_FILE)
+                        case "$target" in
+                            /etc/greetd/config.toml|/etc/greetd/environments|/etc/pam.d/greetd)
+                                continue
+                                ;;
+                        esac
                         if is_safe_removal_target "$target" && [[ -e "$target" ]]; then
                             log "Pruning obsolete system file: $target"
                             sudo rm -rf "$target" 2>/dev/null || true
                         fi
-                        ;;
-                    SYS_UNIT)
-                        log "Disabling obsolete system unit: $target"
-                        sudo systemctl disable --now "$target" 2>/dev/null || true
-                        sudo rm -f "/etc/systemd/system/$target"
                         ;;
                 esac
             fi
@@ -204,7 +332,7 @@ prune_obsolete_and_save_manifest() {
     # Save new manifest atomically
     local commit version now
     commit="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    version="$(git -C "$REPO_DIR" describe --tags --always 2>/dev/null || echo "v0.2.0")"
+    version="$(git -C "$REPO_DIR" describe --tags --always 2>/dev/null || echo "v0.2.2")"
     now="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
     {
@@ -225,6 +353,14 @@ run_uninstall() {
     init_sudo_keepalive
     log "Initiating Inerium Shell uninstallation..."
 
+    if [[ ! -f "$MANIFEST_FILE" && -f "$MANIFEST_DIR/installed.manifest" ]]; then
+        if [[ "${DRY_RUN:-0}" -eq 1 ]]; then
+            MANIFEST_FILE="$MANIFEST_DIR/installed.manifest"
+        else
+            mv -f "$MANIFEST_DIR/installed.manifest" "$MANIFEST_FILE" 2>/dev/null || true
+        fi
+    fi
+
     if [[ ! -f "$MANIFEST_FILE" ]]; then
         warn "Manifest not found at $MANIFEST_FILE."
         warn "Performing fallback orphan cleanup..."
@@ -232,37 +368,116 @@ run_uninstall() {
         return 0
     fi
 
-    # Resolve installed repo directory BEFORE deleting manifest
-    local installed_repo="${REPO_DIR:-}"
-    if [[ -z "$installed_repo" && -f "$MANIFEST_FILE" ]]; then
-        installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" | head -n 1 | cut -d' ' -f3- || true)"
+    # Resolve installed repo directory BEFORE deleting manifest (manifest takes precedence over current REPO_DIR)
+    local installed_repo
+    installed_repo="$(grep '^# REPO ' "$MANIFEST_FILE" 2>/dev/null | head -n 1 | cut -d' ' -f3- || true)"
+    if [[ -z "$installed_repo" ]]; then
+        installed_repo="${REPO_DIR:-}"
     fi
 
     # 1. Stop and disable system services
     while IFS=$'\t' read -r type target extra; do
         if [[ "$type" == "SYS_UNIT" ]]; then
-            log "Stopping and disabling system service: $target"
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                printf '[DRY-RUN] sudo systemctl disable --now %s\n' "$target"
+            if [[ "$target" == "greetd.service" ]]; then
+                disable_greetd_safely
             else
-                sudo systemctl disable --now "$target" 2>/dev/null || true
-                sudo rm -f "/etc/systemd/system/$target"
+                log "Stopping and disabling system service: $target"
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    printf '[DRY-RUN] sudo systemctl disable --now %s\n' "$target"
+                    printf '[DRY-RUN] sudo rm -f /etc/systemd/system/%s\n' "$target"
+                else
+                    sudo systemctl disable --now "$target" 2>/dev/null || true
+                    sudo rm -f "/etc/systemd/system/$target" 2>/dev/null || true
+                fi
             fi
         fi
     done < "$MANIFEST_FILE"
 
-    # 2. Stop and disable user services
+    # 2. Stop and disable Inerium user services
     while IFS=$'\t' read -r type target extra; do
         if [[ "$type" == "USER_UNIT" ]]; then
-            log "Stopping and disabling user service: $target"
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                printf '[DRY-RUN] systemctl --user disable --now %s\n' "$target"
-            else
-                systemctl --user disable --now "$target" 2>/dev/null || true
-                rm -f "$HOME/.config/systemd/user/$target"
-            fi
+            # Only disable/remove Inerium units, leaving standard system units (waybar, hypridle, mako, etc.) intact
+            case "$target" in
+                inerium-*|hypr-ipc-bridge*|gdrive*)
+                    log "Stopping and disabling user service: $target"
+                    if [[ "$DRY_RUN" -eq 1 ]]; then
+                        printf '[DRY-RUN] systemctl --user disable --now %s\n' "$target"
+                        printf '[DRY-RUN] rm -f %s/.config/systemd/user/%s\n' "$HOME" "$target"
+                    else
+                        systemctl --user disable --now "$target" 2>/dev/null || true
+                        rm -f "$HOME/.config/systemd/user/$target"
+                    fi
+                    ;;
+                *)
+                    local u_path="$HOME/.config/systemd/user/$target"
+                    if [[ -L "$u_path" ]]; then
+                        local u_dest
+                        u_dest="$(readlink -f "$u_path" 2>/dev/null || true)"
+                        if [[ "$u_dest" == *inerium* || "$u_dest" == *kanagawa* || ( -n "$installed_repo" && "$u_dest" == "$installed_repo"* ) ]]; then
+                            log "Removing Inerium unit symlink: $u_path"
+                            if [[ "$DRY_RUN" -eq 1 ]]; then
+                                printf '[DRY-RUN] rm -f %s\n' "$u_path"
+                            else
+                                rm -f "$u_path"
+                            fi
+                        fi
+                    fi
+                    ;;
+            esac
         fi
     done < "$MANIFEST_FILE"
+
+    # Remove waybar bridge drop-in
+    local waybar_bridge_dropin="$HOME/.config/systemd/user/waybar.service.d/bridge.conf"
+    if [[ -e "$waybar_bridge_dropin" || -L "$waybar_bridge_dropin" ]]; then
+        log "Removing Waybar bridge drop-in: $waybar_bridge_dropin"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] rm -f %s\n' "$waybar_bridge_dropin"
+        else
+            rm -f "$waybar_bridge_dropin"
+            rmdir "$HOME/.config/systemd/user/waybar.service.d" 2>/dev/null || true
+        fi
+    fi
+
+    # Clean any dangling user unit symlinks pointing to $installed_repo
+    for u_link in "$HOME/.config/systemd/user"/* "$HOME/.config/systemd/user"/*/*; do
+        [[ -L "$u_link" ]] || continue
+        local u_dest raw_dest
+        u_dest="$(readlink -f "$u_link" 2>/dev/null || true)"
+        raw_dest="$(readlink "$u_link" 2>/dev/null || true)"
+        if [[ -n "$installed_repo" && ( "$u_dest" == "$installed_repo"* || "$raw_dest" == "$installed_repo"* ) ]] || [[ "$u_dest" == *inerium* || "$u_dest" == *kanagawa* || "$raw_dest" == *inerium* || "$raw_dest" == *kanagawa* ]]; then
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                printf '[DRY-RUN] rm -f %s\n' "$u_link"
+            else
+                rm -f "$u_link"
+            fi
+        fi
+    done
+
+    # Unmask masked user units (hyprpolkitagent, at-spi2-registryd, at-spi-dbus-bus)
+    for u in hyprpolkitagent.service at-spi2-registryd.service at-spi-dbus-bus.service; do
+        local masked_unit="$HOME/.config/systemd/user/$u"
+        if [[ -L "$masked_unit" ]]; then
+            local raw_target
+            raw_target="$(readlink "$masked_unit" 2>/dev/null || true)"
+            if [[ "$raw_target" == "/dev/null" ]]; then
+                log "Unmasking $u (removing /dev/null symlink)..."
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    printf '[DRY-RUN] rm -f %s\n' "$masked_unit"
+                else
+                    rm -f "$masked_unit"
+                fi
+            fi
+        fi
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            printf '[DRY-RUN] systemctl --user unmask %s\n' "$u"
+        else
+            systemctl --user unmask "$u" 2>/dev/null || true
+        fi
+    done
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        systemctl --user daemon-reload 2>/dev/null || true
+    fi
 
     # 3. Remove tracked items (symlinks, binaries, templates, system files)
     while IFS=$'\t' read -r type target extra; do
@@ -287,19 +502,13 @@ run_uninstall() {
                     fi
                 fi
                 ;;
-            RENDER)
-                if [[ -f "$target" ]]; then
-                    log "Removing rendered configuration: $target"
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        printf '[DRY-RUN] rm -f %s\n' "$target"
-                    else
-                        rm -f "$target"
-                    fi
+            RENDER|CONFIG)
+                if [[ "$target" == "$HOME/.config/"* || "$target" == "${XDG_CONFIG_HOME:-$HOME/.config}/"* ]]; then
+                    # Preserve user desktop configurations so Hyprland session remains usable
+                    continue
                 fi
-                ;;
-            CONFIG)
                 if [[ -f "$target" ]]; then
-                    log "Removing installed configuration: $target"
+                    log "Removing configuration: $target"
                     if [[ "$DRY_RUN" -eq 1 ]]; then
                         printf '[DRY-RUN] rm -f %s\n' "$target"
                     else
@@ -308,6 +517,11 @@ run_uninstall() {
                 fi
                 ;;
             SYS_FILE)
+                case "$target" in
+                    /etc/greetd/config.toml|/etc/greetd/environments|/etc/pam.d/greetd)
+                        continue
+                        ;;
+                esac
                 if is_safe_removal_target "$target" && [[ -e "$target" ]]; then
                     log "Removing system file: $target"
                     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -356,6 +570,32 @@ run_uninstall() {
         fi
     done
     log "Inerium Shell uninstallation complete."
+    printf '\n'
+    echo "============================================================================"
+    echo "  Inerium Shell Uninstallation Summary / Сводка удаления Inerium Shell"
+    echo "============================================================================"
+    echo "  [EN] What was removed:"
+    echo "       - Inerium binaries (~/.local/bin/inerium*), multicall symlinks, and desktop entries"
+    echo "       - Inerium systemd background services and bridge drop-ins"
+    echo "       - Greeter daemon (/usr/local/bin/inerium-greeter) and greetd autostart disabled"
+    echo "  [EN] Preserved:"
+    echo "       - All desktop configurations in ~/.config/ (hypr, waybar, kitty, rofi, mako)"
+    echo "         Your Hyprland desktop session remains completely usable."
+    echo "  [EN] Important:"
+    echo "       - Remember to enable your preferred display manager if greetd was disabled:"
+    echo "         sudo systemctl enable sddm.service (or gdm / lightdm / tty autologin)"
+    echo "----------------------------------------------------------------------------"
+    echo "  [RU] Что удалено:"
+    echo "       - Бинарники Inerium (~/.local/bin/inerium*), симлинки утилит и .desktop файлы"
+    echo "       - Фоновые службы Inerium systemd и дроп-ины мостов"
+    echo "       - Демон экрана входа (/usr/local/bin/inerium-greeter), автозапуск greetd отключён"
+    echo "  [RU] Сохранено:"
+    echo "       - Все конфигурационные файлы в ~/.config/ (hypr, waybar, kitty, rofi, mako)"
+    echo "         Ваша сессия Hyprland остаётся полностью функциональной."
+    echo "  [RU] Важно:"
+    echo "       - Не забудьте включить нужный дисплейный менеджер, если greetd был отключён:"
+    echo "         sudo systemctl enable sddm.service (или gdm / lightdm / автологин в TTY)"
+    echo "============================================================================"
 }
 
 detect_installed_addons_and_features() {

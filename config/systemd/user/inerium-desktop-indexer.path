@@ -3,6 +3,7 @@ Description=Watch user desktop files for layout indexing
 
 [Path]
 PathModified=%h/.local/share/applications
+PathModified=/usr/share/applications
 Unit=inerium-desktop-indexer.service
 
 [Install]

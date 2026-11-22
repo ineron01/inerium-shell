@@ -163,17 +163,24 @@ pub fn run(args: &[String]) {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
-    let mut current_state = is_dnd_active();
-    let _ = writeln!(handle, "{}", format_output(current_state));
+    let current_state = is_dnd_active();
+    let initial = format_output(current_state);
+    let _ = writeln!(handle, "{}", initial);
     let _ = handle.flush();
+    let mut last_output = initial;
 
     loop {
         // Wait for SIGUSR1 notification or fallback poll every 15 seconds
-        self_pipe.wait_event(15000);
+        if self_pipe.wait_event(15000) {
+            inerium_i18n::Lang::reinit();
+        }
 
         let new_state = is_dnd_active();
-        current_state = new_state;
-        let _ = writeln!(handle, "{}", format_output(current_state));
-        let _ = handle.flush();
+        let current = format_output(new_state);
+        if current != last_output {
+            let _ = writeln!(handle, "{}", current);
+            let _ = handle.flush();
+            last_output = current;
+        }
     }
 }

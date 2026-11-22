@@ -15,7 +15,7 @@ window {
 }
 
 entry {
-    placeholder: "Поиск в галерее скриншотов…";
+    placeholder: "Search screenshot gallery…";
 }
 
 listview {

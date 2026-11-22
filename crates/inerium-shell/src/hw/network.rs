@@ -9,6 +9,34 @@ pub fn is_wifi_enabled() -> bool {
     true
 }
 
+pub fn split_nmcli_escaped(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(&next) = chars.peek() {
+                if next == ':' || next == '\\' {
+                    current.push(next);
+                    chars.next();
+                } else {
+                    current.push('\\');
+                }
+            } else {
+                current.push('\\');
+            }
+        } else if ch == ':' {
+            fields.push(current);
+            current = String::new();
+        } else {
+            current.push(ch);
+        }
+    }
+    fields.push(current);
+    fields
+}
+
 pub fn get_active_wifi_ssid() -> Option<String> {
     // Check active connection via nmcli (Source of Truth: only fully activated connections)
     if let Ok(out) = Command::new("nmcli")
@@ -18,9 +46,9 @@ pub fn get_active_wifi_ssid() -> Option<String> {
     {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
+            let parts = split_nmcli_escaped(line);
             if parts.len() >= 2 && (parts[0] == "802-11-wireless" || parts[0] == "wifi") {
-                let name = parts[1].replace("\\:", ":").trim().to_string();
+                let name = parts[1].trim().to_string();
                 if !name.is_empty() {
                     return Some(name);
                 }
@@ -53,7 +81,7 @@ pub fn is_wifi_device_ready() -> bool {
     {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
+            let parts = split_nmcli_escaped(line);
             if parts.len() >= 2 && parts[0] == "wifi" {
                 let state = parts[1].trim();
                 if state != "unavailable" && state != "unmanaged" {
@@ -96,9 +124,9 @@ pub fn is_hotspot_active() -> bool {
     {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
+            let parts = split_nmcli_escaped(line);
             if parts.len() >= 2 && (parts[0] == "802-11-wireless" || parts[0] == "wifi") {
-                let name = parts[1].replace("\\:", ":").trim().to_string();
+                let name = parts[1].trim().to_string();
                 if name == "Hotspot" || name == "inerium-hotspot" {
                     return true;
                 }
@@ -496,5 +524,16 @@ mod tests {
         }
         assert!(trusted);
         assert_eq!(battery, Some(85));
+    }
+
+    #[test]
+    fn test_split_nmcli_escaped_ssid() {
+        let line = "*:My\\:WiFi\\\\\\:Net:80:WPA2";
+        let fields = split_nmcli_escaped(line);
+        assert_eq!(fields.len(), 4);
+        assert_eq!(fields[0], "*");
+        assert_eq!(fields[1], "My:WiFi\\:Net");
+        assert_eq!(fields[2], "80");
+        assert_eq!(fields[3], "WPA2");
     }
 }

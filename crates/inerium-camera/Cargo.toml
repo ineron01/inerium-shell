@@ -9,6 +9,7 @@ authors.workspace = true
 
 [dependencies]
 inerium-i18n = { workspace = true }
+inerium-theme = { workspace = true }
 gtk4 = { workspace = true }
 gdk4 = { workspace = true }
 glib = { workspace = true }

@@ -20,12 +20,12 @@ Guidelines and architectural principles for working on the Inerium Shell desktop
 
 2. **Formatting & Line Layout Standards:**
    - **Multi-line layout:** Used in `monitors.lua` and `input.lua` (vertical alignment of properties for rapid inspection and editing).
-   - **Single-line compact layout:** Used in `windowrules.lua` and `workspaces.lua` (dense listing for fast visual scanning).
-   - **Explicit numbers (No loops):** Workspaces must be defined as explicit integer rules (`workspace = 1`, `workspace = 2`, etc.). Never write `for ws = 1, N` loops or `tostring(ws)` boilerplate, which can cause rule overwriting.
+   - **Single-line compact layout:** Used in `windowrules.lua` (dense listing for fast visual scanning).
+   - **Dynamic Workspaces:** `workspaces.lua` reads the configured workspace count from `~/.config/hypr/config/workspaces_count` and generates persistent rules in a concise loop (`for i = 1, count do ... end`).
 
-3. **No Sysfs Scraping or Redundant Proxy Checks:**
+3. **Clean Module Separation & Safe User Overrides:**
    - Never query `/sys/class/drm/` or run blocking shell commands (`io.popen`, `os.execute`) inside Lua configs.
-   - Do not wrap declarations in dead `pcall(require, "config.*_local")` checks when files are cleanly separated. Let Hyprland's native engine evaluate rules.
+   - User custom overrides belong strictly in `~/.config/hypr/config/user.lua` (loaded safely at the end of `hyprland.lua` via `pcall(require, "config.user")`), which is preserved across installer updates. Legacy fragmented `*_local.lua` overlay files are eliminated in favor of direct declarative configs and `user.lua`.
 
 4. **Mandatory Engineering Rules:**
    - **Pre-flight Syntax Validation:** Always run `luac -p <file>` before reloading.
@@ -56,9 +56,11 @@ Guidelines and architectural principles for working on the Inerium Shell desktop
 ## 3. Inerium Tools (`crates/inerium-tools`)
 
 ### Architecture & Codebase
-- Crate Type: Cargo workspace targeting lightweight native telemetry binaries.
-- Core Library: `libinerium_tools` (shared telemetry, IPC, Waybar formatters).
-- Target Binaries: `inerium-battery`, `inerium-bluetooth`, `inerium-clock`, `inerium-dnd`, `inerium-hotspot`, `inerium-hwmon`, `inerium-layout`, `inerium-network`, `inerium-osd-watcher`, `inerium-popup`, `inerium-updates`, `inerium-wallpaper`, `msi-fan-regulator`.
+- Crate Type: Cargo workspace targeting lightweight native telemetry binaries and multicall dispatcher.
+- Core Library: `libinerium_tools` (shared telemetry, IPC, Waybar formatters, hardware abstractions).
+- Multicall Dispatcher: `inerium-ctl` — Single optimized binary handling commands via `argv[0]` symlink or explicit CLI subcommands.
+- Multicall Symlinks (15 tools): `inerium-battery`, `inerium-bluetooth`, `inerium-clock`, `inerium-dnd`, `inerium-hotspot`, `inerium-hwmon`, `inerium-layout`, `inerium-network`, `inerium-updates`, `inerium-clipboard`, `inerium-popup`, `hypr-ipc-bridge`, `inerium-osd-watcher`, `inerium-theme`, `inerium-wallpaper`.
+- Hardware Regulator: `msi-fan-regulator` — Hardware-specific thermal curve regulator daemon built conditionally under `--features msi-ec`.
 
 ### Engineering & Output Protocol
 1. **Waybar JSON Schema:** Every `--waybar` output MUST be valid compact JSON adhering to:
@@ -69,4 +71,4 @@ Guidelines and architectural principles for working on the Inerium Shell desktop
    cargo check --workspace
    cargo clippy --workspace -- -D warnings
    ```
-4. **Deployment:** Atomically copy compiled release binaries into `~/.local/bin/`.
+4. **Deployment:** Atomically copy `inerium-ctl` (and `msi-fan-regulator` if `--features msi-ec` is enabled) into `~/.local/bin/` and establish symlinks for all 15 applets pointing to `inerium-ctl`.

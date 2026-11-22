@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "dolphin-convert"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "image",
  "ort",
@@ -1029,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-camera"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "gdk4",
  "glib",
@@ -1037,6 +1037,7 @@ dependencies = [
  "gstreamer-app",
  "gtk4",
  "inerium-i18n",
+ "inerium-theme",
  "nix",
  "serde",
  "serde_json",
@@ -1045,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-greeter"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "gdk4",
  "glib",
@@ -1057,20 +1058,18 @@ dependencies = [
 
 [[package]]
 name = "inerium-hw"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "inerium-i18n",
- "serde",
- "serde_json",
 ]
 
 [[package]]
 name = "inerium-i18n"
-version = "0.2.1"
+version = "0.2.2"
 
 [[package]]
 name = "inerium-polkit"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "etc-passwd",
  "eyre",
@@ -1090,7 +1089,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-setup"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "gdk4",
  "gio",
@@ -1106,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "inerium-shell"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "gdk4",
  "gio",
@@ -1117,6 +1116,7 @@ dependencies = [
  "inerium-hw",
  "inerium-i18n",
  "inerium-theme",
+ "inerium-tools",
  "relm4",
  "serde",
  "serde_json",
@@ -1124,23 +1124,25 @@ dependencies = [
 
 [[package]]
 name = "inerium-theme"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
+ "inerium-i18n",
  "serde",
  "serde_json",
+ "toml 0.8.23",
 ]
 
 [[package]]
 name = "inerium-tools"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "inerium-hw",
  "inerium-i18n",
  "inerium-theme",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
- "toml 1.2.1+spec-1.1.0",
 ]
 
 [[package]]

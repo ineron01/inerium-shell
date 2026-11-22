@@ -10,7 +10,7 @@ description = "Soothing dark pastel theme with warm chocolate sumi tones"
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(30, 30, 46, 0.98)"

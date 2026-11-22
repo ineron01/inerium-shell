@@ -33,7 +33,7 @@ description = "My custom desktop theme"
 [typography]
 font_ui = "Inter"                    # Interface font (GTK, Waybar, menus)
 font_mono = "JetBrainsMono Nerd Font"# Monospace font (Kitty terminal, code)
-font_size = 10.0                     # Base UI font size
+font_size = 11.0                     # Base UI font size
 
 # ------------------------------------------------------------------------------
 # Color Palette

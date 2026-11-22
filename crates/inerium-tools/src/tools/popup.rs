@@ -1,27 +1,27 @@
-use std::env;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::process::Command;
 use std::time::Duration;
 
-use inerium_tools::sys::posix::posix_getuid;
-
-fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    if args.is_empty() {
+pub fn run(args: &[String]) {
+    let popup_args: Vec<String> = if args.len() > 1 {
+        args[1..].to_vec()
+    } else {
+        Vec::new()
+    };
+    if popup_args.is_empty() {
         eprintln!("Usage: inerium-popup <popup_name> [args...]");
         std::process::exit(1);
     }
 
-    let uid = posix_getuid();
-    let sock_path = format!("/run/user/{}/inerium-popups.sock", uid);
+    let sock_path = crate::sys::runtime_dir().join("inerium-popups.sock");
 
     let mut connected = false;
     if let Ok(mut stream) = UnixStream::connect(&sock_path) {
         let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
         let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
 
-        let msg = format!("{}\n", args.join(" "));
+        let msg = format!("{}\n", popup_args.join(" "));
         if stream.write_all(msg.as_bytes()).is_ok() {
             let mut buf = [0u8; 16];
             let _ = stream.read(&mut buf);
@@ -40,7 +40,7 @@ fn main() {
             if let Ok(mut stream) = UnixStream::connect(&sock_path) {
                 let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
                 let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
-                let msg = format!("{}\n", args.join(" "));
+                let msg = format!("{}\n", popup_args.join(" "));
                 if stream.write_all(msg.as_bytes()).is_ok() {
                     let mut buf = [0u8; 16];
                     let _ = stream.read(&mut buf);

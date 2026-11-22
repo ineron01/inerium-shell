@@ -10,7 +10,7 @@ description = "Modern neutral light theme with crisp contrast, clean surfaces, a
 [typography]
 font_ui = "Inter"
 font_mono = "JetBrainsMono Nerd Font"
-font_size = 10.0
+font_size = 11.0
 
 [palette]
 bg_canvas         = "rgba(248, 249, 250, 0.98)"

@@ -1,6 +1,6 @@
 # Inerium Shell — Optional Modules & Add-ons
 
-Inerium Shell includes optional system modules that can be selected during installation via the interactive TUI or CLI flags (`--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-novpn`, `--all-addons`).
+Inerium Shell includes optional system modules that can be selected during installation via the interactive TUI or CLI flags (`--with-github`, `--with-gdrive`, `--with-converter`, `--with-camera`, `--with-msi-ec`, `--with-fan-regulator`, `--with-novpn`, `--all-addons`).
 
 ---
 
@@ -20,17 +20,22 @@ Inerium Shell includes optional system modules that can be selected during insta
 
 ---
 
-## 2. MSI Cooling & Fan Regulator (`--with-msi-ec`)
+## 2. MSI Cooling & Fan Regulator (`--with-msi-ec`, `--with-fan-regulator`)
 
-- **Description:** Upstream `msi-ec` DKMS kernel driver (`msi-ec-dkms-git` package from AUR) and background software fan regulator daemon (`msi-fan-regulator`).
+- **Description:** Patched `msi-ec` DKMS kernel driver (`msi-ec-dkms-git` package from AUR) and background software fan regulator daemon (`msi-fan-regulator`).
+- **Flags:**
+  - `--with-msi-ec`: Installs `msi-ec-dkms-git` kernel driver, udev rules, and kernel module configuration for battery threshold and platform registers.
+  - `--with-fan-regulator`: Installs and activates `msi-fan-regulator.service` (automatically implies `--with-msi-ec` if not already specified).
 - **Hardware Compatibility & Notice:**
   - Starting with version 0.18 (PR #773), `msi-ec` natively supports the Bravo 15 C7VE / C7V / C7UCX family out of the box via EC firmware prefix matching (`158NIMS1.1`).
-  - The fan regulator daemon monitors CPU/GPU temperatures and dynamically regulates fan speed curves via `msi-ec` sysfs registers.
+  - The fan regulator daemon monitors CPU/GPU temperatures and dynamically regulates fan speed curves via `ec_sys` debug registers (`options ec_sys write_support=1`).
   - Designed for MSI laptops where standard Linux fan curves either fail to cool or let fans run at excessive noise levels.
 - **Components:**
   - `msi-ec-dkms-git` package (AUR)
   - `msi-fan-regulator` binary (built from `crates/inerium-tools` with `--features msi-ec`)
   - `/etc/systemd/system/msi-fan-regulator.service`
+  - `/etc/modprobe.d/msi-fan-regulator.conf` (`options ec_sys write_support=1`)
+  - `/etc/modules-load.d/msi-fan-regulator.conf` (`ec_sys`)
   - `/etc/udev/rules.d/99-msi-ec.rules`
   - `/etc/modules-load.d/msi-ec.conf`
 
@@ -77,3 +82,16 @@ Inerium Shell includes optional system modules that can be selected during insta
   - Fast conversion for office documents (PDF, DOCX, ODT via LibreOffice & Pandoc), media formats (MP4, MP3, WAV, WEBP via FFmpeg & ImageMagick).
   - Rayon-based multi-threaded parallel file processing.
   - Optional AI background removal powered by local ONNX runtime (`silueta.onnx`).
+
+---
+
+## 6. GitHub CLI (`--with-github`)
+
+- **Description:** Official GitHub CLI tool (`gh`) integrated with the first-login onboarding workflow for seamless authentication, HTTPS git credentials, and commit signing.
+- **Components:**
+  - `github-cli` package (`gh`)
+  - `~/.config/inerium/first-login.d/10-github`
+- **Key Features:**
+  - Interactive GitHub authentication via `gh auth login` in terminal widget or `inerium-setup`.
+  - Automatic git credential helper configuration for HTTPS repositories.
+  - SSH and GPG commit signing setup assistance.

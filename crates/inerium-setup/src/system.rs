@@ -4,9 +4,10 @@ use std::process::{Command, Stdio};
 
 use crate::model::{
     FirstLoginStep, HyprMonitor, IdleConfig, InputOverrides, MonitorConfig, SetupPaths, StepStatus,
-    atomic_write, generate_hypridle_conf, generate_hypridle_dropin,
-    generate_inputs_lua, generate_monitors_lua, list_executable_steps, mark_step_done,
-    parse_hypr_monitors_json, replace_launcher_bind, step_done_marker,
+    atomic_write, extract_gestures_lua, generate_hypridle_conf, generate_hypridle_dropin,
+    generate_inputs_lua, generate_inputs_lua_with_gestures, generate_monitors_lua,
+    list_executable_steps, mark_step_done, parse_hypr_monitors_json, replace_launcher_bind,
+    step_done_marker,
 };
 
 pub fn query_hypr_monitors() -> Result<Vec<HyprMonitor>, String> {
@@ -124,10 +125,20 @@ pub fn query_live_inputs() -> InputOverrides {
 pub fn validate_lua_syntax(content: &str) -> Result<(), String> {
     let tmp = std::env::temp_dir().join(format!("inerium_setup_check_{}.lua", std::process::id()));
     fs::write(&tmp, content).map_err(|e| format!("Failed writing temp Lua file: {e}"))?;
-    let output = Command::new("luac").arg("-p").arg(&tmp).output();
+    let output = match Command::new("luac").arg("-p").arg(&tmp).output() {
+        Ok(out) => out,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("Warning: `luac` not found in PATH; skipping Lua syntax validation");
+            let _ = fs::remove_file(&tmp);
+            return Ok(());
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("Failed executing luac -p: {e}"));
+        }
+    };
     let _ = fs::remove_file(&tmp);
 
-    let output = output.map_err(|e| format!("Failed executing luac -p: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "Lua syntax error: {}",
@@ -157,10 +168,11 @@ pub fn save_and_reload_monitors(
     monitors: &[MonitorConfig],
 ) -> Result<(), String> {
     if is_managed_monitors_overlay(paths) {
-        return Err(
-            "monitors.lua управляется оверлеем (симлинк / правила воркспейсов); правка из GUI отключена"
-                .to_string(),
-        );
+        return Err(inerium_i18n::tr(
+            "monitors.lua is managed by an overlay (symlink / workspace rules); GUI editing is disabled",
+            "monitors.lua управляется оверлеем (симлинк / правила воркспейсов); правка из GUI отключена",
+        )
+        .to_string());
     }
     let lua = generate_monitors_lua(monitors);
     validate_lua_syntax(&lua)?;
@@ -177,10 +189,11 @@ pub fn save_and_reload_monitors(
 
 pub fn reset_monitors_to_auto(paths: &SetupPaths) -> Result<(), String> {
     if is_managed_monitors_overlay(paths) {
-        return Err(
-            "monitors.lua is managed by an overlay (symlink / workspace rules); GUI reset is disabled"
-                .to_string(),
-        );
+        return Err(inerium_i18n::tr(
+            "monitors.lua is managed by an overlay (symlink / workspace rules); GUI reset is disabled",
+            "monitors.lua управляется оверлеем (симлинк / правила воркспейсов); сброс из GUI отключен",
+        )
+        .to_string());
     }
     let lua = "-- Universal monitor configuration\n-- Wiki: https://wiki.hypr.land/Configuring/Monitors/\n\nhl.monitor({\n    output   = \"\",\n    mode     = \"preferred\",\n    position = \"auto\",\n    scale    = 1.0,\n})\n";
     validate_lua_syntax(lua)?;
@@ -195,11 +208,27 @@ pub fn reset_monitors_to_auto(paths: &SetupPaths) -> Result<(), String> {
 }
 
 pub fn apply_wallpaper(path: &Path) -> Result<(), String> {
-    inerium_hw::wallpaper::apply_wallpaper(path, None, false)
+    let out = Command::new("inerium-wallpaper")
+        .arg(path)
+        .arg("all")
+        .arg("--no-notify")
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
+    }
 }
 
 pub fn save_inputs_and_reload(paths: &SetupPaths, cfg: &InputOverrides) -> Result<(), String> {
-    let lua = generate_inputs_lua(cfg);
+    let existing_gestures = fs::read_to_string(paths.input_lua_path())
+        .ok()
+        .and_then(|c| extract_gestures_lua(&c));
+    let lua = match existing_gestures {
+        Some(gestures) => generate_inputs_lua_with_gestures(cfg, &gestures),
+        None => generate_inputs_lua(cfg),
+    };
     validate_lua_syntax(&lua)?;
     atomic_write(&paths.input_lua_path(), &lua)?;
 
@@ -209,17 +238,14 @@ pub fn save_inputs_and_reload(paths: &SetupPaths, cfg: &InputOverrides) -> Resul
         let _ = fs::remove_file(&legacy_in);
     }
 
-    // Direct keybinds.lua update
-    let keybinds_path = paths.keybinds_lua_path();
-    if let Ok(content) = fs::read_to_string(&keybinds_path) {
-        let launcher_key = if cfg.kb_options == "grp:win_space_toggle" {
-            cfg.launcher_bind.as_deref().unwrap_or("SUPER + R")
-        } else {
-            cfg.launcher_bind.as_deref().unwrap_or("SUPER + Space")
-        };
-        let updated_keybinds = replace_launcher_bind(&content, launcher_key);
-        validate_lua_syntax(&updated_keybinds)?;
-        atomic_write(&keybinds_path, &updated_keybinds)?;
+    // Direct keybinds.lua update (only if launcher_bind was explicitly configured)
+    if let Some(ref launcher_key) = cfg.launcher_bind {
+        let keybinds_path = paths.keybinds_lua_path();
+        if let Ok(content) = fs::read_to_string(&keybinds_path) {
+            let updated_keybinds = replace_launcher_bind(&content, launcher_key);
+            validate_lua_syntax(&updated_keybinds)?;
+            atomic_write(&keybinds_path, &updated_keybinds)?;
+        }
     }
 
     // Clean up legacy binds_local.lua

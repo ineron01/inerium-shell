@@ -60,6 +60,7 @@ run() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf '[DRY-RUN] %s\n' "$*"
     else
+        # shellcheck disable=SC2294
         eval "$@"
     fi
 }
@@ -105,7 +106,7 @@ run_step() {
         return 0
     fi
     # Proactively validate and refresh sudo in foreground to prevent background prompt deadlock under gum spin
-    if [[ "$DRY_RUN" -eq 0 ]]; then
+    if [[ "$DRY_RUN" -eq 0 && "${NON_INTERACTIVE:-0}" -eq 0 && -t 0 ]]; then
         if ! sudo -n true 2>/dev/null; then
             sudo -v
         else
@@ -145,7 +146,7 @@ run_live_step() {
         printf '[DRY-RUN] %s: %s\n' "$title" "$*"
         return 0
     fi
-    if [[ "$DRY_RUN" -eq 0 ]]; then
+    if [[ "$DRY_RUN" -eq 0 && "${NON_INTERACTIVE:-0}" -eq 0 && -t 0 ]]; then
         if ! sudo -n true 2>/dev/null; then
             sudo -v
         else
@@ -156,14 +157,28 @@ run_live_step() {
     log "$title"
 
     local status=0
+    if [[ "${INERIUM_IN_LIVE_STEP:-0}" -eq 1 ]]; then
+        "$@" || status=$?
+        if [[ $status -ne 0 ]]; then
+            printf '\n[inerium-shell] ERROR during: %s (exit code %d)\n' "$title" "$status" >&2
+            return $status
+        fi
+        printf '[inerium-shell] [✓] %s\n' "$title"
+        return 0
+    fi
+
     if [[ -w "$LOG_FILE" || -d "$(dirname "$LOG_FILE")" ]]; then
         exec 3>&1 4>&2
         exec > >(tee -a "$LOG_FILE") 2> >(tee -a "$LOG_FILE" >&2)
+        INERIUM_IN_LIVE_STEP=1
         "$@" || status=$?
+        INERIUM_IN_LIVE_STEP=0
         exec 1>&3 2>&4 3>&- 4>&-
         sleep 0.05
     else
+        INERIUM_IN_LIVE_STEP=1
         "$@" || status=$?
+        INERIUM_IN_LIVE_STEP=0
     fi
 
     if [[ $status -ne 0 ]]; then
@@ -201,48 +216,77 @@ deploy_config_file() {
     local src="$1"
     local dst="$2"
     local mode="${3:-644}"
+    local category="${4:-ui}"
     manifest_record_config "$dst"
 
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        if [[ ! -e "$dst" ]]; then
-            printf '[DRY-RUN] install -m %s %s -> %s\n' "$mode" "$src" "$dst"
-        elif ! cmp -s "$src" "$dst" 2>/dev/null; then
-            if [[ "${UPDATE_CONFIGS:-0}" -eq 1 || "${NON_INTERACTIVE:-0}" -eq 1 && "${FORCE_OVERWRITE:-0}" -eq 1 ]]; then
-                printf '[DRY-RUN] mv %s -> %s.bak.%s && install -m %s %s -> %s\n' "$dst" "$dst" "$BACKUP_STAMP" "$mode" "$src" "$dst"
-            else
-                printf '[DRY-RUN] preserve existing config %s\n' "$dst"
+    local should_update=0
+    case "${UPDATE_CONFIGS_MODE:-}" in
+        all)
+            should_update=1
+            ;;
+        ui)
+            [[ "$category" == "ui" ]] && should_update=1
+            ;;
+        none|"")
+            if [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
+                [[ "$category" == "ui" ]] && should_update=1
             fi
+            ;;
+    esac
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        if [[ -L "$dst" ]]; then
+            local link_target src_canon
+            link_target="$(readlink -f "$dst" 2>/dev/null || true)"
+            src_canon="$(readlink -f "$src" 2>/dev/null || true)"
+            if [[ -n "$link_target" && ( "$link_target" == "$src_canon" || ( -n "${REPO_DIR:-}" && "$link_target" == "$REPO_DIR"/* ) ) ]]; then
+                printf '[DRY-RUN] preserve repo symlink %s\n' "$dst"
+                return 0
+            fi
+        fi
+        if [[ ! -e "$dst" && ! -L "$dst" ]]; then
+            printf '[DRY-RUN] install -m %s %s -> %s\n' "$mode" "$src" "$dst"
+        elif [[ "$should_update" -eq 1 ]]; then
+            if ! cmp -s "$src" "$dst" 2>/dev/null; then
+                printf '[DRY-RUN] mv %s -> %s.bak.%s && install -m %s %s -> %s\n' "$dst" "$dst" "$BACKUP_STAMP" "$mode" "$src" "$dst"
+            fi
+        else
+            printf '[DRY-RUN] [skip] %s (user config preserved)\n' "$dst"
         fi
         return 0
     fi
 
     mkdir -p "$(dirname "$dst")"
 
-    # If dst is a legacy symlink, remove the symlink first so we install a real file
-    if [[ -L "$dst" ]]; then
-        rm -f "$dst"
-    fi
+    # If target already exists (file or symlink)
+    if [[ -e "$dst" || -L "$dst" ]]; then
+        # If it's a symlink pointing to the repository, preserve it unless updating
+        if [[ -L "$dst" ]]; then
+            local link_target src_canon
+            link_target="$(readlink -f "$dst" 2>/dev/null || true)"
+            src_canon="$(readlink -f "$src" 2>/dev/null || true)"
+            if [[ -n "$link_target" && ( "$link_target" == "$src_canon" || ( -n "${REPO_DIR:-}" && "$link_target" == "$REPO_DIR"/* ) ) ]]; then
+                [[ "$should_update" -ne 1 ]] && log "[skip] $dst (user config preserved)"
+                return 0
+            fi
+        fi
 
-    if [[ ! -e "$dst" ]]; then
-        # Clean installation: install immediately without prompt
-        install -m "$mode" "$src" "$dst"
-        return 0
-    fi
+        if [[ "$should_update" -ne 1 ]]; then
+            log "[skip] $dst (user config preserved)"
+            return 0
+        fi
 
-    # If file exists and matches source, nothing to do
-    if cmp -s "$src" "$dst" 2>/dev/null; then
-        return 0
-    fi
+        # should_update=1: only backup & overwrite if content differs
+        if cmp -s "$src" "$dst" 2>/dev/null; then
+            return 0
+        fi
 
-    # File exists and differs
-    if [[ "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
         local bak="${dst}.bak.${BACKUP_STAMP}"
         log "Backing up user config: $dst -> $bak"
         mv "$dst" "$bak"
-        install -m "$mode" "$src" "$dst"
-    else
-        log "Preserving user config (pass --update-configs to overwrite): $dst"
     fi
+
+    install -m "$mode" "$src" "$dst"
 }
 
 render_template() {
