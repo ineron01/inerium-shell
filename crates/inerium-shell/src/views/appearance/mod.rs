@@ -241,19 +241,31 @@ impl SimpleComponent for AppearanceModel {
                         // Horizontal Wallpapers Strip
                         #[name = "wall_scroller"]
                         gtk4::ScrolledWindow {
-                            set_policy: (PolicyType::Automatic, PolicyType::Never),
+                            set_policy: (PolicyType::External, PolicyType::Never),
                             set_overlay_scrolling: false,
                             set_propagate_natural_height: true,
-                            set_min_content_height: 148,
+                            set_min_content_height: 122,
                             set_propagate_natural_width: true,
 
                             #[name = "wall_strip"]
                             gtk4::Box {
                                 set_orientation: Orientation::Horizontal,
                                 set_spacing: 8,
-                                set_margin_bottom: 6,
+                                set_margin_bottom: 2,
                                 set_margin_top: 2,
                             },
+                        },
+
+                        // Dedicated horizontal scrollbar positioned strictly BELOW wallpaper cards
+                        #[name = "wall_scrollbar"]
+                        gtk4::Scrollbar {
+                            set_orientation: Orientation::Horizontal,
+                            add_css_class: "wall-scrollbar",
+                            set_margin_top: 2,
+                            set_margin_bottom: 3,
+                            set_margin_start: 24,
+                            set_margin_end: 24,
+                            set_visible: false,
                         },
                     },
                 },
@@ -312,6 +324,14 @@ impl SimpleComponent for AppearanceModel {
         root.connect_destroy(move |_| {
             bg_w_destroy.borrow_mut().clear();
         });
+
+        let hadj = widgets.wall_scroller.hadjustment();
+        widgets.wall_scrollbar.set_adjustment(Some(&hadj));
+        let sb_changed = widgets.wall_scrollbar.clone();
+        hadj.connect_changed(move |a| {
+            sb_changed.set_visible(a.upper() > a.page_size() + 1.0);
+        });
+
         populate_theme_list(&widgets.theme_list_box, &model.themes, &sender);
         populate_monitor_pills(&widgets.monitor_box, &model, &sender);
         populate_custom_bg_controls(&widgets.custom_bg_box, &model, &sender);
@@ -336,6 +356,8 @@ impl SimpleComponent for AppearanceModel {
         if self.dirty_wallpapers.get() {
             self.dirty_wallpapers.set(false);
             populate_wallpapers_strip(wall_scroller, wall_strip, self, &sender);
+            let hadj = wall_scroller.hadjustment();
+            wall_scrollbar.set_visible(hadj.upper() > hadj.page_size() + 1.0);
         }
     }
 

@@ -1060,7 +1060,7 @@ window.power-window {
     color: @cc_fg_on_accent;
 }
 
-/* Scrollbars: hide vertical scrollbars, style horizontal wallpaper scrollbar */
+/* Scrollbars: hide vertical scrollbars completely */
 scrollbar.vertical {
     min-width: 0;
     min-height: 0;
@@ -1074,22 +1074,36 @@ scrollbar.vertical slider {
     background: transparent;
 }
 
+/* Dedicated horizontal wallpaper scrollbar positioned strictly below cards */
+.wall-scrollbar,
 scrollbar.horizontal {
     background: transparent;
     border: none;
-    margin-top: 6px;
-    margin-bottom: 4px;
+    min-height: 4px;
+    padding: 0;
+    margin-top: 4px;
+    margin-bottom: 2px;
 }
+.wall-scrollbar trough,
+scrollbar.horizontal trough {
+    min-height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border: none;
+    padding: 0;
+}
+.wall-scrollbar slider,
 scrollbar.horizontal slider {
-    min-height: 6px;
-    min-width: 44px;
-    border-radius: 4px;
+    min-height: 4px;
+    min-width: 36px;
+    border-radius: 2px;
     background-color: @cc_surface_active;
     transition: background-color 150ms ease, min-height 150ms ease;
 }
+.wall-scrollbar slider:hover,
 scrollbar.horizontal slider:hover {
-    background-color: @cc_primary_border;
-    min-height: 8px;
+    background-color: @cc_primary;
+    min-height: 5px;
 }
 
 /* Custom Switches (Wi-Fi, Bluetooth) honoring theme primary accent */
