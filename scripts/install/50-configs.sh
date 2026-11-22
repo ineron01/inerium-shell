@@ -293,7 +293,7 @@ EOF
             elif command -v plasma-apply-colorscheme >/dev/null 2>&1; then
                 plasma-apply-colorscheme Inerium-Dragon >/dev/null 2>&1 || true
             fi
-        elif [[ "$UPDATE_CONFIGS_MODE" == "ui" || "$UPDATE_CONFIGS_MODE" == "all" ]]; then
+        elif [[ "$UPDATE_CONFIGS_MODE" == "ui" || "$UPDATE_CONFIGS_MODE" == "all" || "${IS_UPDATE:-0}" -eq 1 ]]; then
             if command -v inerium-theme >/dev/null 2>&1; then
                 log "Reloading active theme configuration..."
                 inerium-theme reload >/dev/null 2>&1 || true
