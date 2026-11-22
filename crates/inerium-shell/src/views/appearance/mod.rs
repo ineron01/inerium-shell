@@ -130,7 +130,8 @@ impl SimpleComponent for AppearanceModel {
             // Main Scrollable Area for Themes and Wallpapers
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
-                set_policy: (PolicyType::Never, PolicyType::Automatic),
+                set_policy: (PolicyType::Never, PolicyType::External),
+                set_overlay_scrolling: false,
                 set_min_content_height: 350,
                 set_vexpand: true,
 
@@ -243,7 +244,7 @@ impl SimpleComponent for AppearanceModel {
                             set_policy: (PolicyType::Automatic, PolicyType::Never),
                             set_overlay_scrolling: false,
                             set_propagate_natural_height: true,
-                            set_min_content_height: 128,
+                            set_min_content_height: 148,
                             set_propagate_natural_width: true,
 
                             #[name = "wall_strip"]

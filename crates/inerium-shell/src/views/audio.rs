@@ -158,7 +158,8 @@ impl SimpleComponent for AudioViewModel {
             // Devices List
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
-                set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::Automatic),
+                set_policy: (gtk4::PolicyType::Never, gtk4::PolicyType::External),
+                set_overlay_scrolling: false,
                 set_propagate_natural_height: true,
                 set_min_content_height: 140,
                 set_max_content_height: 260,

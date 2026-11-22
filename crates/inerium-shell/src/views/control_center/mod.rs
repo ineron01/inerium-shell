@@ -326,7 +326,8 @@ impl SimpleComponent for ControlCenterModel {
             // Scrolled Body
             gtk4::ScrolledWindow {
                 set_hscrollbar_policy: PolicyType::Never,
-                set_vscrollbar_policy: PolicyType::Automatic,
+                set_vscrollbar_policy: PolicyType::External,
+                set_overlay_scrolling: false,
                 set_propagate_natural_width: true,
                 set_vexpand: true,
                 set_hexpand: true,

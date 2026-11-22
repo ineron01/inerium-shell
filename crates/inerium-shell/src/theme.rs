@@ -1060,26 +1060,36 @@ window.power-window {
     color: @cc_fg_on_accent;
 }
 
-/* Thin Scrollbar */
-scrollbar {
+/* Scrollbars: hide vertical scrollbars, style horizontal wallpaper scrollbar */
+scrollbar.vertical {
+    min-width: 0;
+    min-height: 0;
+    opacity: 0;
+    background: transparent;
+}
+scrollbar.vertical slider {
+    min-width: 0;
+    min-height: 0;
+    opacity: 0;
+    background: transparent;
+}
+
+scrollbar.horizontal {
     background: transparent;
     border: none;
-}
-scrollbar.horizontal {
     margin-top: 6px;
-    margin-bottom: 2px;
-}
-scrollbar slider {
-    min-width: 4px;
-    min-height: 4px;
-    border-radius: 4px;
-    background-color: @cc_surface_active;
+    margin-bottom: 4px;
 }
 scrollbar.horizontal slider {
-    min-height: 5px;
+    min-height: 6px;
+    min-width: 44px;
+    border-radius: 4px;
+    background-color: @cc_surface_active;
+    transition: background-color 150ms ease, min-height 150ms ease;
 }
-scrollbar slider:hover {
+scrollbar.horizontal slider:hover {
     background-color: @cc_primary_border;
+    min-height: 8px;
 }
 
 /* Custom Switches (Wi-Fi, Bluetooth) honoring theme primary accent */

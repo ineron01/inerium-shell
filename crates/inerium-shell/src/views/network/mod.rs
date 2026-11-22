@@ -225,7 +225,8 @@ impl SimpleComponent for NetworkModel {
             #[name = "scroll_win"]
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
-                set_policy: (PolicyType::Never, PolicyType::Automatic),
+                set_policy: (PolicyType::Never, PolicyType::External),
+                set_overlay_scrolling: false,
                 set_propagate_natural_height: false,
                 set_min_content_height: 300,
                 set_max_content_height: 300,

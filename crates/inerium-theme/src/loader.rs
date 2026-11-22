@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::model::{ThemeConfig, ThemeMeta};
+use crate::model::ThemeConfig;
 
 pub const EMBEDDED_DRAGON: &str = include_str!("../../../themes/kanagawa-dragon.toml");
 pub const EMBEDDED_INERIUM_LIGHT: &str = include_str!("../../../themes/inerium-light.toml");
@@ -147,9 +147,13 @@ pub fn get_current_theme_id() -> String {
     let home = get_home();
     let cur_json = home.join(".config/inerium/current.json");
     if let Ok(content) = fs::read_to_string(&cur_json)
-        && let Ok(meta) = serde_json::from_str::<ThemeMeta>(&content)
+        && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content)
+        && let Some(id) = val.get("id").and_then(|v| v.as_str())
     {
-        return meta.id;
+        let trimmed = id.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
     }
 
     // Fallback: gsettings color-scheme
