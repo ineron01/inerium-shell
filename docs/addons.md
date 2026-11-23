@@ -53,7 +53,8 @@ Inerium Shell includes optional system modules that can be selected during insta
   - `/etc/systemd/system/novpn.service`
 - **Usage:**
   - `novpn make-desktop` — universal direct shortcut generator for any installed browser (XDG discovery).
-  - `novpn curl https://ifconfig.me` — runs curl showing physical IP address.
+  - `novpn curl https://ifconfig.me` — runs curl showing physical IP address in terminal with full logs.
+  - `novpn -b prismalauncher` (or `--bg`, `-d`, `--detach`) — launches GUI application detached in background without holding terminal or spamming logs.
   - `novpn status` — displays connectivity and public IP for both VPN host and direct network namespace.
 
 ---

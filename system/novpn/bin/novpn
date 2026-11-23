@@ -73,26 +73,45 @@ case "${1:-}" in
             exit 1
         fi
         ;;
+    "-b"|"--bg"|"--background"|"-d"|"--detach")
+        shift
+        if [ $# -eq 0 ]; then
+            if is_ru; then
+                echo "Ошибка: укажите команду для запуска в фоне." >&2
+                echo "Пример: novpn -b prismalauncher" >&2
+            else
+                echo "Error: specify command to run in background." >&2
+                echo "Example: novpn -b prismalauncher" >&2
+            fi
+            exit 1
+        fi
+        (nohup sudo /usr/local/bin/novpn-exec "$@" </dev/null >/dev/null 2>&1 &) 2>/dev/null
+        exit 0
+        ;;
     "help"|"-h"|"--help"|"")
         if is_ru; then
             echo "Использование: novpn <команда> [параметры...]"
+            echo "              novpn [-b|--bg|-d|--detach] <команда> [параметры...]"
             echo "              novpn [status|refresh|on|off]"
             echo "              novpn make-desktop [браузер]"
             echo ""
             echo "Примеры:"
             echo "  novpn curl https://ifconfig.me"
+            echo "  novpn -b prismalauncher"
+            echo "  novpn --bg telegram-desktop"
             echo "  novpn make-desktop firefox"
-            echo "  novpn make-desktop brave"
             echo "  novpn status"
         else
             echo "Usage: novpn <command> [args...]"
+            echo "       novpn [-b|--bg|-d|--detach] <command> [args...]"
             echo "       novpn [status|refresh|on|off]"
             echo "       novpn make-desktop [browser]"
             echo ""
             echo "Examples:"
             echo "  novpn curl https://ifconfig.me"
+            echo "  novpn -b prismalauncher"
+            echo "  novpn --bg telegram-desktop"
             echo "  novpn make-desktop firefox"
-            echo "  novpn make-desktop brave"
             echo "  novpn status"
         fi
         if [ -z "${1:-}" ]; then

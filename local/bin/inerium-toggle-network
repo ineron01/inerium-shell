@@ -51,9 +51,9 @@ else
     else
         nmcli radio wifi on
         if is_ru; then
-            notify-send -a "Сеть" -i network-wireless-signal-excellent "Беспроводная сеть" "Wi-Fi модуль включен"
+            notify-send -a "Сеть" -i network-wireless-signal-excellent "Беспроводная сеть" "Wi-Fi модуль включен, поиск сетей..."
         else
-            notify-send -a "Network" -i network-wireless-signal-excellent "Wireless Network" "Wi-Fi radio enabled"
+            notify-send -a "Network" -i network-wireless-signal-excellent "Wireless Network" "Wi-Fi radio enabled, scanning..."
         fi
     fi
 fi

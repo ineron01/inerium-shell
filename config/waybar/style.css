@@ -233,6 +233,10 @@ window#waybar {
 #pulseaudio.muted { color: @muted; }
 
 #custom-network.disconnected { color: @muted; }
+#custom-network.connecting {
+    color: @yellow;
+    animation: pulse 0.8s ease-in-out infinite alternate;
+}
 
 #custom-hotspot { color: @muted; font-size: 1.1em; }
 #custom-hotspot.active { color: @green; }

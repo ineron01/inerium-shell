@@ -17,9 +17,49 @@ fn read_trimmed(path: &Path) -> Option<String> {
     fs::read_to_string(path).ok().map(|s| s.trim().to_string())
 }
 
+fn is_wifi_radio_enabled() -> bool {
+    // 1. Check rfkill subsystem
+    let mut found_wlan_rfkill = false;
+    if let Ok(entries) = fs::read_dir("/sys/class/rfkill") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(t) = read_trimmed(&path.join("type"))
+                && t == "wlan"
+            {
+                found_wlan_rfkill = true;
+                let soft = read_trimmed(&path.join("soft")).unwrap_or_default();
+                let hard = read_trimmed(&path.join("hard")).unwrap_or_default();
+                if soft == "1" || hard == "1" {
+                    return false;
+                }
+            }
+        }
+    }
+    if found_wlan_rfkill {
+        return true;
+    }
+
+    // 2. Fallback: check wl* interface IFF_UP flag (0x1)
+    if let Ok(entries) = fs::read_dir("/sys/class/net") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with("wl")
+                && let Some(flags_str) = read_trimmed(&entry.path().join("flags"))
+                && let Ok(flags) = u32::from_str_radix(flags_str.trim_start_matches("0x"), 16)
+            {
+                return (flags & 0x1) != 0;
+            }
+        }
+    }
+
+    false
+}
+
 enum NetState {
     Ethernet(String),
-    Wifi(String),
+    WifiConnected(String),
+    WifiSearching(String),
+    WifiDisabled(String),
     Disconnected,
 }
 
@@ -31,24 +71,38 @@ fn detect_network() -> NetState {
             if name.starts_with("en") || name.starts_with("eth") {
                 let carrier_path = entry.path().join("carrier");
                 if let Some(c) = read_trimmed(&carrier_path)
-                    && c == "1" {
-                        return NetState::Ethernet(name);
-                    }
+                    && c == "1"
+                {
+                    return NetState::Ethernet(name);
+                }
             }
         }
     }
 
     // 2. Check Wi-Fi interfaces
+    let mut wifi_iface: Option<String> = None;
     if let Ok(entries) = fs::read_dir("/sys/class/net") {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with("wl") {
                 let oper_path = entry.path().join("operstate");
                 if let Some(state) = read_trimmed(&oper_path)
-                    && state == "up" {
-                        return NetState::Wifi(name);
-                    }
+                    && state == "up"
+                {
+                    return NetState::WifiConnected(name);
+                }
+                if wifi_iface.is_none() {
+                    wifi_iface = Some(name);
+                }
             }
+        }
+    }
+
+    if let Some(iface) = wifi_iface {
+        if is_wifi_radio_enabled() {
+            return NetState::WifiSearching(iface);
+        } else {
+            return NetState::WifiDisabled(iface);
         }
     }
 
@@ -58,8 +112,9 @@ fn detect_network() -> NetState {
 fn format_status_for(state: &NetState) -> &'static str {
     match state {
         NetState::Ethernet(_) => "󰈀 Eth",
-        NetState::Wifi(_) => "󰤨 WiFi",
-        NetState::Disconnected => "󰤭",
+        NetState::WifiConnected(_) => "󰤨 WiFi",
+        NetState::WifiSearching(_) => "󰤩 WiFi",
+        NetState::WifiDisabled(_) | NetState::Disconnected => "󰤭",
     }
 }
 
@@ -93,7 +148,7 @@ fn format_tooltip_for(state: &NetState) -> String {
                 tr("LMB: Networks & Wi-Fi · RMB: Toggle · MMB: Connection Settings", "ЛКМ: Сети и Wi-Fi · ПКМ: Вкл/выкл · СКМ: Настройка соединений")
             )
         }
-        NetState::Wifi(iface) => {
+        NetState::WifiConnected(iface) => {
             let ip = get_ip_address(iface).unwrap_or_else(|| tr("Acquiring...", "Получение...").to_string());
             format!(
                 "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
@@ -111,6 +166,38 @@ fn format_tooltip_for(state: &NetState) -> String {
                 tr("Status:", "Статус:"),
                 tr("Online", "В сети"),
                 tr("LMB: Networks & Wi-Fi · RMB: Toggle · MMB: Connection Settings", "ЛКМ: Сети и Wi-Fi · ПКМ: Вкл/выкл · СКМ: Настройка соединений")
+            )
+        }
+        NetState::WifiSearching(iface) => {
+            format!(
+                "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
+                <span color='#e6c384' weight='bold'>{}</span>\n\
+                <span color='#727169'>{}</span> <span color='#e6e2cc'>{}</span>\n\
+                <span color='#727169'>{}</span>     <span color='#e6c384'>{}</span>\n\
+                <span color='#727169' size='small'>{}</span>\
+                </span>",
+                tr("󰤩 Wireless Network", "󰤩 Беспроводная сеть"),
+                tr("Interface:", "Интерфейс:"),
+                iface,
+                tr("Status:", "Статус:"),
+                tr("Searching / Connecting...", "Поиск сетей / Подключение..."),
+                tr("LMB: Networks & Wi-Fi · RMB: Toggle · MMB: Connection Settings", "ЛКМ: Сети и Wi-Fi · ПКМ: Вкл/выкл · СКМ: Настройка соединений")
+            )
+        }
+        NetState::WifiDisabled(iface) => {
+            format!(
+                "<span font_desc='JetBrainsMono Nerd Font 10.5'>\
+                <span color='#c4746e' weight='bold'>{}</span>\n\
+                <span color='#727169'>{}</span> <span color='#e6e2cc'>{}</span>\n\
+                <span color='#727169'>{}</span>     <span color='#c4746e'>{}</span>\n\
+                <span color='#727169' size='small'>{}</span>\
+                </span>",
+                tr("󰤭 Wi-Fi Disabled", "󰤭 Wi-Fi выключен"),
+                tr("Interface:", "Интерфейс:"),
+                iface,
+                tr("Status:", "Статус:"),
+                tr("Radio off", "Модуль выключен"),
+                tr("LMB: Networks & Wi-Fi · RMB: Turn On · MMB: Connection Settings", "ЛКМ: Сети и Wi-Fi · ПКМ: Включить · СКМ: Настройка соединений")
             )
         }
         NetState::Disconnected => {
@@ -138,8 +225,9 @@ fn format_json() -> String {
     let tooltip = format_tooltip_for(&state);
     let class = match &state {
         NetState::Ethernet(_) => "ethernet",
-        NetState::Wifi(_) => "wifi",
-        NetState::Disconnected => "disconnected",
+        NetState::WifiConnected(_) => "wifi",
+        NetState::WifiSearching(_) => "connecting",
+        NetState::WifiDisabled(_) | NetState::Disconnected => "disconnected",
     };
     format!(
         "{{\"text\":\"{}\",\"tooltip\":\"{}\",\"class\":\"{}\"}}",
