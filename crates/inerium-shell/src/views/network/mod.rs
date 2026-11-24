@@ -460,6 +460,7 @@ impl SimpleComponent for NetworkModel {
                     self.hotspot_active = hotspot;
                     self.active_details = details;
                     self.sync_active_network();
+                    hw::notify_network_changed();
                 }
             }
             NetworkMsg::ToggleExpandAp(ssid) => {
@@ -735,6 +736,7 @@ impl SimpleComponent for NetworkModel {
                 self.hotspot_active = hotspot_active;
                 self.networks = networks;
                 self.sync_active_network();
+                hw::notify_network_changed();
                 if success {
                     self.expanded_ssid = None;
                     self.auth_state = None;
@@ -781,6 +783,7 @@ impl SimpleComponent for NetworkModel {
                 self.hotspot_active = hotspot_active;
                 self.networks = networks;
                 self.sync_active_network();
+                hw::notify_network_changed();
             }
             NetworkMsg::StopHotspot => {
                 let s_fin = sender.clone();

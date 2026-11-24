@@ -59,12 +59,17 @@ pub fn get_active_wifi_ssid() -> Option<String> {
     None
 }
 
+pub fn notify_network_changed() {
+    let _ = inerium_tools::ipc::PidRegistry::notify_all("network", inerium_tools::sys::posix::SIGUSR1);
+}
+
 pub fn set_wifi_enabled_sync(enable: bool) {
     let val = if enable { "on" } else { "off" };
     let _ = Command::new("nmcli")
         .args(["radio", "wifi", val])
         .stdin(Stdio::null())
         .output();
+    notify_network_changed();
 }
 
 pub fn toggle_wifi(enable: bool) {

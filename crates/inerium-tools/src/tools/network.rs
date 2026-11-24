@@ -219,11 +219,10 @@ fn format_tooltip() -> String {
     format_tooltip_for(&detect_network())
 }
 
-fn format_json() -> String {
-    let state = detect_network();
-    let text = format_status_for(&state);
-    let tooltip = format_tooltip_for(&state);
-    let class = match &state {
+fn format_json_for(state: &NetState) -> String {
+    let text = format_status_for(state);
+    let tooltip = format_tooltip_for(state);
+    let class = match state {
         NetState::Ethernet(_) => "ethernet",
         NetState::WifiConnected(_) => "wifi",
         NetState::WifiSearching(_) => "connecting",
@@ -252,14 +251,25 @@ fn watch_mode(waybar: bool) {
     let mut last_output = String::new();
 
     loop {
-        let current = if waybar { format_json() } else { format_status().to_string() };
+        let state = detect_network();
+        let timeout_ms = match &state {
+            NetState::WifiSearching(_) => 500,
+            _ => 3000,
+        };
+
+        let current = if waybar {
+            format_json_for(&state)
+        } else {
+            format_status_for(&state).to_string()
+        };
+
         if current != last_output {
             println!("{}", current);
             io::stdout().flush().ok();
             last_output = current;
         }
 
-        if self_pipe.wait_event(3000) {
+        if self_pipe.wait_event(timeout_ms) {
             inerium_i18n::Lang::reinit();
         }
     }
