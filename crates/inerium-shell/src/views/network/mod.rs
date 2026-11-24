@@ -25,6 +25,7 @@ pub struct NetworkModel {
     pub is_scanning: bool,
     pub hotspot_active: bool,
     pub active_ssid: Option<String>,
+    pub connecting_ssid: Option<String>,
     pub active_details: Option<hw::network::ActiveWifiDetails>,
     pub saved_connections: HashMap<String, SavedConn>,
     pub expanded_ssid: Option<String>,
@@ -38,31 +39,39 @@ pub struct NetworkModel {
 
 impl NetworkModel {
     fn sync_active_network(&mut self) {
-        if let Some(ref act) = self.active_ssid {
-            for net in &mut self.networks {
-                net.is_active = &net.ssid == act;
-                net.is_saved = self.saved_connections.contains_key(&net.ssid);
-            }
-            if !self.networks.iter().any(|n| &n.ssid == act) {
-                self.networks.push(WifiAp {
-                    ssid: act.clone(),
-                    signal: 100,
-                    security: String::new(),
-                    is_active: true,
-                    is_saved: self.saved_connections.contains_key(act),
-                });
-            }
-        } else {
-            for net in &mut self.networks {
-                net.is_active = false;
-                net.is_saved = self.saved_connections.contains_key(&net.ssid);
-            }
+        let act = self.active_ssid.as_deref();
+        let conn = self.connecting_ssid.as_deref();
+        let has_ip = self.active_details.as_ref().is_some_and(|d| !d.ip.is_empty());
+
+        for net in &mut self.networks {
+            let is_target_active = act == Some(&net.ssid);
+            let is_target_connecting = conn == Some(&net.ssid);
+
+            net.is_active = is_target_active;
+            net.is_connecting = is_target_connecting || (is_target_active && !has_ip);
+            net.is_saved = self.saved_connections.contains_key(&net.ssid);
+        }
+
+        let prominent_ssid = act.or(conn);
+        if let Some(target) = prominent_ssid
+            && !self.networks.iter().any(|n| n.ssid == target)
+        {
+            let is_act = act == Some(target);
+            let is_conn = conn == Some(target) || (is_act && !has_ip);
+            self.networks.push(WifiAp {
+                ssid: target.to_string(),
+                signal: 100,
+                security: String::new(),
+                is_active: is_act,
+                is_connecting: is_conn,
+                is_saved: self.saved_connections.contains_key(target),
+            });
         }
 
         self.networks.sort_by(|a, b| {
-            b.is_active
-                .cmp(&a.is_active)
-                .then_with(|| b.is_saved.cmp(&a.is_saved))
+            let a_score = if a.is_active && !a.is_connecting { 3 } else if a.is_connecting { 2 } else if a.is_saved { 1 } else { 0 };
+            let b_score = if b.is_active && !b.is_connecting { 3 } else if b.is_connecting { 2 } else if b.is_saved { 1 } else { 0 };
+            b_score.cmp(&a_score)
                 .then_with(|| b.signal.cmp(&a.signal))
         });
         self.needs_list_rebuild.set(true);
@@ -93,6 +102,7 @@ pub enum NetworkMsg {
     PollStatus,
     StatusPolled {
         ssid: Option<String>,
+        connecting_ssid: Option<String>,
         hotspot: bool,
         details: Option<hw::ActiveWifiDetails>,
     },
@@ -248,7 +258,9 @@ impl SimpleComponent for NetworkModel {
     ) -> ComponentParts<Self> {
         let wifi_enabled = hw::is_wifi_enabled();
         let hotspot_active = hw::is_hotspot_active();
-        let active_ssid = hw::get_active_wifi_ssid();
+        let conn_status = hw::get_wifi_connection_status();
+        let active_ssid = conn_status.active_ssid;
+        let connecting_ssid = conn_status.connecting_ssid;
         let active_details = None;
         let saved_connections = HashMap::new();
         let networks = Vec::new();
@@ -277,6 +289,7 @@ impl SimpleComponent for NetworkModel {
             is_scanning: wifi_enabled && !hotspot_active,
             hotspot_active,
             active_ssid,
+            connecting_ssid,
             active_details,
             saved_connections,
             expanded_ssid: None,
@@ -436,11 +449,12 @@ impl SimpleComponent for NetworkModel {
             NetworkMsg::PollStatus => {
                 let s_poll = sender.clone();
                 thread::spawn(move || {
-                    let ssid = hw::get_active_wifi_ssid();
+                    let status = hw::get_wifi_connection_status();
                     let hotspot = hw::is_hotspot_active();
                     let details = hw::get_active_wifi_details();
                     s_poll.input(NetworkMsg::StatusPolled {
-                        ssid,
+                        ssid: status.active_ssid,
+                        connecting_ssid: status.connecting_ssid,
                         hotspot,
                         details,
                     });
@@ -448,15 +462,18 @@ impl SimpleComponent for NetworkModel {
             }
             NetworkMsg::StatusPolled {
                 ssid,
+                connecting_ssid,
                 hotspot,
                 details,
             } => {
                 let ssid_changed = ssid != self.active_ssid;
+                let connecting_changed = connecting_ssid != self.connecting_ssid;
                 let hotspot_changed = hotspot != self.hotspot_active;
                 let ip_changed = details.as_ref().map(|d| &d.ip) != self.active_details.as_ref().map(|d| &d.ip);
 
-                if ssid_changed || hotspot_changed || ip_changed {
+                if ssid_changed || connecting_changed || hotspot_changed || ip_changed {
                     self.active_ssid = ssid;
+                    self.connecting_ssid = connecting_ssid;
                     self.hotspot_active = hotspot;
                     self.active_details = details;
                     self.sync_active_network();

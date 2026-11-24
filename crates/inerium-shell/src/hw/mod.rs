@@ -274,7 +274,7 @@ pub fn has_bluetooth() -> bool {
     network::has_bluetooth()
 }
 
-pub use network::{split_nmcli_escaped, ActiveWifiDetails};
+pub use network::{get_wifi_connection_status, split_nmcli_escaped, ActiveWifiDetails};
 
 pub fn is_bluetooth_enabled() -> bool {
     network::is_bluetooth_enabled()

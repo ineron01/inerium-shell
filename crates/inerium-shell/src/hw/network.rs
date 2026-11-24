@@ -37,26 +37,44 @@ pub fn split_nmcli_escaped(line: &str) -> Vec<String> {
     fields
 }
 
-pub fn get_active_wifi_ssid() -> Option<String> {
-    // Check active connection via nmcli (Source of Truth: only fully activated connections)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WifiConnStatus {
+    pub active_ssid: Option<String>,
+    pub connecting_ssid: Option<String>,
+}
+
+pub fn get_wifi_connection_status() -> WifiConnStatus {
+    let mut active = None;
+    let mut connecting = None;
     if let Ok(out) = Command::new("nmcli")
-        .args(["-t", "-f", "TYPE,NAME", "connection", "show", "--active"])
+        .args(["-t", "-f", "TYPE,NAME,STATE", "connection", "show", "--active"])
         .stdin(Stdio::null())
         .output()
     {
         let text = String::from_utf8_lossy(&out.stdout);
         for line in text.lines() {
             let parts = split_nmcli_escaped(line);
-            if parts.len() >= 2 && (parts[0] == "802-11-wireless" || parts[0] == "wifi") {
+            if parts.len() >= 3 && (parts[0] == "802-11-wireless" || parts[0] == "wifi") {
                 let name = parts[1].trim().to_string();
+                let state = parts[2].trim();
                 if !name.is_empty() {
-                    return Some(name);
+                    if state == "activated" {
+                        active = Some(name);
+                    } else if state == "activating" {
+                        connecting = Some(name);
+                    }
                 }
             }
         }
     }
+    WifiConnStatus {
+        active_ssid: active,
+        connecting_ssid: connecting,
+    }
+}
 
-    None
+pub fn get_active_wifi_ssid() -> Option<String> {
+    get_wifi_connection_status().active_ssid
 }
 
 pub fn notify_network_changed() {

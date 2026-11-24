@@ -503,6 +503,14 @@ window.popup-window decoration {
     color: @cc_fg_subtle;
     border: 1px solid @cc_line;
 }
+.card-badge.connecting {
+    background-color: @cc_amber_bg;
+    border-color: @cc_amber_border;
+    color: @cc_amber;
+}
+.card-icon.connecting {
+    color: @cc_amber;
+}
 .card-badge.active {
     background-color: @cc_green_bg;
     border-color: @cc_green_border;

@@ -133,7 +133,9 @@ pub fn populate_wifi_list(
         };
         let ico = Label::new(Some(sig_ico));
         ico.add_css_class("card-icon");
-        if net.is_active {
+        if net.is_connecting {
+            ico.add_css_class("connecting");
+        } else if net.is_active {
             ico.add_css_class("active");
         } else if net.signal > 75 {
             ico.add_css_class("signal-high");
@@ -152,19 +154,27 @@ pub fn populate_wifi_list(
         name_lbl.set_ellipsize(gtk4::pango::EllipsizeMode::End);
         txt.append(&name_lbl);
 
-        let sec_str = if net.is_active {
+        let sec_str = if net.is_connecting {
+            if let Some(details) = active_details {
+                if !details.band.is_empty() {
+                    tr_fmt!(
+                        "Acquiring IP address • {band}...",
+                        "Получение IP-адреса • {band}...",
+                        band = details.band
+                    )
+                } else {
+                    tr("Connecting...", "Подключение...").to_string()
+                }
+            } else {
+                tr("Connecting...", "Подключение...").to_string()
+            }
+        } else if net.is_active {
             if let Some(details) = active_details {
                 if !details.ip.is_empty() && !details.band.is_empty() {
                     tr_fmt!(
                         "Connected • {ip} ({band})",
                         "Подключено • {ip} ({band})",
                         ip = details.ip,
-                        band = details.band
-                    )
-                } else if !details.band.is_empty() {
-                    tr_fmt!(
-                        "Connected • {band}",
-                        "Подключено • {band}",
                         band = details.band
                     )
                 } else if !details.ip.is_empty() {
@@ -186,7 +196,7 @@ pub fn populate_wifi_list(
         };
         let sec_lbl = Label::new(Some(&sec_str));
         sec_lbl.add_css_class("card-sub");
-        if !net.is_active && net.security.is_empty() {
+        if !net.is_active && !net.is_connecting && net.security.is_empty() {
             sec_lbl.add_css_class("warning");
         }
         sec_lbl.set_xalign(0.0);
@@ -194,10 +204,14 @@ pub fn populate_wifi_list(
         txt.append(&sec_lbl);
         main_box.append(&txt);
 
-        // Badge: Active ("󰄬 В сети") or Saved ("Сохранено")
+        // Badge: Active ("󰄬 В сети"), Connecting ("󰑐 Подключение..."), or Saved ("Сохранено")
         let badge = Label::new(None);
         badge.add_css_class("card-badge");
-        if net.is_active {
+        if net.is_connecting {
+            badge.set_label(tr("󰑐  Connecting...", "󰑐  Подключение..."));
+            badge.add_css_class("connecting");
+            badge.set_visible(true);
+        } else if net.is_active {
             badge.set_label(tr("󰄬  Connected", "󰄬  В сети"));
             badge.add_css_class("active");
             badge.set_visible(true);

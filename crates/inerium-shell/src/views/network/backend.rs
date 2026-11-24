@@ -9,6 +9,7 @@ pub struct WifiAp {
     pub signal: u32,
     pub security: String,
     pub is_active: bool,
+    pub is_connecting: bool,
     pub is_saved: bool,
 }
 
@@ -96,6 +97,7 @@ pub fn query_wifi_networks(rescan: bool) -> Vec<WifiAp> {
                         signal,
                         security,
                         is_active,
+                        is_connecting: false,
                         is_saved,
                     });
                 }
@@ -112,6 +114,7 @@ pub fn query_wifi_networks(rescan: bool) -> Vec<WifiAp> {
                 signal: 100,
                 security: String::new(),
                 is_active: true,
+                is_connecting: false,
                 is_saved: saved_map.contains_key(act),
             });
         }
