@@ -119,12 +119,12 @@ deploy_desktop_configs() {
 
     # Fresh install (or explicit UPDATE_CONFIGS=1): detect distro logo once
     if [[ "$waybar_existed" -eq 0 || "${UPDATE_CONFIGS:-0}" -eq 1 ]]; then
-        local distro_id="" distro_icon="󰣇"
+        local distro_id="" distro_icon="󰣇" distro_pad="0 9px"
         if [[ -f /etc/os-release ]]; then
             distro_id="$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')"
         fi
         case "$distro_id" in
-            cachyos)     distro_icon="" ;;
+            cachyos)     distro_icon=""; distro_pad="0 10px 0 7px" ;;
             endeavouros) distro_icon="" ;;
             manjaro)     distro_icon="" ;;
             garuda)      distro_icon="" ;;
@@ -136,6 +136,9 @@ deploy_desktop_configs() {
         esac
         if [[ "$DRY_RUN" -eq 0 && -f "$HOME/.config/waybar/config.jsonc" && ! -L "$HOME/.config/waybar/config.jsonc" ]]; then
             sed -i -E '/"custom\/launcher": \{/,/\}/ s/("format": ")[^"]*(")/\1'"$distro_icon"'\2/' "$HOME/.config/waybar/config.jsonc"
+            if [[ -f "$HOME/.config/waybar/style.css" && ! -L "$HOME/.config/waybar/style.css" ]]; then
+                sed -i -E '/^#custom-launcher \{/,/^\}/ s/(padding: )[^;]*(;)/\1'"$distro_pad"'\2/' "$HOME/.config/waybar/style.css"
+            fi
             log "Configured initial Waybar distro icon: $distro_icon ($distro_id)"
         fi
     fi
