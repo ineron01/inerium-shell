@@ -18,7 +18,7 @@ pub const FRAME_HEIGHT: i32 = 1080;
 pub const FRAME_BYTES: usize = (FRAME_WIDTH as usize) * (FRAME_HEIGHT as usize) * 3 / 2; // 3,110,400 bytes for I420
 
 struct BridgeSharedState {
-    black_frame: Vec<u8>,
+    black_frame: Arc<Vec<u8>>,
     last_frame: Vec<u8>,
     last_rx_at: Option<Instant>,
     active_gen: u64,
@@ -77,10 +77,10 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
     let _ = fs::remove_file(&preview_sock);
 
     let pipe_str = format!(
-        "appsrc name=src is-live=true do-timestamp=true format=time stream-type=stream block=false max-bytes=6220800 ! \
-         queue leaky=downstream max-size-buffers=2 ! tee name=t ! \
-         queue leaky=downstream max-size-buffers=2 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=\"{}\" sync=false \
-         t. ! queue leaky=downstream max-size-buffers=2 ! shmsink socket-path=\"{}\" wait-for-connection=false sync=false shm-size=33554432",
+        "appsrc name=src is-live=true do-timestamp=true format=time stream-type=stream block=false max-buffers=1 leaky-type=downstream ! \
+         queue leaky=downstream max-size-buffers=1 ! tee name=t ! \
+         queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=YUY2 ! v4l2sink device=\"{}\" sync=false \
+         t. ! queue leaky=downstream max-size-buffers=1 ! shmsink socket-path=\"{}\" wait-for-connection=false sync=false shm-size=33554432",
         v4l2_dev, preview_sock.display()
     );
 
@@ -113,10 +113,11 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
         .map_err(|e| format!("Failed to bind ingest socket {}: {}", ingest_sock.display(), e))?;
 
     let black = build_black_i420();
+    let black_arc = Arc::new(black.clone());
     let running = Arc::new(AtomicBool::new(true));
     let shared = Arc::new((
         Mutex::new(BridgeSharedState {
-            black_frame: black.clone(),
+            black_frame: black_arc.clone(),
             last_frame: black,
             last_rx_at: None,
             active_gen: 0,
@@ -126,11 +127,7 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
     ));
 
     // Push initial black frame so exclusive_caps=1 activates Video Capture immediately
-    {
-        let (lock, _) = &*shared;
-        let initial = { lock.lock().unwrap().black_frame.clone() };
-        push_frame_to_appsrc(&appsrc, &initial);
-    }
+    push_frame_to_appsrc(&appsrc, &black_arc);
 
     // Thread 1: Accept hot-swappable producer connections on Unix socket
     let running_accept = running.clone();
@@ -193,13 +190,13 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
         }
     });
 
-    // Thread 2: Keepalive ticker (~30fps) feeds last frame across swaps and reverts to black when stopped
+    // Thread 2: Keepalive ticker checks for stalled/stopped producers and reverts to black when idle
     let running_ka = running.clone();
     let shared_ka = shared.clone();
     let appsrc_ka = appsrc.clone();
     std::thread::spawn(move || {
         let (lock, cvar) = &*shared_ka;
-        let stale_threshold = Duration::from_millis(45);
+        let stale_threshold = Duration::from_millis(180);
         let max_frozen_duration = Duration::from_millis(1000);
 
         let mut guard = lock.lock().unwrap();
@@ -211,7 +208,7 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
                     break;
                 }
             } else {
-                let (g, _) = cvar.wait_timeout(guard, Duration::from_millis(33)).unwrap();
+                let (g, _) = cvar.wait_timeout(guard, Duration::from_millis(200)).unwrap();
                 guard = g;
                 if !running_ka.load(Ordering::Relaxed) {
                     break;
@@ -230,25 +227,39 @@ pub async fn run_bridge(v4l2_opt: Option<String>) -> Result<(), String> {
                 elapsed >= Duration::from_millis(2500)
             };
 
-            let fallback_frame = if should_revert_to_black && guard.last_rx_at.is_some() {
+            enum Fallback {
+                None,
+                Black(Arc<Vec<u8>>),
+                Frame(Vec<u8>),
+            }
+
+            let fallback = if should_revert_to_black && guard.last_rx_at.is_some() {
                 let black = guard.black_frame.clone();
-                guard.last_frame = black.clone();
+                guard.last_frame.copy_from_slice(&black);
                 guard.last_rx_at = None; // Transition to idle (next loop waits on cvar.wait)
-                Some(black)
+                Fallback::Black(black)
             } else if let Some(last_rx) = guard.last_rx_at {
                 if last_rx.elapsed() >= stale_threshold && last_rx.elapsed() < max_frozen_duration {
-                    Some(guard.last_frame.clone())
+                    Fallback::Frame(guard.last_frame.clone())
                 } else {
-                    None
+                    Fallback::None
                 }
             } else {
-                None
+                Fallback::None
             };
 
-            if let Some(frame) = fallback_frame {
-                drop(guard);
-                push_frame_to_appsrc(&appsrc_ka, &frame);
-                guard = lock.lock().unwrap();
+            match fallback {
+                Fallback::Black(black) => {
+                    drop(guard);
+                    push_frame_to_appsrc(&appsrc_ka, &black);
+                    guard = lock.lock().unwrap();
+                }
+                Fallback::Frame(frame) => {
+                    drop(guard);
+                    push_frame_to_appsrc(&appsrc_ka, &frame);
+                    guard = lock.lock().unwrap();
+                }
+                Fallback::None => {}
             }
         }
     });

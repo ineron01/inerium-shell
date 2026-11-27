@@ -40,6 +40,7 @@ impl LivePreviewPipeline {
         let pipe_str = format!(
             "shmsrc socket-path=\"{}\" is-live=true do-timestamp=true ! \
              video/x-raw,format=I420,width=1920,height=1080,framerate=30/1 ! \
+             videoscale ! video/x-raw,width=480,height=270 ! \
              videoconvert ! video/x-raw,format=RGBA ! \
              appsink name=preview_sink drop=true max-buffers=1 sync=false",
             sock.display()
@@ -80,6 +81,9 @@ impl LivePreviewPipeline {
             gst_app::AppSinkCallbacks::builder()
                 .new_sample(move |appsink| {
                     let sample = appsink.pull_sample().map_err(|_| gst::FlowError::Error)?;
+                    if tx.capacity() == 0 {
+                        return Ok(gst::FlowSuccess::Ok);
+                    }
                     let buffer = sample.buffer().ok_or(gst::FlowError::Error)?;
                     let map = buffer.map_readable().map_err(|_| gst::FlowError::Error)?;
 

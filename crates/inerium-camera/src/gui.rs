@@ -161,9 +161,10 @@ window {
 #[derive(Debug)]
 pub enum GuiEvent {
     DevicesRefreshed {
-        builtin_hw_disabled: bool,
+        builtin_status: BuiltinStatus,
         external_desc: Result<String, String>,
     },
+    BuiltinRefreshed(BuiltinStatus),
     StreamStarted(Result<CameraSessionInfo, String>),
     StreamStopped,
     StreamAborted(String),
@@ -431,6 +432,7 @@ fn build_ui(app: &Application) {
     let current_orientation = Rc::new(Cell::new(init_session.orientation));
     let is_streaming = Rc::new(Cell::new(init_session.is_streaming));
     let is_busy = Rc::new(Cell::new(false));
+    let cached_builtin = Rc::new(RefCell::new(BuiltinStatus::NotFound));
     let preview_pipeline = Rc::new(RefCell::new(LivePreviewPipeline::new()));
 
     match init_session.source {
@@ -475,6 +477,8 @@ fn build_ui(app: &Application) {
 
     let is_busy_w = is_busy.clone();
     let is_streaming_w = is_streaming.clone();
+    let cached_builtin_ev = cached_builtin.clone();
+    let current_source_ev = current_source.clone();
     let preview_pipeline_ev = preview_pipeline.clone();
     let tx_watch = tx.clone();
 
@@ -483,9 +487,11 @@ fn build_ui(app: &Application) {
         while let Some(event) = rx.recv().await {
             match event {
                 GuiEvent::DevicesRefreshed {
-                    builtin_hw_disabled,
+                    builtin_status,
                     external_desc,
                 } => {
+                    let builtin_hw_disabled = matches!(builtin_status, BuiltinStatus::HardwareDisabled);
+                    *cached_builtin_ev.borrow_mut() = builtin_status;
                     btn_builtin_w.set_sensitive(true);
                     if builtin_hw_disabled {
                         btn_builtin_w.set_tooltip_text(Some(tr("Built-in camera (disabled by Fn + F6 switch)", "Встроенная камера (аппаратно отключена Fn + F6)")));
@@ -505,6 +511,24 @@ fn build_ui(app: &Application) {
                                 subtitle_w.add_css_class("status-warning");
                             } else {
                                 subtitle_w.set_text(tr("External camera not connected. Built-in camera available.", "Внешняя камера не подключена. Доступна встроенная камера."));
+                            }
+                        }
+                    }
+                }
+                GuiEvent::BuiltinRefreshed(status) => {
+                    *cached_builtin_ev.borrow_mut() = status.clone();
+                    if current_source_ev.get() == CameraSource::Builtin && !is_streaming_w.get() {
+                        match status {
+                            BuiltinStatus::Available { ref device_path } => {
+                                status_bar_w.set_text(&format!("{}: ({})", tr("Built-in camera ready", "Встроенная камера готова"), device_path));
+                                subtitle_w.set_text(tr("Built-in camera connected", "Встроенная камера подключена"));
+                                subtitle_w.remove_css_class("status-danger");
+                                subtitle_w.remove_css_class("status-warning");
+                            }
+                            BuiltinStatus::HardwareDisabled | BuiltinStatus::NotFound => {
+                                status_bar_w.set_text(tr("Built-in camera disabled (Fn + F6) or not found", "Встроенная камера отключена (Fn + F6) или не найдена"));
+                                subtitle_w.set_text(tr("Built-in camera disabled (Fn + F6)", "Встроенная камера отключена (Fn + F6)"));
+                                subtitle_w.add_css_class("status-warning");
                             }
                         }
                     }
@@ -641,12 +665,13 @@ fn build_ui(app: &Application) {
     // Trigger initial device discovery
     let tx_init = tx.clone();
     tokio::spawn(async move {
-        let builtin = DeviceManager::detect_builtin_webcam();
-        let builtin_hw_disabled = matches!(builtin, BuiltinStatus::HardwareDisabled);
+        let builtin_status = tokio::task::spawn_blocking(DeviceManager::detect_builtin_webcam)
+            .await
+            .unwrap_or(BuiltinStatus::NotFound);
         let ext = DeviceManager::discover_external_device(None).await;
         let ext_desc = ext.map(|(_, desc)| desc);
         let _ = tx_init.send(GuiEvent::DevicesRefreshed {
-            builtin_hw_disabled,
+            builtin_status,
             external_desc: ext_desc,
         }).await;
     });
@@ -697,6 +722,8 @@ fn build_ui(app: &Application) {
         let cur_orient = current_orientation.clone();
         let status_bar_c = status_bar_label.clone();
         let subtitle_c = status_subtitle.clone();
+        let cached_b = cached_builtin.clone();
+        let tx_b = tx.clone();
 
         btn_src_builtin.connect_toggled(move |btn| {
             if !btn.is_active() {
@@ -706,19 +733,23 @@ fn build_ui(app: &Application) {
             cur_src.set(CameraSource::Builtin);
             chk_torch_c.set_sensitive(false);
 
-            match DeviceManager::detect_builtin_webcam() {
-                BuiltinStatus::Available { ref device_path, .. } => {
+            match &*cached_b.borrow() {
+                BuiltinStatus::Available { device_path } => {
                     status_bar_c.set_text(&format!("{}: ({})", tr("Built-in camera ready", "Встроенная камера готова"), device_path));
                     subtitle_c.set_text(tr("Built-in camera connected", "Встроенная камера подключена"));
                     subtitle_c.remove_css_class("status-danger");
                     subtitle_c.remove_css_class("status-warning");
                 }
                 BuiltinStatus::HardwareDisabled | BuiltinStatus::NotFound => {
-                    status_bar_c.set_text(tr("Built-in camera disabled (Fn + F6) or not found", "Встроенная камера отключена (Fn + F6) или не найдена"));
-                    subtitle_c.set_text(tr("Built-in camera disabled (Fn + F6)", "Встроенная камера отключена (Fn + F6)"));
-                    subtitle_c.add_css_class("status-warning");
+                    status_bar_c.set_text(tr("Checking built-in camera...", "Проверка встроенной камеры..."));
                 }
             }
+            let tx_w = tx_b.clone();
+            tokio::spawn(async move {
+                if let Ok(status) = tokio::task::spawn_blocking(DeviceManager::detect_builtin_webcam).await {
+                    let _ = tx_w.send(GuiEvent::BuiltinRefreshed(status)).await;
+                }
+            });
             trig(CameraSource::Builtin, cur_orient.get());
         });
     }
@@ -874,13 +905,6 @@ fn build_ui(app: &Application) {
             let source = cur_src.get();
             let orientation = cur_orient.get();
             let streaming = is_stream.get();
-
-            if !streaming && source == CameraSource::Builtin {
-                if let BuiltinStatus::HardwareDisabled = DeviceManager::detect_builtin_webcam() {
-                    status_bar.set_text(tr("Built-in camera disabled by hardware switch (Fn + F6)", "Встроенная камера отключена аппаратно (Fn + F6)"));
-                    return;
-                }
-            }
 
             is_busy_act.set(true);
             spinner_ref.set_visible(true);

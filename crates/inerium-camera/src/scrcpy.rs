@@ -258,6 +258,7 @@ impl StreamingManager {
             "videoconvert",
             "!",
             "videorate",
+            "skip-to-first=true",
             "!",
             "videoscale",
             "add-borders=true",
@@ -362,8 +363,8 @@ impl StreamingManager {
     async fn wait_for_external_producer(gst_pid: u32, scrcpy_pid: u32) -> Result<(), String> {
         // scrcpy INFO lines are block-buffered in the log, so judge by real frames reaching the bridge
         let min_bytes = (crate::bridge::FRAME_BYTES as u64) * 3;
-        for _ in 0..120 {
-            sleep(Duration::from_millis(100)).await;
+        for _ in 0..240 {
+            sleep(Duration::from_millis(50)).await;
             let log = fs::read_to_string(scrcpy_log_file()).unwrap_or_default();
             let camera_failed = log.contains("Camera capture failed") || log.contains("Camera disconnected");
             if camera_failed || !Self::is_pid_alive(gst_pid) || !Self::is_pid_alive(scrcpy_pid) {
@@ -397,20 +398,10 @@ impl StreamingManager {
         audio: bool,
     ) -> Result<(u32, Vec<u32>), String> {
         let fifo_path = stream_fifo_path();
+        let _ = fs::remove_file(&fifo_path);
+        nix::unistd::mkfifo(&fifo_path, nix::sys::stat::Mode::from_bits_truncate(0o600))
+            .map_err(|e| format!("{}: {}", tr("Failed to create FIFO channel", "Не удалось создать FIFO канал"), e))?;
         let fifo_str = fifo_path.to_string_lossy().to_string();
-        let mkfifo_out = tokio::process::Command::new("mkfifo")
-            .args(["-m", "600", &fifo_str])
-            .output()
-            .await
-            .map_err(|e| format!("{}: {}", tr("Failed to invoke mkfifo", "Не удалось вызвать mkfifo"), e))?;
-        if !mkfifo_out.status.success() {
-            let err = format!(
-                "{}: {}",
-                tr("Failed to create FIFO channel", "Не удалось создать FIFO канал"),
-                String::from_utf8_lossy(&mkfifo_out.stderr).trim()
-            );
-            return Err(err);
-        }
 
         let mut gst_args = vec![
             "filesrc".to_string(),
@@ -436,6 +427,7 @@ impl StreamingManager {
                 "--capture-orientation={}",
                 orientation.scrcpy_angle(source)
             ))
+            .arg("--video-codec-options=i-frame-interval=1")
             .arg("--no-window")
             .arg("--no-audio")
             .arg(format!("--record={}", fifo_str))
