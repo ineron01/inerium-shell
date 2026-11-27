@@ -154,7 +154,8 @@ install_novpn_addon() {
         fi
         if [[ "$DRY_RUN" -eq 0 ]]; then
             sudo systemctl daemon-reload || true
-            sudo systemctl enable novpn.service || true
+            # Event-driven startup via 98-novpn-sync.sh once a physical default route exists
+            sudo systemctl disable novpn.service || true
         fi
     fi
 
