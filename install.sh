@@ -7,7 +7,16 @@ set -euo pipefail
 
 export PATH="$HOME/.local/bin:$PATH"
 
-REPO_DIR="${INERIUM_SHELL_DIR:-${INERIUM_DESKTOP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}}"
+if [[ -n "${INERIUM_SHELL_DIR:-}" ]]; then
+    REPO_DIR="$INERIUM_SHELL_DIR"
+elif [[ -n "${INERIUM_DESKTOP_DIR:-}" ]]; then
+    REPO_DIR="$INERIUM_DESKTOP_DIR"
+elif [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    echo "ERROR: Run install.sh from a cloned repository or via bootstrap.sh." >&2
+    exit 1
+fi
 SCRIPTS_DIR="$REPO_DIR/scripts/install"
 
 # Installation state & flags
@@ -108,8 +117,8 @@ while [[ $# -gt 0 ]]; do
         --sysupgrade|-Syu) WITH_SYSUPGRADE=1; shift ;;
         --uninstall)       DO_UNINSTALL=1; NON_INTERACTIVE=1; shift ;;
         --check-abi)       CHECK_ABI=1; NON_INTERACTIVE=1; shift ;;
-        --update-ui|--update-configs=ui) UPDATE_CONFIGS=1; UPDATE_CONFIGS_MODE="ui"; shift ;;
-        --update-configs=all|--update-configs) UPDATE_CONFIGS=1; UPDATE_CONFIGS_MODE="all"; shift ;;
+        --update-ui|--update-configs=ui) IS_UPDATE=1; UPDATE_CONFIGS=1; UPDATE_CONFIGS_MODE="ui"; shift ;;
+        --update-configs=all|--update-configs) IS_UPDATE=1; UPDATE_CONFIGS=1; UPDATE_CONFIGS_MODE="all"; shift ;;
         --prune|--clean)   shift ;;
         --skip-pkgs)       SKIP_PKGS=1; shift ;;
         --skip-build)      SKIP_BUILD=1; shift ;;

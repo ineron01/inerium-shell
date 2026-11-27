@@ -124,7 +124,15 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
     mkdir -p "$(dirname "$TARGET_DIR")"
 fi
 if [[ -d "$TARGET_DIR/.git" ]]; then
-    run_quiet_step "Updating repository at $TARGET_DIR..." git -C "$TARGET_DIR" pull --ff-only
+    if [[ "$FROM_SOURCE" -eq 0 ]]; then
+        run_quiet_step "Updating repository at $TARGET_DIR..." bash -c '
+            git -C "$1" pull --ff-only || {
+                git -C "$1" fetch --depth 1 origin main && git -C "$1" reset --hard origin/main
+            }
+        ' _ "$TARGET_DIR"
+    else
+        run_quiet_step "Updating repository at $TARGET_DIR..." git -C "$TARGET_DIR" pull --ff-only
+    fi
 else
     declare -a clone_opts=()
     if [[ "$FROM_SOURCE" -eq 0 ]]; then
