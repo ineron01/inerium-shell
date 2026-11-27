@@ -50,6 +50,10 @@ gnome-text-editor
 gnome-calculator
 gnome-keyring
 dolphin
+ark
+7zip
+unrar
+unzip
 python
 lua
 
