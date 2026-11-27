@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 authors = ["Ineron"]
 license = "GPL-3.0-or-later"
@@ -28,10 +28,10 @@ gdk4 = "0.11"
 gio = "0.22"
 glib = "0.22"
 relm4 = "0.11"
-inerium-hw = { path = "crates/inerium-hw", version = "0.2.2" }
-inerium-i18n = { path = "crates/inerium-i18n", version = "0.2.2" }
-inerium-theme = { path = "crates/inerium-theme", version = "0.2.2" }
-inerium-tools = { path = "crates/inerium-tools", version = "0.2.2" }
+inerium-hw = { path = "crates/inerium-hw", version = "0.2.3" }
+inerium-i18n = { path = "crates/inerium-i18n", version = "0.2.3" }
+inerium-theme = { path = "crates/inerium-theme", version = "0.2.3" }
+inerium-tools = { path = "crates/inerium-tools", version = "0.2.3" }
 
 [profile.release]
 opt-level = 3
