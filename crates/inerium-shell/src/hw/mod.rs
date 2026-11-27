@@ -254,6 +254,10 @@ pub fn toggle_wifi(enable: bool) {
     network::toggle_wifi(enable);
 }
 
+pub fn notify_network_changed() {
+    network::notify_network_changed();
+}
+
 pub fn is_hotspot_active() -> bool {
     network::is_hotspot_active()
 }
