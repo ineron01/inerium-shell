@@ -254,10 +254,6 @@ pub fn toggle_wifi(enable: bool) {
     network::toggle_wifi(enable);
 }
 
-pub fn notify_network_changed() {
-    network::notify_network_changed();
-}
-
 pub fn is_hotspot_active() -> bool {
     network::is_hotspot_active()
 }
@@ -275,10 +271,7 @@ pub fn has_bluetooth() -> bool {
     network::has_bluetooth()
 }
 
-pub use network::{
-    get_network_connectivity, get_wifi_connection_status, open_captive_portal,
-    refresh_network_connectivity, split_nmcli_escaped, ActiveWifiDetails, NetworkConnectivity,
-};
+pub use network::{split_nmcli_escaped, ActiveWifiDetails};
 
 pub fn is_bluetooth_enabled() -> bool {
     network::is_bluetooth_enabled()
