@@ -202,23 +202,6 @@ pub fn update_kdeglobals(path: &Path, scheme_name: &str, theme_name: &str, icon_
     let _ = atomic_write(path, out.trim_start());
 }
 
-pub fn apply_display_temperature(temp_kelvin: u32) {
-    let _ = Command::new("pkill")
-        .args(["-x", "hyprsunset"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    if temp_kelvin < 6500 {
-        let _ = Command::new("setsid")
-            .args(["hyprsunset", "-t", &temp_kelvin.to_string()])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-    }
-}
-
 pub fn run_theme_hooks(theme: &ThemeConfig) {
     let home = get_home();
     let hooks_dir = home.join(".config/inerium/hooks.d");
@@ -572,14 +555,6 @@ pub fn apply_theme(theme: &ThemeConfig) {
             let _ = fs::set_permissions(t, fs::Permissions::from_mode(0o644));
         }
     }
-
-    // 11. Display Color Temperature (Harmonization for paper light themes)
-    let temp = theme
-        .display
-        .as_ref()
-        .and_then(|d| d.temperature)
-        .unwrap_or(6500);
-    apply_display_temperature(temp);
 
     // 11. Custom User & App Hooks (~/.config/inerium/hooks.d/*)
     run_theme_hooks(theme);

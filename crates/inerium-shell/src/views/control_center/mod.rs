@@ -69,6 +69,12 @@ pub struct ControlCenterModel {
     pub has_external_monitor: bool,
     pub ddc_brightness: u32,
 
+    // Night Light
+    pub night_light_enabled: bool,
+    pub night_light_temp: u32,
+    pub night_light_schedule: bool,
+    pub night_light_schedule_str: String,
+
     // Power & Cooling
     pub has_ppd: bool,
     pub current_profile: String,
@@ -132,6 +138,8 @@ pub enum ControlCenterMsg {
     SetLaptopBrightness(u32),
     SetDdcBrightness(u32),
     DdcUpdated(u32),
+    SetNightLightEnabled(bool),
+    NavNightLight,
 
     // Power & Cooling
     SetProfile(String),
@@ -722,6 +730,58 @@ impl SimpleComponent for ControlCenterModel {
                                 set_size_request: (28, 28),
                             },
                         },
+
+                        // Night Light Compact Row
+                        gtk4::Box {
+                            set_orientation: Orientation::Horizontal,
+                            set_spacing: 6,
+                            set_margin_top: 2,
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                #[watch]
+                                set_label: if model.night_light_enabled { "󰖔" } else { "󰌵" },
+                                set_tooltip_text: Some(tr("Night Light", "Ночной свет")),
+                                connect_clicked => ControlCenterMsg::NavNightLight,
+                            },
+
+                            gtk4::Label {
+                                add_css_class: "cc-tile-title",
+                                set_xalign: 0.0,
+                                set_label: tr("Night Light", "Ночной свет"),
+                            },
+
+                            gtk4::Label {
+                                add_css_class: "cc-meta",
+                                set_xalign: 0.0,
+                                set_hexpand: true,
+                                #[watch]
+                                set_label: &if model.night_light_enabled {
+                                    format!("{}K", model.night_light_temp)
+                                } else if model.night_light_schedule {
+                                    model.night_light_schedule_str.clone()
+                                } else {
+                                    tr("Off", "Выкл").to_string()
+                                },
+                            },
+
+                            gtk4::Switch {
+                                set_valign: Align::Center,
+                                #[watch]
+                                set_active: model.night_light_enabled,
+                                connect_state_set[sender] => move |_, state| {
+                                    sender.input(ControlCenterMsg::SetNightLightEnabled(state));
+                                    glib::Propagation::Proceed
+                                },
+                            },
+
+                            gtk4::Button {
+                                add_css_class: "cc-slider-ico",
+                                set_label: "›",
+                                set_tooltip_text: Some(tr("Night Light & Color Temperature", "Теплота экрана и расписание")),
+                                connect_clicked => ControlCenterMsg::NavNightLight,
+                            },
+                        },
                     },
 
                     // 4. Power & Cooling
@@ -1079,6 +1139,7 @@ impl SimpleComponent for ControlCenterModel {
             100
         };
 
+        let nl_cfg = hw::night_light::load_config();
         let instance_gen = DDC_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
         let model = ControlCenterModel {
@@ -1105,6 +1166,14 @@ impl SimpleComponent for ControlCenterModel {
             laptop_brightness,
             has_external_monitor,
             ddc_brightness,
+
+            night_light_enabled: nl_cfg.enabled,
+            night_light_temp: nl_cfg.temperature,
+            night_light_schedule: nl_cfg.schedule_enabled,
+            night_light_schedule_str: format!(
+                "{:02}:{:02}–{:02}:{:02}",
+                nl_cfg.start_hour, nl_cfg.start_minute, nl_cfg.end_hour, nl_cfg.end_minute
+            ),
 
             has_ppd,
             current_profile,

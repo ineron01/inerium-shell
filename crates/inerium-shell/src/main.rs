@@ -147,6 +147,13 @@ fn main() {
         let guard = app.hold();
         Box::leak(Box::new(guard)); // Keep daemon held permanently
 
+        // Initialize Night Light state/schedule and sync every 5s (fast minute-boundary response)
+        hw::night_light::init_on_startup();
+        glib::timeout_add_seconds_local(5, || {
+            hw::night_light::sync_schedule_tick();
+            glib::ControlFlow::Continue
+        });
+
         // Watch ~/.config directory for locale.conf changes (resilient to atomic fs::rename & inode recreation)
         if let Some(home) = env::var_os("HOME") {
             let config_dir = PathBuf::from(home).join(".config");
@@ -384,7 +391,12 @@ fn show_view(state: &mut AppState, view_name: &str, preserve_position: bool) -> 
         "network" => views::network::build_network_view(nav_cb, close_cb),
         "media" => views::media::build_media_view(nav_cb, close_cb),
         "power" => views::power::build_power_menu(close_cb),
-        "appearance" | "wallpaper" | "themes" | "theme" => views::appearance::build_appearance_view(nav_cb, close_cb, Some(m_name)),
+        "appearance" | "wallpaper" | "themes" | "theme" => {
+            views::appearance::build_appearance_view(nav_cb, close_cb, Some(m_name), false)
+        }
+        "appearance:night-light" => {
+            views::appearance::build_appearance_view(nav_cb, close_cb, Some(m_name), true)
+        }
         _ => views::control_center::build_control_center(nav_cb, close_cb),
     };
 

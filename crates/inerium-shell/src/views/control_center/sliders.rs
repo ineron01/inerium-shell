@@ -36,6 +36,24 @@ pub fn handle_sliders_msg(model: &mut ControlCenterModel, msg: &ControlCenterMsg
             model.ddc_brightness = *val;
             true
         }
+        ControlCenterMsg::SetNightLightEnabled(enabled) => {
+            if model.night_light_enabled == *enabled {
+                return true;
+            }
+            let cfg = hw::night_light::set_enabled(*enabled);
+            model.night_light_enabled = cfg.enabled;
+            model.night_light_temp = cfg.temperature;
+            model.night_light_schedule = cfg.schedule_enabled;
+            model.night_light_schedule_str = format!(
+                "{:02}:{:02}–{:02}:{:02}",
+                cfg.start_hour, cfg.start_minute, cfg.end_hour, cfg.end_minute
+            );
+            true
+        }
+        ControlCenterMsg::NavNightLight => {
+            (model.nav_cb)("appearance:night-light");
+            true
+        }
         _ => false,
     }
 }

@@ -46,6 +46,15 @@ pub struct AppearanceModel {
     pub dirty_wallpapers: Cell<bool>,
     pub dirty_custom_bg: Cell<bool>,
     pub syncing_bg: Rc<Cell<bool>>,
+    // Night Light & Display Temperature
+    pub day_temp: u32,
+    pub night_light_enabled: bool,
+    pub night_light_temp: u32,
+    pub night_light_schedule: bool,
+    pub night_light_start_h: u8,
+    pub night_light_start_m: u8,
+    pub night_light_end_h: u8,
+    pub night_light_end_m: u8,
     nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     #[allow(dead_code)]
     close_cb: std::boxed::Box<dyn Fn() + 'static>,
@@ -74,6 +83,12 @@ pub enum AppearanceMsg {
     SetBgDirection(GradientDirection),
     ApplyCustomBg,
     SaveCustomBg,
+    SetDayTemp(u32),
+    SetNightLightEnabled(bool),
+    SetNightLightTemp(u32),
+    SetNightLightSchedule(bool),
+    SetNightLightStartText(String),
+    SetNightLightEndText(String),
     Back,
 }
 
@@ -81,6 +96,7 @@ pub struct AppearanceInit {
     pub nav_cb: std::boxed::Box<dyn Fn(&str) + 'static>,
     pub close_cb: std::boxed::Box<dyn Fn() + 'static>,
     pub current_monitor: Option<String>,
+    pub scroll_to_night_light: bool,
 }
 
 #[relm4::component(pub)]
@@ -127,7 +143,8 @@ impl SimpleComponent for AppearanceModel {
                 },
             },
 
-            // Main Scrollable Area for Themes and Wallpapers
+            // Main Scrollable Area for Themes, Wallpapers & Display Temperature
+            #[name = "main_scroll"]
             gtk4::ScrolledWindow {
                 add_css_class: "list-scroll",
                 set_policy: (PolicyType::Never, PolicyType::External),
@@ -268,6 +285,183 @@ impl SimpleComponent for AppearanceModel {
                             set_visible: false,
                         },
                     },
+
+                    // ── Subtle Divider ────────────────────────────
+                    Separator {
+                        set_orientation: Orientation::Horizontal,
+                        add_css_class: "cc-sep",
+                    },
+
+                    // ── Section 3: Display Temperature & Night Light ──
+                    gtk4::Box {
+                        set_orientation: Orientation::Vertical,
+                        set_spacing: 8,
+
+                        gtk4::Label {
+                            add_css_class: "cc-label",
+                            set_label: &tr("󰖔  DISPLAY TEMPERATURE & NIGHT LIGHT", "󰖔  ТЕПЛОТА ЭКРАНА И НОЧНОЙ СВЕТ"),
+                            set_xalign: 0.0,
+                        },
+
+                        gtk4::Box {
+                            add_css_class: "cc-card",
+                            set_orientation: Orientation::Vertical,
+                            set_spacing: 8,
+
+                            // Day (baseline) temperature
+                            gtk4::Box {
+                                set_orientation: Orientation::Horizontal,
+                                set_spacing: 8,
+
+                                gtk4::Label {
+                                    add_css_class: "cc-meta",
+                                    set_width_chars: 9,
+                                    set_xalign: 0.0,
+                                    set_label: tr("Daylight", "Дневная"),
+                                },
+
+                                gtk4::Scale {
+                                    add_css_class: "cc-scale",
+                                    set_orientation: Orientation::Horizontal,
+                                    set_range: (4000.0, 6500.0),
+                                    set_increments: (50.0, 250.0),
+                                    set_hexpand: true,
+                                    set_value: model.day_temp as f64,
+                                    connect_value_changed[sender] => move |sc| {
+                                        sender.input(AppearanceMsg::SetDayTemp(sc.value() as u32));
+                                    },
+                                },
+
+                                gtk4::Label {
+                                    add_css_class: "cc-pct",
+                                    set_xalign: 1.0,
+                                    #[watch]
+                                    set_label: &format!("{}K", model.day_temp),
+                                },
+                            },
+
+                            Separator {
+                                set_orientation: Orientation::Horizontal,
+                                add_css_class: "cc-sep",
+                            },
+
+                            // Night Light Toggle
+                            gtk4::Box {
+                                set_orientation: Orientation::Horizontal,
+                                set_spacing: 8,
+
+                                gtk4::Label {
+                                    add_css_class: "cc-tile-title",
+                                    set_hexpand: true,
+                                    set_xalign: 0.0,
+                                    set_label: tr("Night Light", "Ночной свет"),
+                                },
+
+                                gtk4::Switch {
+                                    set_valign: gtk4::Align::Center,
+                                    #[watch]
+                                    set_active: model.night_light_enabled,
+                                    connect_state_set[sender] => move |_, state| {
+                                        sender.input(AppearanceMsg::SetNightLightEnabled(state));
+                                        glib::Propagation::Proceed
+                                    },
+                                },
+                            },
+
+                            // Night Warmth Slider
+                            gtk4::Box {
+                                set_orientation: Orientation::Horizontal,
+                                set_spacing: 8,
+
+                                gtk4::Label {
+                                    add_css_class: "cc-meta",
+                                    set_width_chars: 9,
+                                    set_xalign: 0.0,
+                                    set_label: tr("Night", "Ночная"),
+                                },
+
+                                gtk4::Scale {
+                                    add_css_class: "cc-scale",
+                                    add_css_class: "amber",
+                                    set_orientation: Orientation::Horizontal,
+                                    set_range: (2500.0, 6500.0),
+                                    set_increments: (50.0, 250.0),
+                                    set_hexpand: true,
+                                    set_value: model.night_light_temp as f64,
+                                    connect_value_changed[sender] => move |sc| {
+                                        sender.input(AppearanceMsg::SetNightLightTemp(sc.value() as u32));
+                                    },
+                                },
+
+                                gtk4::Label {
+                                    add_css_class: "cc-pct",
+                                    set_xalign: 1.0,
+                                    #[watch]
+                                    set_label: &format!("{}K", model.night_light_temp),
+                                },
+                            },
+
+                            // Schedule Toggle & HH:MM Inputs
+                            gtk4::Box {
+                                set_orientation: Orientation::Horizontal,
+                                set_spacing: 8,
+
+                                gtk4::Label {
+                                    add_css_class: "cc-meta",
+                                    set_hexpand: true,
+                                    set_xalign: 0.0,
+                                    set_label: tr("Schedule (HH:MM)", "По расписанию (ЧЧ:ММ)"),
+                                },
+
+                                gtk4::Box {
+                                    set_orientation: Orientation::Horizontal,
+                                    set_spacing: 6,
+                                    #[watch]
+                                    set_sensitive: model.night_light_schedule,
+
+                                    gtk4::Label {
+                                        add_css_class: "cc-meta",
+                                        set_label: tr("From", "С"),
+                                    },
+
+                                    #[name = "nl_start_entry"]
+                                    gtk4::Entry {
+                                        set_width_chars: 5,
+                                        set_max_length: 5,
+                                        set_text: &format!("{:02}:{:02}", model.night_light_start_h, model.night_light_start_m),
+                                        connect_activate[sender] => move |e| {
+                                            sender.input(AppearanceMsg::SetNightLightStartText(e.text().to_string()));
+                                        },
+                                    },
+
+                                    gtk4::Label {
+                                        add_css_class: "cc-meta",
+                                        set_label: tr("To", "До"),
+                                    },
+
+                                    #[name = "nl_end_entry"]
+                                    gtk4::Entry {
+                                        set_width_chars: 5,
+                                        set_max_length: 5,
+                                        set_text: &format!("{:02}:{:02}", model.night_light_end_h, model.night_light_end_m),
+                                        connect_activate[sender] => move |e| {
+                                            sender.input(AppearanceMsg::SetNightLightEndText(e.text().to_string()));
+                                        },
+                                    },
+                                },
+
+                                gtk4::Switch {
+                                    set_valign: gtk4::Align::Center,
+                                    #[watch]
+                                    set_active: model.night_light_schedule,
+                                    connect_state_set[sender] => move |_, state| {
+                                        sender.input(AppearanceMsg::SetNightLightSchedule(state));
+                                        glib::Propagation::Proceed
+                                    },
+                                },
+                            },
+                        },
+                    },
                 },
             },
         }
@@ -294,6 +488,8 @@ impl SimpleComponent for AppearanceModel {
             direction: GradientDirection::Vertical,
         }));
 
+        let nl_cfg = hw::night_light::load_config();
+
         let model = Self {
             themes,
             selected_monitor,
@@ -315,6 +511,14 @@ impl SimpleComponent for AppearanceModel {
             dirty_wallpapers: Cell::new(true),
             dirty_custom_bg: Cell::new(false),
             syncing_bg: Rc::new(Cell::new(false)),
+            day_temp: nl_cfg.day_temperature,
+            night_light_enabled: nl_cfg.enabled,
+            night_light_temp: nl_cfg.temperature,
+            night_light_schedule: nl_cfg.schedule_enabled,
+            night_light_start_h: nl_cfg.start_hour,
+            night_light_start_m: nl_cfg.start_minute,
+            night_light_end_h: nl_cfg.end_hour,
+            night_light_end_m: nl_cfg.end_minute,
             nav_cb: init.nav_cb,
             close_cb: init.close_cb,
         };
@@ -337,10 +541,49 @@ impl SimpleComponent for AppearanceModel {
         populate_custom_bg_controls(&widgets.custom_bg_box, &model, &sender);
         populate_wallpapers_strip(&widgets.wall_scroller, &widgets.wall_strip, &model, &sender);
 
+        // Apply HH:MM on focus leave for time entries
+        for (entry, is_start) in [(&widgets.nl_start_entry, true), (&widgets.nl_end_entry, false)] {
+            gtk4::prelude::EntryExt::set_alignment(entry, 0.5);
+            let e = entry.clone();
+            let s = sender.clone();
+            let fc = gtk4::EventControllerFocus::new();
+            fc.connect_leave(move |_| {
+                let text = e.text().to_string();
+                let msg = if is_start {
+                    AppearanceMsg::SetNightLightStartText(text)
+                } else {
+                    AppearanceMsg::SetNightLightEndText(text)
+                };
+                s.input(msg);
+            });
+            entry.add_controller(fc);
+        }
+
+        if init.scroll_to_night_light {
+            let scroller = widgets.main_scroll.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_millis(60), move || {
+                let vadj = scroller.vadjustment();
+                let target = (vadj.upper() - vadj.page_size()).max(0.0);
+                vadj.set_value(target);
+            });
+        }
+
         ComponentParts { model, widgets }
     }
 
     fn post_view() {
+        if !nl_start_entry.has_focus() {
+            let expected = format!("{:02}:{:02}", self.night_light_start_h, self.night_light_start_m);
+            if nl_start_entry.text() != expected {
+                nl_start_entry.set_text(&expected);
+            }
+        }
+        if !nl_end_entry.has_focus() {
+            let expected = format!("{:02}:{:02}", self.night_light_end_h, self.night_light_end_m);
+            if nl_end_entry.text() != expected {
+                nl_end_entry.set_text(&expected);
+            }
+        }
         if self.dirty_themes.get() {
             self.dirty_themes.set(false);
             populate_theme_list(theme_list_box, &self.themes, &sender);
@@ -682,6 +925,69 @@ impl SimpleComponent for AppearanceModel {
                     let _ = sender_reload.input_sender().send(AppearanceMsg::WallpapersReloaded(walls));
                 });
             }
+            AppearanceMsg::SetDayTemp(raw) => {
+                let rounded = ((raw + 25) / 50 * 50).clamp(
+                    hw::night_light::MIN_DAY_TEMP,
+                    hw::night_light::MAX_TEMP,
+                );
+                if self.day_temp != rounded {
+                    let cfg = hw::night_light::set_day_temperature(rounded);
+                    self.day_temp = cfg.day_temperature;
+                }
+            }
+            AppearanceMsg::SetNightLightEnabled(enabled) => {
+                if self.night_light_enabled != enabled {
+                    let cfg = hw::night_light::set_enabled(enabled);
+                    self.night_light_enabled = cfg.enabled;
+                }
+            }
+            AppearanceMsg::SetNightLightTemp(raw) => {
+                let rounded = ((raw + 25) / 50 * 50).clamp(
+                    hw::night_light::MIN_NIGHT_TEMP,
+                    hw::night_light::MAX_TEMP,
+                );
+                if self.night_light_temp != rounded {
+                    let cfg = hw::night_light::set_temperature(rounded);
+                    self.night_light_temp = cfg.temperature;
+                }
+            }
+            AppearanceMsg::SetNightLightSchedule(enabled) => {
+                if self.night_light_schedule != enabled {
+                    let cfg = hw::night_light::set_schedule_enabled(enabled);
+                    self.night_light_schedule = cfg.schedule_enabled;
+                    self.night_light_enabled = cfg.enabled;
+                }
+            }
+            AppearanceMsg::SetNightLightStartText(text) => {
+                if let Some((h, m)) = hw::night_light::parse_hhmm(&text)
+                    && (h != self.night_light_start_h || m != self.night_light_start_m)
+                {
+                    let cfg = hw::night_light::set_schedule_times(
+                        h,
+                        m,
+                        self.night_light_end_h,
+                        self.night_light_end_m,
+                    );
+                    self.night_light_start_h = cfg.start_hour;
+                    self.night_light_start_m = cfg.start_minute;
+                    self.night_light_enabled = cfg.enabled;
+                }
+            }
+            AppearanceMsg::SetNightLightEndText(text) => {
+                if let Some((h, m)) = hw::night_light::parse_hhmm(&text)
+                    && (h != self.night_light_end_h || m != self.night_light_end_m)
+                {
+                    let cfg = hw::night_light::set_schedule_times(
+                        self.night_light_start_h,
+                        self.night_light_start_m,
+                        h,
+                        m,
+                    );
+                    self.night_light_end_h = cfg.end_hour;
+                    self.night_light_end_m = cfg.end_minute;
+                    self.night_light_enabled = cfg.enabled;
+                }
+            }
             AppearanceMsg::Back => {
                 (self.nav_cb)("control");
             }
@@ -693,6 +999,7 @@ pub fn build_appearance_view<FNav, FClose>(
     nav_cb: FNav,
     close_cb: FClose,
     current_monitor: Option<String>,
+    scroll_to_night_light: bool,
 ) -> (gtk4::Box, i32, i32, Box<dyn std::any::Any>)
 where
     FNav: Fn(&str) + 'static + Clone,
@@ -702,6 +1009,7 @@ where
         nav_cb: std::boxed::Box::new(nav_cb),
         close_cb: std::boxed::Box::new(close_cb),
         current_monitor,
+        scroll_to_night_light,
     };
 
     let controller = AppearanceModel::builder().launch(init).detach();
