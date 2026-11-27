@@ -77,6 +77,65 @@ pub fn get_active_wifi_ssid() -> Option<String> {
     get_wifi_connection_status().active_ssid
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum NetworkConnectivity {
+    Full,
+    Portal,
+    Limited,
+    #[default]
+    Unknown,
+}
+
+impl NetworkConnectivity {
+    fn from_nmcli(raw: &str) -> Self {
+        match raw.trim() {
+            "full" => Self::Full,
+            "portal" => Self::Portal,
+            "limited" => Self::Limited,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn needs_portal_login(self) -> bool {
+        matches!(self, Self::Portal | Self::Limited)
+    }
+}
+
+pub fn get_network_connectivity() -> NetworkConnectivity {
+    if let Ok(out) = Command::new("nmcli")
+        .env("LC_ALL", "C")
+        .args(["-t", "-f", "CONNECTIVITY", "general"])
+        .stdin(Stdio::null())
+        .output()
+        && out.status.success()
+    {
+        return NetworkConnectivity::from_nmcli(&String::from_utf8_lossy(&out.stdout));
+    }
+    NetworkConnectivity::Unknown
+}
+
+pub fn refresh_network_connectivity() -> NetworkConnectivity {
+    if let Ok(out) = Command::new("timeout")
+        .env("LC_ALL", "C")
+        .args(["5", "nmcli", "networking", "connectivity", "check"])
+        .stdin(Stdio::null())
+        .output()
+        && out.status.success()
+    {
+        return NetworkConnectivity::from_nmcli(&String::from_utf8_lossy(&out.stdout));
+    }
+    get_network_connectivity()
+}
+
+pub fn open_captive_portal() {
+    let _ = Command::new("xdg-open")
+        .arg("http://detectportal.firefox.com/canonical.html")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
 pub fn notify_network_changed() {
     let _ = inerium_tools::ipc::PidRegistry::notify_all("network", inerium_tools::sys::posix::SIGUSR1);
 }

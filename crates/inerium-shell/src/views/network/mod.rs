@@ -27,6 +27,7 @@ pub struct NetworkModel {
     pub active_ssid: Option<String>,
     pub connecting_ssid: Option<String>,
     pub active_details: Option<hw::network::ActiveWifiDetails>,
+    pub connectivity: hw::NetworkConnectivity,
     pub saved_connections: HashMap<String, SavedConn>,
     pub expanded_ssid: Option<String>,
     pub networks: Vec<WifiAp>,
@@ -86,6 +87,7 @@ pub enum NetworkMsg {
         saved: HashMap<String, SavedConn>,
         networks: Vec<WifiAp>,
         active_details: Option<hw::ActiveWifiDetails>,
+        connectivity: hw::NetworkConnectivity,
     },
     ScanProgress {
         networks: Vec<WifiAp>,
@@ -105,12 +107,14 @@ pub enum NetworkMsg {
         connecting_ssid: Option<String>,
         hotspot: bool,
         details: Option<hw::ActiveWifiDetails>,
+        connectivity: hw::NetworkConnectivity,
     },
     ToggleExpandAp(String),
     ToggleAutoconnect(String, bool),
     SavedConnectionsUpdated(HashMap<String, SavedConn>),
     ForgetSavedNetwork(String),
     SelectAp(WifiAp),
+    OpenCaptivePortal,
     IdentityInput(String),
     PasswordInput(String),
     ToggleNoCaCert,
@@ -123,12 +127,14 @@ pub enum NetworkMsg {
         saved: HashMap<String, SavedConn>,
         active_ssid: Option<String>,
         hotspot_active: bool,
+        connectivity: hw::NetworkConnectivity,
     },
     DisconnectFinished {
         networks: Vec<WifiAp>,
         saved: HashMap<String, SavedConn>,
         active_ssid: Option<String>,
         hotspot_active: bool,
+        connectivity: hw::NetworkConnectivity,
     },
     StopHotspot,
     Back,
@@ -277,10 +283,12 @@ impl SimpleComponent for NetworkModel {
                 net.is_saved = saved.contains_key(&net.ssid);
             }
             let details = hw::get_active_wifi_details();
+            let connectivity = hw::get_network_connectivity();
             s_init.input(NetworkMsg::InitialScanLoaded {
                 saved,
                 networks: nets,
                 active_details: details,
+                connectivity,
             });
         });
 
@@ -291,6 +299,7 @@ impl SimpleComponent for NetworkModel {
             active_ssid,
             connecting_ssid,
             active_details,
+            connectivity: hw::NetworkConnectivity::Unknown,
             saved_connections,
             expanded_ssid: None,
             networks,
@@ -307,6 +316,7 @@ impl SimpleComponent for NetworkModel {
             &model.networks,
             &model.saved_connections,
             model.active_details.as_ref(),
+            model.connectivity,
             model.expanded_ssid.as_deref(),
             model.auth_state.as_ref(),
             model.hotspot_active,
@@ -339,6 +349,7 @@ impl SimpleComponent for NetworkModel {
                 &self.networks,
                 &self.saved_connections,
                 self.active_details.as_ref(),
+                self.connectivity,
                 self.expanded_ssid.as_deref(),
                 self.auth_state.as_ref(),
                 self.hotspot_active,
@@ -452,11 +463,13 @@ impl SimpleComponent for NetworkModel {
                     let status = hw::get_wifi_connection_status();
                     let hotspot = hw::is_hotspot_active();
                     let details = hw::get_active_wifi_details();
+                    let connectivity = hw::get_network_connectivity();
                     s_poll.input(NetworkMsg::StatusPolled {
                         ssid: status.active_ssid,
                         connecting_ssid: status.connecting_ssid,
                         hotspot,
                         details,
+                        connectivity,
                     });
                 });
             }
@@ -465,17 +478,20 @@ impl SimpleComponent for NetworkModel {
                 connecting_ssid,
                 hotspot,
                 details,
+                connectivity,
             } => {
                 let ssid_changed = ssid != self.active_ssid;
                 let connecting_changed = connecting_ssid != self.connecting_ssid;
                 let hotspot_changed = hotspot != self.hotspot_active;
                 let ip_changed = details.as_ref().map(|d| &d.ip) != self.active_details.as_ref().map(|d| &d.ip);
+                let conn_changed = connectivity != self.connectivity;
 
-                if ssid_changed || connecting_changed || hotspot_changed || ip_changed {
+                if ssid_changed || connecting_changed || hotspot_changed || ip_changed || conn_changed {
                     self.active_ssid = ssid;
                     self.connecting_ssid = connecting_ssid;
                     self.hotspot_active = hotspot;
                     self.active_details = details;
+                    self.connectivity = connectivity;
                     self.sync_active_network();
                     hw::notify_network_changed();
                 }
@@ -543,6 +559,7 @@ impl SimpleComponent for NetworkModel {
                 saved,
                 mut networks,
                 active_details,
+                connectivity,
             } => {
                 self.is_scanning = false;
                 if !self.wifi_enabled {
@@ -550,6 +567,7 @@ impl SimpleComponent for NetworkModel {
                 }
                 self.saved_connections = saved;
                 self.active_details = active_details;
+                self.connectivity = connectivity;
                 if let Some(ref act) = self.active_ssid {
                     for net in &mut networks {
                         net.is_active = &net.ssid == act;
@@ -614,11 +632,13 @@ impl SimpleComponent for NetworkModel {
                                 .output();
                         }
                         let (fresh, saved, act, hs) = fetch_wifi_scan_data(false);
+                        let connectivity = hw::get_network_connectivity();
                         s_fin.input(NetworkMsg::DisconnectFinished {
                             networks: fresh,
                             saved,
                             active_ssid: act,
                             hotspot_active: hs,
+                            connectivity,
                         });
                     });
                 } else if net.is_saved {
@@ -638,6 +658,11 @@ impl SimpleComponent for NetworkModel {
                                 .output()
                         };
                         let (success, err_msg) = parse_cmd_output(res);
+                        let connectivity = if success {
+                            hw::refresh_network_connectivity()
+                        } else {
+                            hw::get_network_connectivity()
+                        };
                         let (fresh, saved, act, hs) = fetch_wifi_scan_data(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid,
@@ -647,6 +672,7 @@ impl SimpleComponent for NetworkModel {
                             saved,
                             active_ssid: act,
                             hotspot_active: hs,
+                            connectivity,
                         });
                     });
                 } else if !net.security.is_empty() && !net.security.contains("--") {
@@ -661,6 +687,11 @@ impl SimpleComponent for NetworkModel {
                             .stdin(std::process::Stdio::null())
                             .output();
                         let (success, err_msg) = parse_cmd_output(res);
+                        let connectivity = if success {
+                            hw::refresh_network_connectivity()
+                        } else {
+                            hw::get_network_connectivity()
+                        };
                         let (fresh, saved, act, hs) = fetch_wifi_scan_data(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid,
@@ -670,9 +701,13 @@ impl SimpleComponent for NetworkModel {
                             saved,
                             active_ssid: act,
                             hotspot_active: hs,
+                            connectivity,
                         });
                     });
                 }
+            }
+            NetworkMsg::OpenCaptivePortal => {
+                hw::open_captive_portal();
             }
             NetworkMsg::IdentityInput(text) => {
                 if let Some(ref mut auth) = self.auth_state {
@@ -726,6 +761,11 @@ impl SimpleComponent for NetworkModel {
                                 .output();
                             parse_cmd_output(res)
                         };
+                        let connectivity = if success {
+                            hw::refresh_network_connectivity()
+                        } else {
+                            hw::get_network_connectivity()
+                        };
                         let (fresh, saved, act, hs) = fetch_wifi_scan_data(false);
                         s_fin.input(NetworkMsg::ConnectFinished {
                             ssid: ssid_task,
@@ -735,6 +775,7 @@ impl SimpleComponent for NetworkModel {
                             saved,
                             active_ssid: act,
                             hotspot_active: hs,
+                            connectivity,
                         });
                     });
                 }
@@ -747,15 +788,21 @@ impl SimpleComponent for NetworkModel {
                 saved,
                 active_ssid,
                 hotspot_active,
+                connectivity,
             } => {
                 self.saved_connections = saved;
                 self.active_ssid = active_ssid;
                 self.hotspot_active = hotspot_active;
+                self.connectivity = connectivity;
                 self.networks = networks;
                 self.sync_active_network();
                 hw::notify_network_changed();
                 if success {
-                    self.expanded_ssid = None;
+                    self.expanded_ssid = if connectivity.needs_portal_login() {
+                        Some(ssid)
+                    } else {
+                        None
+                    };
                     self.auth_state = None;
                 } else {
                     let err_text = error.unwrap_or_else(|| {
@@ -794,10 +841,12 @@ impl SimpleComponent for NetworkModel {
                 saved,
                 active_ssid,
                 hotspot_active,
+                connectivity,
             } => {
                 self.saved_connections = saved;
                 self.active_ssid = active_ssid;
                 self.hotspot_active = hotspot_active;
+                self.connectivity = connectivity;
                 self.networks = networks;
                 self.sync_active_network();
                 hw::notify_network_changed();

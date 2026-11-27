@@ -17,6 +17,7 @@ pub fn populate_wifi_list(
     networks: &[WifiAp],
     saved_conns: &HashMap<String, SavedConn>,
     active_details: Option<&hw::network::ActiveWifiDetails>,
+    connectivity: hw::NetworkConnectivity,
     expanded_ssid: Option<&str>,
     auth_state: Option<&AuthFormState>,
     hotspot_active: bool,
@@ -169,7 +170,19 @@ pub fn populate_wifi_list(
                 tr("Connecting...", "Подключение...").to_string()
             }
         } else if net.is_active {
-            if let Some(details) = active_details {
+            if connectivity == hw::NetworkConnectivity::Portal {
+                if let Some(details) = active_details
+                    && !details.ip.is_empty()
+                {
+                    tr_fmt!(
+                        "Sign-in required • {ip}",
+                        "Требуется вход • {ip}",
+                        ip = details.ip
+                    )
+                } else {
+                    tr("Sign-in required", "Требуется вход").to_string()
+                }
+            } else if let Some(details) = active_details {
                 if !details.ip.is_empty() && !details.band.is_empty() {
                     tr_fmt!(
                         "Connected • {ip} ({band})",
@@ -212,8 +225,13 @@ pub fn populate_wifi_list(
             badge.add_css_class("connecting");
             badge.set_visible(true);
         } else if net.is_active {
-            badge.set_label(tr("󰄬  Connected", "󰄬  В сети"));
-            badge.add_css_class("active");
+            if connectivity == hw::NetworkConnectivity::Portal {
+                badge.set_label(tr("󰖪  Sign in", "󰖪  Войти"));
+                badge.add_css_class("connecting");
+            } else {
+                badge.set_label(tr("󰄬  Connected", "󰄬  В сети"));
+                badge.add_css_class("active");
+            }
             badge.set_visible(true);
         } else if net.is_saved {
             badge.set_label(tr("Saved", "Сохранено"));
@@ -393,6 +411,22 @@ pub fn populate_wifi_list(
 
                 // 3. Connect / Disconnect chip
                 if net.is_active {
+                    if connectivity.needs_portal_login() {
+                        let portal_btn = Button::with_label(tr("󰖟  Sign in", "󰖟  Войти"));
+                        portal_btn.add_css_class("drawer-chip");
+                        portal_btn.add_css_class("on");
+                        portal_btn.set_hexpand(true);
+                        portal_btn.set_tooltip_text(Some(tr(
+                            "Open network sign-in page in browser",
+                            "Открыть страницу авторизации в браузере",
+                        )));
+                        let s_portal = sender.clone();
+                        portal_btn.connect_clicked(move |_| {
+                            s_portal.input(NetworkMsg::OpenCaptivePortal);
+                        });
+                        drawer.append(&portal_btn);
+                    }
+
                     let disc_btn = Button::with_label(tr("󱚼  Disconnect", "󱚼  Отключиться"));
                     disc_btn.add_css_class("drawer-chip");
                     disc_btn.set_hexpand(true);
@@ -437,25 +471,56 @@ pub fn populate_wifi_list(
                 drawer.set_hexpand(true);
                 drawer.set_homogeneous(true);
 
-                let conn_btn = Button::with_label(tr("󰄬  Connect", "󰄬  Подключить"));
-                conn_btn.add_css_class("drawer-chip");
-                conn_btn.set_hexpand(true);
-                let s_c = sender.clone();
-                let net_c = net.clone();
-                let b_conn = conn_btn.clone();
-                conn_btn.connect_clicked(move |_| {
-                    b_conn.set_sensitive(false);
-                    b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
-                    s_c.input(NetworkMsg::SelectAp(net_c.clone()));
-                });
-                drawer.append(&conn_btn);
+                if net.is_active {
+                    if connectivity.needs_portal_login() {
+                        let portal_btn = Button::with_label(tr("󰖟  Sign in", "󰖟  Войти"));
+                        portal_btn.add_css_class("drawer-chip");
+                        portal_btn.add_css_class("on");
+                        portal_btn.set_hexpand(true);
+                        portal_btn.set_tooltip_text(Some(tr(
+                            "Open network sign-in page in browser",
+                            "Открыть страницу авторизации в браузере",
+                        )));
+                        let s_portal = sender.clone();
+                        portal_btn.connect_clicked(move |_| {
+                            s_portal.input(NetworkMsg::OpenCaptivePortal);
+                        });
+                        drawer.append(&portal_btn);
+                    }
 
-                let info_label = format!("󰋼 {} • {}%", tr("Open", "Открытая"), net.signal);
-                let info_chip = Label::new(Some(&info_label));
-                info_chip.add_css_class("drawer-chip");
-                info_chip.add_css_class("info");
-                info_chip.set_hexpand(true);
-                drawer.append(&info_chip);
+                    let disc_btn = Button::with_label(tr("󱚼  Disconnect", "󱚼  Отключиться"));
+                    disc_btn.add_css_class("drawer-chip");
+                    disc_btn.set_hexpand(true);
+                    let s_disc = sender.clone();
+                    let net_disc = net.clone();
+                    let b_disc = disc_btn.clone();
+                    disc_btn.connect_clicked(move |_| {
+                        b_disc.set_sensitive(false);
+                        b_disc.set_label(tr("󰑐  Disconnecting...", "󰑐  Отключение..."));
+                        s_disc.input(NetworkMsg::SelectAp(net_disc.clone()));
+                    });
+                    drawer.append(&disc_btn);
+                } else {
+                    let conn_btn = Button::with_label(tr("󰄬  Connect", "󰄬  Подключить"));
+                    conn_btn.add_css_class("drawer-chip");
+                    conn_btn.set_hexpand(true);
+                    let s_c = sender.clone();
+                    let net_c = net.clone();
+                    let b_conn = conn_btn.clone();
+                    conn_btn.connect_clicked(move |_| {
+                        b_conn.set_sensitive(false);
+                        b_conn.set_label(tr("󰑐 Connecting...", "󰑐 Подключение..."));
+                        s_c.input(NetworkMsg::SelectAp(net_c.clone()));
+                    });
+                    drawer.append(&conn_btn);
+
+                    let info_label = format!("󰋼 {} • {}%", tr("Open", "Открытая"), net.signal);
+                    let info_chip = Label::new(Some(&info_label));
+                    info_chip.add_css_class("drawer-chip");
+                    info_chip.add_css_class("info");
+                    info_chip.set_hexpand(true);
+                    drawer.append(&info_chip);
+                }
 
                 card.append(&drawer);
 
