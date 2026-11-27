@@ -22,7 +22,7 @@ install_from_binaries() {
     fi
 
     dl_tmp="$(mktemp -d)"
-    trap 'rm -rf "$dl_tmp"' RETURN
+    trap 'rm -rf "${dl_tmp:-}"; trap - RETURN' RETURN
 
     log "Fetching release archive ${base_url}/${BIN_ARCHIVE}..."
     if ! download_file "${base_url}/${BIN_ARCHIVE}" "${dl_tmp}/${BIN_ARCHIVE}" 300; then
